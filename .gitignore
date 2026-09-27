@@ -49,3 +49,6 @@ vendor/
 
 # Harness-local agent settings (Claude Code)
 .claude/
+
+# internal planning, never published
+.kitchen/

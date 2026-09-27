@@ -7,6 +7,9 @@ the queue, Bash plus an optional Python helper; user-invoked only).
 Harness-neutral: this is the only agent instructions file (no `CLAUDE.md` or
 `GEMINI.md`); Claude Code loads it when no `CLAUDE.md` exists.
 
+Design records live in a private location; if `.kitchen/` is present in this
+checkout, read `.kitchen/AGENTS.md` first.
+
 This file is for agents **changing this repo**. If you only want to **use the
 running service**, you need one document: the skill's
 [`SKILL.md`](skills/agentfeedback/SKILL.md), or [`docs/api.md`](docs/api.md)
