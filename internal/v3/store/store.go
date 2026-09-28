@@ -1,18 +1,10 @@
-// Package store owns the SQLite database of the v1 API: connection setup, the
-// single init migration, and every SQL statement the service runs. It holds
-// no business rule: identity decisions, warnings and status codes live in the
-// core, which composes the queries here inside one Read or Write.
-//
-// Conventions shared by every query: optional text columns are Go strings
-// where "" means NULL (an envelope member that is empty after normalisation
-// is absent); nullable timestamps are *int64 unix microseconds UTC; payload
-// and context are JSON text stored as given and returned byte-exact.
+// Package store owns the SQLite database: connection setup, forward-only schema
+// migration, and every SQL statement the service runs.
 package store
 
 import (
 	"context"
 	"database/sql"
-	"database/sql/driver"
 	"embed"
 	"errors"
 	"fmt"
@@ -26,8 +18,6 @@ import (
 
 	sqlitedrv "modernc.org/sqlite" // database/sql driver "sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
-
-	"github.com/agentfeedback/agentfeedback/pkg/schema"
 )
 
 //go:embed migrations/*.sql
@@ -37,42 +27,6 @@ var migrationsFS embed.FS
 // Starting anyway would mean writing rows a newer schema no longer expects, so
 // the service refuses instead.
 var ErrSchemaTooNew = errors.New("database schema is newer than this binary supports")
-
-// ErrForeignDatabase is returned when the file holds tables but not this
-// service's application_id stamp: a database of the previous major version,
-// or some other SQLite file. Neither is migrated; the operator starts from a
-// new DATABASE_PATH. Refusing at open beats failing on the first query.
-var ErrForeignDatabase = errors.New("database was not created by this version of agentfeedback")
-
-// applicationID is the PRAGMA application_id stamp ("afb1") written before the
-// first migration and checked on every open. The schema version alone cannot
-// tell this schema from the previous major version's, which also numbered its
-// init migration 1.
-const applicationID = 0x61666231
-
-// lowerFunc is the SQL function behind the q filter: the simple Unicode
-// lower-case mapping the contract uses for tokens, so that "case-insensitive"
-// means the same thing in search as in normalisation. SQLite's own lower()
-// and LIKE fold ASCII only.
-const lowerFunc = "af_lower"
-
-func init() {
-	// Registered once for the process, before any pool opens: the driver
-	// hands the function to every connection opened afterwards.
-	sqlitedrv.MustRegisterDeterministicScalarFunction(lowerFunc, 1,
-		func(_ *sqlitedrv.FunctionContext, args []driver.Value) (driver.Value, error) {
-			switch v := args[0].(type) {
-			case string:
-				return schema.LowerSimple(v), nil
-			case []byte:
-				return schema.LowerSimple(string(v)), nil
-			default:
-				// NULL stays NULL (so instr() yields NULL, never a match);
-				// numbers pass through and instr() applies its own rules.
-				return v, nil
-			}
-		})
-}
 
 // DB is the service's handle on the SQLite database. It keeps two pools: a
 // single-connection writer whose transactions begin IMMEDIATE (so a write
@@ -105,8 +59,7 @@ func dsn(path string, immediate bool) string {
 }
 
 // Open opens (creating if needed) the database at path and migrates it forward
-// to the schema this binary knows. A non-empty database without this
-// service's stamp is refused with ErrForeignDatabase.
+// to the schema this binary knows.
 func Open(ctx context.Context, path string) (*DB, error) {
 	writer, err := sql.Open("sqlite", dsn(path, true))
 	if err != nil {
@@ -232,20 +185,6 @@ func IsBusy(err error) bool {
 		strings.Contains(msg, "database table is locked")
 }
 
-// IsUniqueViolation reports whether err is SQLite's unique-constraint failure:
-// a second row under an existing (kind, key) or uid.
-func IsUniqueViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	if primary, full, ok := sqliteCode(err); ok {
-		return full == sqlite3.SQLITE_CONSTRAINT_UNIQUE || full == sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY ||
-			(primary == sqlite3.SQLITE_CONSTRAINT && strings.Contains(err.Error(), "UNIQUE constraint failed"))
-	}
-
-	return strings.Contains(err.Error(), "UNIQUE constraint failed")
-}
-
 // BusyWrites reports how many write transactions failed because the database
 // stayed locked past the busy timeout.
 func (db *DB) BusyWrites() int64 { return db.busyWrites.Load() }
@@ -263,8 +202,7 @@ func (db *DB) FileBytes() int64 {
 }
 
 // Read runs fn inside one deferred read transaction, so every statement in fn
-// sees the same consistent snapshot: a list and its total, or the four parts
-// of the stats, never disagree about a row written meanwhile.
+// sees the same consistent snapshot.
 func (db *DB) Read(ctx context.Context, fn func(Querier) error) error {
 	tx, err := db.reader.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -273,15 +211,6 @@ func (db *DB) Read(ctx context.Context, fn func(Querier) error) error {
 	defer func() { _ = tx.Rollback() }()
 
 	return fn(tx)
-}
-
-// VacuumInto writes a consistent copy of the database to dest.
-func (db *DB) VacuumInto(ctx context.Context, dest string) error {
-	if _, err := db.writer.ExecContext(ctx, `VACUUM INTO ?`, dest); err != nil {
-		return fmt.Errorf("vacuum into %s: %w", dest, err)
-	}
-
-	return nil
 }
 
 // SchemaVersion reports the schema version recorded in the database.
@@ -349,13 +278,23 @@ func loadMigrations() ([]migration, error) {
 	return migs, nil
 }
 
-// migrate stamps a fresh database, refuses a foreign one, and applies every
-// migration newer than the database's recorded version, each in its own
-// transaction.
+// migrate applies every migration newer than the database's recorded version,
+// each in its own transaction.
 func (db *DB) migrate(ctx context.Context) error {
-	current, err := db.bootstrap(ctx)
-	if err != nil {
-		return err
+	if _, err := db.writer.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)`); err != nil {
+		return fmt.Errorf("create schema_version: %w", err)
+	}
+
+	var current int
+	err := db.writer.QueryRowContext(ctx, "SELECT version FROM schema_version").Scan(&current)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		if _, err := db.writer.ExecContext(ctx, "INSERT INTO schema_version (version) VALUES (0)"); err != nil {
+			return fmt.Errorf("initialize schema_version: %w", err)
+		}
+		current = 0
+	case err != nil:
+		return fmt.Errorf("read schema version: %w", err)
 	}
 
 	migs, err := loadMigrations()
@@ -377,73 +316,6 @@ func (db *DB) migrate(ctx context.Context) error {
 		if err := db.applyMigration(ctx, m); err != nil {
 			return err
 		}
-	}
-
-	return nil
-}
-
-// bootstrap checks the stamp and reads or creates the schema_version row,
-// all inside one IMMEDIATE transaction: two processes opening the same fresh
-// file at once (serve and a restore, say) serialise on the write lock, and
-// the second sees the first one's row instead of inserting its own.
-func (db *DB) bootstrap(ctx context.Context) (int, error) {
-	tx, err := db.writer.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, fmt.Errorf("begin bootstrap of %s: %w", db.path, err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	if err := checkStamp(ctx, tx, db.path); err != nil {
-		return 0, err
-	}
-	if _, err := tx.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)`); err != nil {
-		return 0, fmt.Errorf("create schema_version: %w", err)
-	}
-
-	var current int
-	err = tx.QueryRowContext(ctx, "SELECT version FROM schema_version").Scan(&current)
-	switch {
-	case errors.Is(err, sql.ErrNoRows):
-		if _, err := tx.ExecContext(ctx, "INSERT INTO schema_version (version) VALUES (0)"); err != nil {
-			return 0, fmt.Errorf("initialize schema_version: %w", err)
-		}
-		current = 0
-	case err != nil:
-		return 0, fmt.Errorf("read schema version: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("commit bootstrap of %s: %w", db.path, err)
-	}
-
-	return current, nil
-}
-
-// checkStamp verifies the application_id stamp, writing it on a database that
-// has no schema objects yet. The stamp goes in before schema_version exists,
-// so an open interrupted after this point still passes next time.
-func checkStamp(ctx context.Context, q Querier, path string) error {
-	var stamp int64
-	if err := q.QueryRowContext(ctx, "PRAGMA application_id").Scan(&stamp); err != nil {
-		return fmt.Errorf("read application_id of %s: %w", path, err)
-	}
-	if stamp == applicationID {
-		return nil
-	}
-
-	// Tables, views, indexes and triggers alike: anything at all means the
-	// file belongs to something else.
-	var objects int
-	if err := q.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master").Scan(&objects); err != nil {
-		return fmt.Errorf("inspect %s: %w", path, err)
-	}
-	if objects > 0 {
-		return fmt.Errorf("%w: %s holds a schema but not this service's application_id stamp; "+
-			"a database of the previous major version is not migrated, start with a new DATABASE_PATH",
-			ErrForeignDatabase, path)
-	}
-	// PRAGMA takes no bound parameters; the value is a package constant.
-	if _, err := q.ExecContext(ctx, "PRAGMA application_id = "+strconv.Itoa(applicationID)); err != nil {
-		return fmt.Errorf("stamp %s: %w", path, err)
 	}
 
 	return nil

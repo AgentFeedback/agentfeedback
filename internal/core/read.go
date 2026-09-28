@@ -8,7 +8,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/agentfeedback/agentfeedback/internal/store"
+	"github.com/agentfeedback/agentfeedback/internal/v3/store"
 )
 
 const (

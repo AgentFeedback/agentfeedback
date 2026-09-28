@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/agentfeedback/agentfeedback/internal/store"
+	"github.com/agentfeedback/agentfeedback/internal/v3/store"
 )
 
 const maxProcessedIDs = 500

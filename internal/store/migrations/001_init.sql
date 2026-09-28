@@ -1,25 +1,51 @@
--- One table for every family. ids are global and never reused: the AUTOINCREMENT
--- keyword keeps sqlite_sequence monotonic even after deletes, so an exported id
--- always refers to the same record.
+-- The v1 schema: one table for every kind. This is the only migration; the
+-- previous major version's database is not migrated, so a database this
+-- binary did not create is refused at open (the application_id stamp is
+-- written by store.Open before this file runs).
+--
+-- ids are global and never reused: AUTOINCREMENT keeps sqlite_sequence
+-- monotonic after deletes, so an exported id always names the same record.
+-- uid is the UUIDv7 that survives an export and import between instances.
+-- Timestamps are unix microseconds UTC. payload and context are JSON text
+-- stored as given and returned byte-exact. category and fix_status are the
+-- friction payload's fields lifted into indexable columns; other kinds
+-- never match them.
 CREATE TABLE submissions (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  family TEXT NOT NULL CHECK (family IN ('review','friction','event')),
-  submission_type TEXT NOT NULL,
-  machine_name TEXT NOT NULL,
-  coordinator_model TEXT NOT NULL,
-  run_id TEXT,
-  payload TEXT NOT NULL CHECK (json_valid(payload)),
-  payload_hash TEXT NOT NULL,
-  created_at INTEGER NOT NULL,   -- unix microseconds UTC
-  processed_at INTEGER,
-  resolution TEXT
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  uid            TEXT    NOT NULL UNIQUE,
+  kind           TEXT    NOT NULL,
+  schema_version INTEGER NOT NULL DEFAULT 1,
+  key            TEXT,
+  summary        TEXT,
+  machine        TEXT,
+  model          TEXT,
+  harness        TEXT,
+  project        TEXT,
+  occurred_at    INTEGER,
+  context        TEXT    CHECK (context IS NULL OR json_valid(context)),
+  payload        TEXT    NOT NULL CHECK (json_valid(payload)),
+  content_hash   TEXT    NOT NULL,
+  created_at     INTEGER NOT NULL,
+  processed_at   INTEGER,
+  verdict        TEXT,
+  resolution     TEXT,
+  ref            TEXT,
+  processed_by   TEXT,
+  redacted_at    INTEGER,
+  category       TEXT GENERATED ALWAYS AS (CASE WHEN kind = 'friction' THEN json_extract(payload, '$.category') END) VIRTUAL,
+  fix_status     TEXT GENERATED ALWAYS AS (CASE WHEN kind = 'friction' THEN json_extract(payload, '$.fix_status') END) VIRTUAL
 );
 
--- Idempotency key for reviews and events. Frictions carry no run_id and are
--- excluded from the constraint by the partial index.
-CREATE UNIQUE INDEX ux_submissions_key ON submissions(family, submission_type, run_id) WHERE run_id IS NOT NULL;
-CREATE INDEX ix_submissions_created ON submissions(created_at);
-CREATE INDEX ix_submissions_type ON submissions(submission_type);
-CREATE INDEX ix_submissions_machine ON submissions(machine_name);
-CREATE INDEX ix_submissions_hash ON submissions(payload_hash);
-CREATE INDEX ix_submissions_open ON submissions(id) WHERE processed_at IS NULL;
+-- Keyed replays: one row per (kind, key); keyless rows are outside the constraint.
+CREATE UNIQUE INDEX ux_submissions_key     ON submissions(kind, key) WHERE key IS NOT NULL;
+-- Keyless dedupe: same hash inside the window, newest first.
+CREATE INDEX ix_submissions_hash_created   ON submissions(content_hash, created_at);
+-- The queue: open rows by id.
+CREATE INDEX ix_submissions_open           ON submissions(id) WHERE processed_at IS NULL;
+CREATE INDEX ix_submissions_kind_created   ON submissions(kind, created_at);
+CREATE INDEX ix_submissions_project        ON submissions(project);
+CREATE INDEX ix_submissions_machine        ON submissions(machine);
+CREATE INDEX ix_submissions_occurred       ON submissions(occurred_at);
+CREATE INDEX ix_submissions_verdict        ON submissions(verdict);
+CREATE INDEX ix_submissions_category       ON submissions(category) WHERE category IS NOT NULL;
+CREATE INDEX ix_submissions_fix_status     ON submissions(fix_status) WHERE fix_status IS NOT NULL;

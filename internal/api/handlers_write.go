@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/agentfeedback/agentfeedback/internal/core"
-	"github.com/agentfeedback/agentfeedback/internal/store"
+	"github.com/agentfeedback/agentfeedback/internal/v3/store"
 )
 
 // handleCreateFriction handles POST /api/v1/frictions.

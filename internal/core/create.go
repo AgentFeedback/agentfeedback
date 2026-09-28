@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/agentfeedback/agentfeedback/internal/canonjson"
-	"github.com/agentfeedback/agentfeedback/internal/store"
+	"github.com/agentfeedback/agentfeedback/internal/v3/store"
 )
 
 // Generous upper bounds. They keep indexed columns small and stop garbage rows

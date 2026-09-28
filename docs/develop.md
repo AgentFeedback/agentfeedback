@@ -9,7 +9,8 @@ How to change the service and the skills, verify, and release. Read
 cmd/agentfeedback/              main: `serve` (default), `import <jsonl>`, `backup <dest.db>`
 internal/api/                   HTTP: mux, middleware (auth, recovery, request id, log, metrics, body limits), handlers, DTOs
 internal/core/                  validation, per-family canonical hashing, create/list/get/processed/export
-internal/store/                 SQLite: open + pragmas, embedded forward-only migrations, hand-written SQL
+internal/store/                 SQLite for the v1 API: open + pragmas + the application_id stamp, the single init migration, hand-written SQL, query plans pinned by a test
+internal/v3/store/              the v3 service's store, moved here unchanged; the running service uses it until the v1 core lands, then it goes
 internal/canonjson/             canonical JSON of the v3 event hash (frozen: hash forms never change); not the v1 writer
 pkg/schema/                     v1 schema engine: embedded schemas compiled at init, the x- keywords, guide validation, the text and date-time rules
 pkg/envelope/                   v1 decoder: token-stream parse (spellings, duplicates, UTF-8 repair), inference table, normalisation order, guide and recommended checks
@@ -52,9 +53,10 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
   code, [api.md](api.md), `scripts/e2e.sh`, the client scripts in
   `skills/agentfeedback/scripts/`, and `tests/skill/`. Producers build their
   calls from api.md without reading the code.
-- **Write-once payloads.** Only `processed_at` and `resolution` ever change
-  after insert. Never add an update path for content; a correction is a new
-  submission.
+- **Write-once payloads.** After insert only the processing fields
+  (`processed_at`, `verdict`, `resolution`, `ref`, `processed_by`) change,
+  and a redaction replaces the payload with its tombstone. Never add an
+  update path for content; a correction is a new submission.
 - **The contract is files first.** `docs/openapi.yaml`, `schemas/` and
   `conformance/` are the normative v1 contract; Go code and any second
   implementation follow them, never the reverse. A contract change edits
@@ -77,7 +79,10 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
   vector for each.
 - **Migrations are forward-only and append-only.** New numbered file under
   `internal/store/migrations/`, applied in one transaction, version recorded
-  in `schema_version`. A binary that meets a newer schema refuses to start.
+  in `schema_version`. A binary that meets a newer schema refuses to start,
+  and so does one that meets a database without the `application_id` stamp
+  `Open` writes before the first migration (a database of the previous
+  major version, which is not migrated: start from a new `DATABASE_PATH`).
 - **Payloads pass through as raw JSON.** Never decode a stored payload into
   `map[string]any` on the way out; it changes large integers.
 - **Metrics labels are bounded.** Route pattern, allow-listed method, status
