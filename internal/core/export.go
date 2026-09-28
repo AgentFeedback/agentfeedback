@@ -9,7 +9,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/agentfeedback/agentfeedback/internal/store"
+	"github.com/agentfeedback/agentfeedback/internal/v3/store"
 )
 
 // ExportHeader is the first line of an export. It states what the stream

@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/agentfeedback/agentfeedback/internal/core"
-	"github.com/agentfeedback/agentfeedback/internal/store"
+	"github.com/agentfeedback/agentfeedback/internal/v3/store"
 )
 
 // v1Records are in the shape a legacy export-format-1 producer emits: family

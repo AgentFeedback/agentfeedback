@@ -16,7 +16,7 @@ import (
 	"strings"
 
 	"github.com/agentfeedback/agentfeedback/internal/core"
-	"github.com/agentfeedback/agentfeedback/internal/store"
+	"github.com/agentfeedback/agentfeedback/internal/v3/store"
 )
 
 // importRecord is one line of an export stream. Every nullable field is a

@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/agentfeedback/agentfeedback/internal/core"
-	"github.com/agentfeedback/agentfeedback/internal/store"
+	"github.com/agentfeedback/agentfeedback/internal/v3/store"
 )
 
 // A backup must be a usable database, not just a file: the copy is opened and

@@ -375,7 +375,9 @@ paths:
           description: >-
             Comma list of up to three of `kind`, `project`, `category`,
             `fix_status`, `machine`, `model`, `harness`, `verdict`,
-            `schema_version`. Absent: no groups.
+            `schema_version`. Absent: no groups. A row without a value for
+            any listed key is in no group, so group totals need not add up
+            to `total`.
           schema: {type: string}
         - name: top
           in: query
@@ -966,7 +968,11 @@ components:
     Q:
       name: q
       in: query
-      description: Case-insensitive substring over `summary` and payload text; unranked; at most 200 bytes.
+      description: >-
+        Case-insensitive substring over `summary` and every string value in
+        `payload` at any depth (keys, numbers and booleans are not searched;
+        case folds by the simple Unicode lower-case mapping); unranked; at
+        most 200 bytes.
       schema: {type: string}
 
   responses:

@@ -16,7 +16,7 @@ import (
 
 	"github.com/agentfeedback/agentfeedback/internal/api"
 	"github.com/agentfeedback/agentfeedback/internal/core"
-	"github.com/agentfeedback/agentfeedback/internal/store"
+	"github.com/agentfeedback/agentfeedback/internal/v3/store"
 )
 
 // defaultServiceVersion is overridden by SERVICE_VERSION.
