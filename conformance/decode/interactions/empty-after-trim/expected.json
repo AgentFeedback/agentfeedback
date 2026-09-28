@@ -1,0 +1,15 @@
+{
+  "row": "string members empty after normalisation are omitted silently",
+  "status": 201,
+  "note": "An empty key means keyless: the 24-hour hash window applies.",
+  "warnings": [
+    {
+      "code": "missing_recommended",
+      "pointer": "/machine"
+    },
+    {
+      "code": "missing_recommended",
+      "pointer": "/summary"
+    }
+  ]
+}

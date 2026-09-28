@@ -1,0 +1,5 @@
+{
+  "rule": "token normalisation lower-cases each code point with the simple mapping",
+  "sha256": "ed40a1e23c1735963b3da95de52f2458ca32a73953d948d4953eff0e4cbe3533",
+  "note": "Final capital sigma becomes U+03C3, U+0130 becomes U+0069 (one code point), KELVIN SIGN becomes k; whitespace runs become one '-'."
+}

@@ -1,0 +1,10 @@
+{
+  "row": "kind empty after normalisation",
+  "status": 201,
+  "warnings": [
+    {
+      "code": "missing_kind",
+      "pointer": "/kind"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "row": "kind absent, empty after normalisation, or not a string",
+  "status": 201,
+  "note": "An inferred unknown kind yields missing_kind only: no missing_recommended for kind and no no_schema.",
+  "warnings": [
+    {
+      "code": "missing_kind",
+      "pointer": "/kind"
+    }
+  ]
+}

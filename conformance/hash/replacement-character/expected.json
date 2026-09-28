@@ -1,0 +1,4 @@
+{
+  "rule": "U+FFFD from invalid UTF-8 and from a lone surrogate is hashed as the raw three-byte sequence",
+  "sha256": "a39338a7f60630311699871fb527e8e5522b4391f26db6627aabd8b3596500e3"
+}

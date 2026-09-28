@@ -1,0 +1,10 @@
+{
+  "row": "a kind the server has no schema for",
+  "status": 201,
+  "warnings": [
+    {
+      "code": "no_schema",
+      "pointer": "/kind"
+    }
+  ]
+}

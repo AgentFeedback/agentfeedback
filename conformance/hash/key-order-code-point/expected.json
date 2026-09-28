@@ -1,0 +1,5 @@
+{
+  "rule": "keys sort by code point (UTF-8 byte order), not UTF-16 units",
+  "sha256": "eef73c813ceb40fcaa413e939cd90ea0e9f4f308caec795f192577f691ac2fc6",
+  "note": "Order: Z a category details z ~ é ﬁ 😀. A UTF-16 sort would place 😀 (D83D DE00) before ﬁ (FB01)."
+}

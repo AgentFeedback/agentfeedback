@@ -1,0 +1,11 @@
+{
+  "row": "invalid UTF-8 in a string",
+  "status": 201,
+  "note": "0xE9 alone and the truncated four-byte 0xF1 0x80 0x80 are each one maximal ill-formed subsequence: one U+FFFD each.",
+  "warnings": [
+    {
+      "code": "invalid_utf8",
+      "pointer": "/summary"
+    }
+  ]
+}

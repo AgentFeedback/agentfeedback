@@ -1,0 +1,5 @@
+extends:
+  - recommended
+apis:
+  agentfeedback:
+    root: docs/openapi.yaml

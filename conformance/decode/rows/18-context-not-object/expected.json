@@ -1,0 +1,10 @@
+{
+  "row": "context not an object",
+  "status": 201,
+  "warnings": [
+    {
+      "code": "moved_to_payload",
+      "pointer": "/payload/context_raw"
+    }
+  ]
+}

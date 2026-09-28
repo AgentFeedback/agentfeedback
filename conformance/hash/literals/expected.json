@@ -1,0 +1,4 @@
+{
+  "rule": "true, false and null are written as such; a null inside payload is content",
+  "sha256": "00b0b3cb9ef5f7316f42503088790b5f5c6b920a21513c133eee396082c1f618"
+}

@@ -1,0 +1,15 @@
+{
+  "row": "context_raw collides with a payload member",
+  "status": 201,
+  "note": "The producer's own context_raw is an unknown member of the friction schema; the inferred one is reported once, as moved.",
+  "warnings": [
+    {
+      "code": "moved_to_payload",
+      "pointer": "/payload/moved/context_raw"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/context_raw"
+    }
+  ]
+}

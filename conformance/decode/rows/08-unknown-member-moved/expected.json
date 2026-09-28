@@ -1,0 +1,15 @@
+{
+  "row": "top-level member the envelope does not know",
+  "status": 201,
+  "note": "Member names match case-sensitively; the message for Model says `did you mean model`.",
+  "warnings": [
+    {
+      "code": "moved_to_payload",
+      "pointer": "/payload/Model"
+    },
+    {
+      "code": "moved_to_payload",
+      "pointer": "/payload/severity"
+    }
+  ]
+}

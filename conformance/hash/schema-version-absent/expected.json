@@ -1,0 +1,4 @@
+{
+  "rule": "schema_version is always present in the hash input, as the plain integer 1",
+  "sha256": "e88593018142c1b0629b55e0e9459b624b1d990d9773ef4456b60013543b9a8f"
+}

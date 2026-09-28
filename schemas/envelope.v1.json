@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentfeedback.dev/schemas/envelope.v1.json",
+  "title": "AgentFeedback submission envelope",
+  "description": "One submission as the server stores it after inference. Custom x- keywords: x-max-bytes (UTF-8 byte limit), x-trim (surrounding whitespace removed before validation, storage and hashing), x-normalize: \"token\" (trim, lower-case, runs of whitespace to \"-\"), x-recommended (a missing member warns), x-unique-by (duplicate values of the named member warn), x-on-violation (\"warn\", the default; \"truncate\": an over-long string is cut to the limit with a warning; \"move\": the member is moved into payload with a warning). The schema describes what the server produces; it is never used to reject a submission.",
+  "type": "object",
+  "additionalProperties": { "x-on-violation": "move" },
+  "x-recommended": ["kind", "summary", "machine", "model"],
+  "properties": {
+    "kind": {
+      "type": "string", "minLength": 1, "x-normalize": "token",
+      "default": "unknown",
+      "description": "What the payload is. Schemas attach to (kind, schema_version). Server-shipped: friction, review. Missing or empty: stored as unknown."
+    },
+    "schema_version": {
+      "type": "integer", "minimum": 1, "default": 1,
+      "description": "Version of the payload schema for this kind. Absent, non-integer or < 1: 1 with a warning."
+    },
+    "key": {
+      "type": "string", "minLength": 1, "x-trim": true,
+      "description": "Producer idempotency key, unique within kind. Optional."
+    },
+    "summary": {
+      "type": "string", "minLength": 1, "x-max-bytes": 2000, "x-trim": true, "x-on-violation": "truncate",
+      "description": "One human-scannable line. Newlines are replaced by spaces."
+    },
+    "machine":  { "type": "string", "minLength": 1, "x-max-bytes": 200, "x-trim": true, "x-on-violation": "truncate" },
+    "model":    { "type": "string", "minLength": 1, "x-max-bytes": 200, "x-trim": true, "x-on-violation": "truncate",
+                  "description": "Model id of the reporting agent." },
+    "harness":  { "type": "string", "minLength": 1, "x-max-bytes": 200, "x-normalize": "token", "x-on-violation": "truncate",
+                  "examples": ["claude-code", "opencode", "codex"] },
+    "project":  { "type": "string", "minLength": 1, "x-max-bytes": 200, "x-trim": true, "x-on-violation": "truncate",
+                  "description": "Repository or project name as the producer knows it." },
+    "occurred_at": {
+      "type": "string", "format": "date-time",
+      "description": "When it happened, producer clock, any RFC 3339 offset. Stored as UTC microseconds. Unparseable: dropped into context.occurred_at_raw with a warning."
+    },
+    "context": {
+      "type": "object",
+      "maxProperties": 32,
+      "additionalProperties": { "type": "string", "x-max-bytes": 2000, "x-on-violation": "truncate" },
+      "description": "Flat string map of auto-collected metadata. Non-string values are encoded as canonical JSON into strings with a warning. Never part of content identity.",
+      "properties": {
+        "folder":         { "type": "string", "description": "basename of the working directory" },
+        "repo_root":      { "type": "string" },
+        "git_remote":     { "type": "string", "description": "credentials, query and fragment stripped" },
+        "git_branch":     { "type": "string" },
+        "git_commit":     { "type": "string" },
+        "git_dirty":      { "type": "string", "enum": ["true", "false"] },
+        "git_upstream":   { "type": "string" },
+        "git_tag":        { "type": "string" },
+        "git_default_branch": { "type": "string" },
+        "cwd":            { "type": "string", "description": "opt-in: full working directory" },
+        "os":             { "type": "string" },
+        "arch":           { "type": "string" },
+        "session_id":     { "type": "string" },
+        "agent":          { "type": "string" },
+        "effort":         { "type": "string" },
+        "profile":        { "type": "string" },
+        "client":         { "type": "string", "description": "producer and version, e.g. agentfeedback/4.0.0" },
+        "app":            { "type": "string", "description": "non-code: the application the agent serves" },
+        "workspace":      { "type": "string", "description": "non-code: team space, tenant or environment name" },
+        "url":            { "type": "string", "description": "non-code: page, ticket or document the agent was working on" },
+        "channel":        { "type": "string", "description": "non-code: slack, email, web, voice, api" },
+        "task_id":        { "type": "string", "description": "non-code: the unit of work in the agent's own system" },
+        "workflow":       { "type": "string", "description": "non-code: workflow or pipeline name" },
+        "occurred_at_raw": { "type": "string", "description": "server-added: the occurred_at text that did not parse" },
+        "rekinded_from":  { "type": "string", "description": "uid of the submission this one re-kinds" }
+      }
+    },
+    "payload": {
+      "type": "object",
+      "description": "Kind-specific content. Absent: built from the top-level members the envelope does not know. Validated as a guide against schemas/kinds/<kind>.v<schema_version>.json when the server has it."
+    }
+  },
+  "examples": [
+    {
+      "kind": "friction",
+      "schema_version": 1,
+      "key": "friction-workstation-a-019250f2",
+      "summary": "README install step 3 references a flag that no longer exists",
+      "machine": "workstation-a",
+      "model": "claude-fable-5-1",
+      "harness": "claude-code",
+      "project": "example",
+      "occurred_at": "2026-09-27T09:58:12.000000Z",
+      "context": { "git_commit": "a1b2c3d", "session_id": "3f9c1e2a", "client": "agentfeedback/4.0.0" },
+      "payload": { "category": "documentation", "details": "Step 3 says --init; the flag was removed in 3.0.", "fix_status": "applied", "fix_ref": "example@a1b2c3d" }
+    },
+    {
+      "summary": "flat submission: unknown members become the payload",
+      "category": "tooling",
+      "details": "the linter ignores its config file"
+    }
+  ]
+}

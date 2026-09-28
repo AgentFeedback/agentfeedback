@@ -1,0 +1,18 @@
+{
+  "row": "nothing to move: payload is {}",
+  "status": 201,
+  "warnings": [
+    {
+      "code": "missing_recommended",
+      "pointer": "/payload/category"
+    },
+    {
+      "code": "missing_recommended",
+      "pointer": "/payload/details"
+    },
+    {
+      "code": "payload_inferred",
+      "pointer": "/payload"
+    }
+  ]
+}

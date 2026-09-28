@@ -1,0 +1,4 @@
+{
+  "rule": "CR LF, lone CR and lone LF each become one space",
+  "sha256": "977b5b3376828d3880b7328ee305e102b0939ab08811537d558689f556734f78"
+}

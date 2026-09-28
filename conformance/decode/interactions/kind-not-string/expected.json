@@ -1,0 +1,10 @@
+{
+  "row": "kind not a string",
+  "status": 201,
+  "warnings": [
+    {
+      "code": "missing_kind",
+      "pointer": "/kind"
+    }
+  ]
+}

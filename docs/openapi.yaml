@@ -1,0 +1,1338 @@
+openapi: 3.1.1
+info:
+  title: AgentFeedback API
+  version: '1.0'
+  license:
+    name: MIT
+    url: https://opensource.org/license/mit
+  description: >-
+    HTTP API of AgentFeedback, a service that stores write-once feedback from AI
+    coding agents. The contract is this document together with the JSON Schemas
+    under `schemas/` and the conformance kit under `conformance/`. This is the API
+    of the next major release.
+servers:
+  - url: https://api.agentfeedback.io
+    description: Hosted
+  - url: http://127.0.0.1:8090
+    description: Local
+security:
+  - bearer: []
+  - apiKey: []
+tags:
+  - name: submissions
+    description: Create, read and redact submissions.
+  - name: processing
+    description: Processing marks (triage state).
+  - name: stats
+    description: Aggregates.
+  - name: transfer
+    description: Export and import (NDJSON format 2).
+  - name: schemas
+    description: Envelope and kind JSON Schemas.
+  - name: mcp
+    description: Remote MCP over the Streamable HTTP transport.
+  - name: discovery
+    description: Self-onboarding documents for agents.
+  - name: operations
+    description: Health, readiness, metrics and service metadata.
+
+paths:
+  /api/v1/submissions:
+    post:
+      tags: [submissions]
+      operationId: createSubmission
+      summary: Create a submission
+      description: >-
+        Accepts any JSON object. The envelope schema describes what is stored
+        after inference and is never used to reject a body; deviations are
+        normalised and reported as `warnings`. Returns 201 with `Location` for a
+        new record, or 200 with `Location` of the existing record for a keyed
+        replay of identical content or a keyless duplicate. A body that is not
+        JSON or not an object is 400 `bad_request`. A reused `key` with
+        different content is 409 `replay_mismatch`. A body over
+        `limits.body_bytes` is 413 `request_too_large`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../schemas/envelope.v1.json'
+      responses:
+        '201':
+          description: Created.
+          headers:
+            X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+            Cache-Control: {$ref: '#/components/headers/CacheControl'}
+            Location: {$ref: '#/components/headers/Location'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CreateResponse'}
+              example:
+                submission:
+                  id: 44
+                  uid: 019250f2-8c3e-7a4b-9d1e-2f3a4b5c6d7e
+                  kind: friction
+                  schema_version: 1
+                  key: friction-workstation-a-019250f2
+                  summary: README install step 3 references a flag that no longer exists
+                  machine: workstation-a
+                  model: claude-fable-5-1
+                  harness: claude-code
+                  project: example
+                  occurred_at: '2026-09-27T09:58:12.000000Z'
+                  context: {git_commit: a1b2c3d, client: agentfeedback/4.0.0}
+                  payload: {category: documentation, details: The --fast flag was removed in 3.0., fix_status: applied, fix_ref: example@a1b2c3d}
+                  content_hash: 9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a
+                  created_at: '2026-09-27T10:00:01.123456Z'
+                  processed_at: '2026-09-27T14:02:00.000000Z'
+                  verdict: fixed
+                  resolution: already applied by the reporter
+                  ref: example@a1b2c3d
+                  processed_by: workstation-b/triage-2026-09-27
+                warnings: []
+        '200':
+          description: Replay of an existing record (keyed replay or keyless duplicate).
+          headers:
+            X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+            Cache-Control: {$ref: '#/components/headers/CacheControl'}
+            Location: {$ref: '#/components/headers/Location'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CreateResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '405': {$ref: '#/components/responses/MethodNotAllowed'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '413': {$ref: '#/components/responses/TooLarge'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/InternalError'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+    get:
+      tags: [submissions]
+      operationId: listSubmissions
+      summary: List submissions
+      description: >-
+        All parameters are optional. Unknown parameter names, empty values and
+        repeated singleton parameters are 400 `validation_error` naming the
+        parameter. Rows are the record minus `payload` (present with
+        `include=payload`). `total` counts every row matching the filters,
+        ignoring cursors and `limit`, in the same read transaction. When
+        `has_more` is true exactly one of `next_before_id` / `next_after_id` is
+        set, matching the direction used.
+      parameters:
+        - $ref: '#/components/parameters/Kind'
+        - $ref: '#/components/parameters/SchemaVersion'
+        - $ref: '#/components/parameters/Key'
+        - $ref: '#/components/parameters/Machine'
+        - $ref: '#/components/parameters/Model'
+        - $ref: '#/components/parameters/Project'
+        - $ref: '#/components/parameters/Harness'
+        - $ref: '#/components/parameters/Category'
+        - $ref: '#/components/parameters/FixStatus'
+        - $ref: '#/components/parameters/ExcludeKind'
+        - $ref: '#/components/parameters/Verdict'
+        - $ref: '#/components/parameters/Processed'
+        - $ref: '#/components/parameters/Redacted'
+        - $ref: '#/components/parameters/ContentHash'
+        - $ref: '#/components/parameters/Since'
+        - $ref: '#/components/parameters/Until'
+        - $ref: '#/components/parameters/On'
+        - $ref: '#/components/parameters/Q'
+        - name: before_id
+          in: query
+          description: Newest-first page of rows with `id < before_id`. Mutually exclusive with `after_id`.
+          schema: {type: integer, minimum: 1}
+        - name: after_id
+          in: query
+          description: Oldest-first page of rows with `id > after_id`. Mutually exclusive with `before_id`.
+          schema: {type: integer, minimum: 0}
+        - name: limit
+          in: query
+          description: 1–500, or 1–100 with `include=payload`; default 50. Out of range is 400.
+          schema: {type: integer, minimum: 1, maximum: 500, default: 50}
+        - name: include
+          in: query
+          description: '`payload`: rows carry `payload`.'
+          schema: {type: string, enum: [payload]}
+      responses:
+        '200':
+          description: A page of submissions.
+          headers:
+            X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+            Cache-Control: {$ref: '#/components/headers/CacheControl'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ListResponse'}
+              example:
+                submissions:
+                  - id: 1188
+                    uid: 019250f2-8c3e-7a4b-9d1e-2f3a4b5c6d7e
+                    kind: friction
+                    schema_version: 1
+                    summary: README install step 3 references a flag that no longer exists
+                    machine: workstation-a
+                    project: example
+                    content_hash: 9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a
+                    created_at: '2026-09-27T10:00:01.123456Z'
+                limit: 50
+                total: 245
+                has_more: true
+                next_before_id: 1187
+                next_after_id: null
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '405': {$ref: '#/components/responses/MethodNotAllowed'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/InternalError'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+
+  /api/v1/submissions/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [submissions]
+      operationId: getSubmission
+      summary: Get one submission
+      description: >-
+        Returns the bare record. `{id}` must match `^[1-9][0-9]*$`; anything
+        else is 400. 404 `not_found` when absent.
+      responses:
+        '200':
+          description: The record.
+          headers:
+            X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+            Cache-Control: {$ref: '#/components/headers/CacheControl'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Submission'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '405': {$ref: '#/components/responses/MethodNotAllowed'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/InternalError'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+    patch:
+      tags: [processing]
+      operationId: markSubmission
+      summary: Set the processing mark of one submission
+      description: >-
+        Validated strictly (400 `validation_error`). Marking sets
+        `processed_at` if unset and stores the given fields; re-marking with a
+        different `verdict`/`resolution`/`ref` replaces them and keeps the
+        original `processed_at`; `processed=false` clears all five processing
+        fields. Redacted rows can still be marked. No content field is
+        writable. Returns the record; 404 when absent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ProcessingMark'}
+            example:
+              processed: true
+              verdict: fixed
+              resolution: already applied by the reporter
+              ref: example@1a2b3c4
+              processed_by: workstation-b/session-7
+      responses:
+        '200':
+          description: The updated record.
+          headers:
+            X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+            Cache-Control: {$ref: '#/components/headers/CacheControl'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Submission'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '405': {$ref: '#/components/responses/MethodNotAllowed'}
+        '413': {$ref: '#/components/responses/TooLarge'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/InternalError'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+    delete:
+      tags: [submissions]
+      operationId: redactSubmission
+      summary: Redact a submission (tombstone)
+      description: >-
+        Replaces `payload` with `{"redacted": true}`, removes `summary` and
+        `context`, sets `redacted_at`; keeps `id`, `uid`, `kind`,
+        `schema_version`, `key`, `machine`, `model`, `harness`, `project`,
+        `occurred_at`, `content_hash`, `created_at` and all processing fields.
+        Returns 200 with the tombstone; repeating it is 200 unchanged; 404 when
+        absent. A keyed replay of the original content still returns 200 with
+        the tombstone because the hash is kept. Redaction is not reversible.
+      responses:
+        '200':
+          description: The tombstone.
+          headers:
+            X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+            Cache-Control: {$ref: '#/components/headers/CacheControl'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Submission'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '405': {$ref: '#/components/responses/MethodNotAllowed'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/InternalError'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+
+  /api/v1/submissions/processed:
+    post:
+      tags: [processing]
+      operationId: markSubmissions
+      summary: Set the processing mark of a batch
+      description: >-
+        Same fields and rules as the per-row mark, plus `ids` (1–500 positive
+        integers, duplicates collapsed). Returns a classification of the ids
+        into `updated`, `unchanged` and `not_found`. Validated strictly (400
+        `validation_error`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/BatchMark'}
+            example:
+              ids: [43, 44, 999]
+              processed: true
+              verdict: fixed
+      responses:
+        '200':
+          description: Classification of the ids.
+          headers:
+            X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+            Cache-Control: {$ref: '#/components/headers/CacheControl'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/BatchMarkResponse'}
+              example:
+                processed: true
+                verdict: fixed
+                updated: [43]
+                unchanged: [44]
+                not_found: [999]
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '405': {$ref: '#/components/responses/MethodNotAllowed'}
+        '413': {$ref: '#/components/responses/TooLarge'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/InternalError'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+
+  /api/v1/stats:
+    get:
+      tags: [stats]
+      operationId: getStats
+      summary: Aggregates
+      description: >-
+        Aggregates over the same filters as the list route (everything except
+        the cursors, `limit` and `include`). Groups are sorted by `total`
+        descending, at most 100. Invalid parameters are 400
+        `validation_error`.
+      parameters:
+        - $ref: '#/components/parameters/Kind'
+        - $ref: '#/components/parameters/SchemaVersion'
+        - $ref: '#/components/parameters/Key'
+        - $ref: '#/components/parameters/Machine'
+        - $ref: '#/components/parameters/Model'
+        - $ref: '#/components/parameters/Project'
+        - $ref: '#/components/parameters/Harness'
+        - $ref: '#/components/parameters/Category'
+        - $ref: '#/components/parameters/FixStatus'
+        - $ref: '#/components/parameters/ExcludeKind'
+        - $ref: '#/components/parameters/Verdict'
+        - $ref: '#/components/parameters/Processed'
+        - $ref: '#/components/parameters/Redacted'
+        - $ref: '#/components/parameters/ContentHash'
+        - $ref: '#/components/parameters/Since'
+        - $ref: '#/components/parameters/Until'
+        - $ref: '#/components/parameters/On'
+        - $ref: '#/components/parameters/Q'
+        - name: by
+          in: query
+          description: >-
+            Comma list of up to three of `kind`, `project`, `category`,
+            `fix_status`, `machine`, `model`, `harness`, `verdict`,
+            `schema_version`. Absent: no groups.
+          schema: {type: string}
+        - name: top
+          in: query
+          description: 0–50, default 10; how many recurring hashes to return.
+          schema: {type: integer, minimum: 0, maximum: 50, default: 10}
+        - name: bucket
+          in: query
+          description: When set, adds a time series on the `on` timestamp.
+          schema: {type: string, enum: [day, week]}
+      responses:
+        '200':
+          description: Aggregates.
+          headers:
+            X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+            Cache-Control: {$ref: '#/components/headers/CacheControl'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Stats'}
+              example:
+                total: 245
+                open: 61
+                processed: 184
+                redacted: 2
+                groups:
+                  - keys: {project: example, category: documentation}
+                    total: 40
+                    open: 12
+                    processed: 28
+                recurring:
+                  - content_hash: 9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a
+                    count: 7
+                    first_id: 1101
+                    last_id: 1187
+                    summary: README step 3 flag gone
+                    kind: friction
+                    project: example
+                series:
+                  - bucket: '2026-09-22'
+                    total: 31
+                    open: 4
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '405': {$ref: '#/components/responses/MethodNotAllowed'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/InternalError'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+
+  /api/v1/export:
+    get:
+      tags: [transfer]
+      operationId: exportSubmissions
+      summary: Export as NDJSON (format 2)
+      description: >-
+        One read transaction, ascending `id`. The body is a header line, one
+        line per full record (tombstones exported as tombstones), and a trailer
+        line. `sha256` in the trailer is over the record lines only, each with
+        its trailing newline, header and trailer excluded, in order.
+      parameters:
+        - $ref: '#/components/parameters/Kind'
+        - name: since
+          in: query
+          description: RFC 3339, inclusive, on `created_at`; `+` must be percent-encoded.
+          schema: {type: string, format: date-time}
+        - name: after_id
+          in: query
+          description: Only rows with `id > after_id`.
+          schema: {type: integer, minimum: 0}
+        - name: limit
+          in: query
+          description: 1–500; absent means everything.
+          schema: {type: integer, minimum: 1, maximum: 500}
+      responses:
+        '200':
+          $ref: '#/components/responses/Export'
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '405': {$ref: '#/components/responses/MethodNotAllowed'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/InternalError'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+    head:
+      tags: [transfer]
+      operationId: exportSubmissionsHead
+      summary: Export headers only
+      description: Same as `GET /api/v1/export`, headers only.
+      parameters:
+        - $ref: '#/components/parameters/Kind'
+        - name: since
+          in: query
+          description: RFC 3339, inclusive, on `created_at`.
+          schema: {type: string, format: date-time}
+        - name: after_id
+          in: query
+          description: Only rows with `id > after_id`.
+          schema: {type: integer, minimum: 0}
+        - name: limit
+          in: query
+          description: 1–500; absent means everything.
+          schema: {type: integer, minimum: 1, maximum: 500}
+      responses:
+        '200':
+          description: Headers of the export response.
+          headers:
+            X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+            Cache-Control: {$ref: '#/components/headers/CacheControl'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '405': {$ref: '#/components/responses/MethodNotAllowed'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/InternalError'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+
+  /api/v1/import:
+    post:
+      tags: [transfer]
+      operationId: importSubmissions
+      summary: Import NDJSON (format 2)
+      description: >-
+        The server reads and verifies the whole body (count, digest, one JSON
+        object per record line) before opening the write transaction. Per
+        record: `uid` must be an RFC 4122 UUID and `created_at` (and, when
+        present, `occurred_at`, `processed_at`, `redacted_at`) must parse as
+        RFC 3339, else 400 `validation_error` naming the line and nothing is
+        written. Envelope fields pass through the same normalisation and
+        limits as create; violations are warnings, never rejections.
+        `content_hash` is recomputed for ordinary records and must equal the
+        exported value, else 400 naming the line; tombstones keep the exported
+        hash. A new `id` is assigned; `uid`, `created_at`, `occurred_at` and
+        the processing fields are kept. An existing `uid` is skipped and
+        counted; redactions and processing marks never propagate to a stored
+        row. An existing `(kind, key)` under a different `uid` is skipped and
+        counted when the `content_hash` matches, otherwise skipped and listed
+        under `conflicts`; a conflict never fails the request. A body over
+        `limits.import_bytes` is 413.
+      requestBody:
+        required: true
+        content:
+          application/x-ndjson:
+            schema:
+              $ref: '#/components/schemas/Ndjson'
+      responses:
+        '200':
+          description: Import result.
+          headers:
+            X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+            Cache-Control: {$ref: '#/components/headers/CacheControl'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ImportResponse'}
+              example:
+                imported: 240
+                skipped: 5
+                conflicts:
+                  - line: 17
+                    uid: 019250f2-8c3e-7a4b-9d1e-2f3a4b5c6d7e
+                    existing_id: 88
+                    reason: key_mismatch
+                first_id: 1190
+                last_id: 1429
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '405': {$ref: '#/components/responses/MethodNotAllowed'}
+        '413': {$ref: '#/components/responses/TooLarge'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/InternalError'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+
+  /api/v1/schemas:
+    get:
+      tags: [schemas]
+      operationId: listSchemas
+      summary: List known schemas
+      description: Kinds and versions the server knows, including `envelope`. Unauthenticated; carries no data.
+      security: []
+      responses:
+        '200':
+          description: Known schemas.
+          headers:
+            X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SchemasList'}
+              example:
+                schemas:
+                  - {kind: envelope, versions: [1]}
+                  - {kind: friction, versions: [1]}
+                  - {kind: review, versions: [1]}
+        '405': {$ref: '#/components/responses/MethodNotAllowed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /api/v1/schemas/{kind}/{version}:
+    get:
+      tags: [schemas]
+      operationId: getSchema
+      summary: Get one schema
+      description: >-
+        Returns the JSON Schema document verbatim with `Content-Type:
+        application/schema+json`. `envelope` is a valid `{kind}`. 404 when the
+        pair is unknown. Unauthenticated; carries no data.
+      security: []
+      parameters:
+        - name: kind
+          in: path
+          required: true
+          description: Kind token, or `envelope`.
+          schema: {type: string}
+        - name: version
+          in: path
+          required: true
+          description: Schema version.
+          schema: {type: integer, minimum: 1}
+      responses:
+        '200':
+          description: The JSON Schema document.
+          headers:
+            X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+          content:
+            application/schema+json:
+              schema: {type: object}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '405': {$ref: '#/components/responses/MethodNotAllowed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /api/v1/meta:
+    get:
+      tags: [operations]
+      operationId: getMeta
+      summary: Service metadata
+      description: >-
+        Versions, limits, known kinds and features. `client.min_version` lets
+        a client report plainly when it is too old for the server.
+      responses:
+        '200':
+          description: Metadata.
+          headers:
+            X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+            Cache-Control: {$ref: '#/components/headers/CacheControl'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Meta'}
+              example:
+                service_version: 4.0.0
+                api_version: '1.0'
+                export_format: 2
+                dedupe_window_s: 86400
+                limits:
+                  body_bytes: 10485760
+                  import_bytes: 33554432
+                  list_max: 500
+                  list_max_with_payload: 100
+                  processed_ids_max: 500
+                  context_entries: 32
+                  context_value_bytes: 2000
+                  identifier_bytes: 200
+                  summary_bytes: 2000
+                kinds:
+                  - {kind: friction, versions: [1]}
+                  - {kind: review, versions: [1]}
+                features: [q, stats, export.after_id, export.limit, import, mcp, redaction]
+                client: {min_version: 4.0.0, latest_known: 4.0.0}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '405': {$ref: '#/components/responses/MethodNotAllowed'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/InternalError'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+
+  /api/v1/openapi.json:
+    get:
+      tags: [discovery]
+      operationId: getOpenApi
+      summary: This OpenAPI document
+      description: The OpenAPI document as JSON. Unauthenticated; carries no data.
+      security: []
+      responses:
+        '200':
+          description: The OpenAPI document.
+          headers:
+            X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+          content:
+            application/json:
+              schema: {type: object}
+        '405': {$ref: '#/components/responses/MethodNotAllowed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /mcp:
+    post:
+      tags: [mcp]
+      operationId: postMcp
+      summary: Remote MCP
+      description: >-
+        Remote MCP server over the MCP Streamable HTTP transport. Authenticated
+        like `/api/v1/*`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/JsonRpc'}
+      responses:
+        '200':
+          $ref: '#/components/responses/JsonRpc'
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '405': {$ref: '#/components/responses/MethodNotAllowed'}
+        '413': {$ref: '#/components/responses/TooLarge'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/InternalError'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+
+  /mcp/{project}:
+    post:
+      tags: [mcp]
+      operationId: postMcpProject
+      summary: Remote MCP with a preset project
+      description: Same as `POST /mcp`, with `project` preset for the connection.
+      parameters:
+        - name: project
+          in: path
+          required: true
+          description: Project name preset for submissions on this connection.
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/JsonRpc'}
+      responses:
+        '200':
+          $ref: '#/components/responses/JsonRpc'
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '405': {$ref: '#/components/responses/MethodNotAllowed'}
+        '413': {$ref: '#/components/responses/TooLarge'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '500': {$ref: '#/components/responses/InternalError'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+
+  /skill:
+    get:
+      tags: [discovery]
+      operationId: getSkill
+      summary: Submission guidance
+      description: >-
+        The rendered submission guidance with this server's base URL
+        substituted. Unauthenticated; carries no data.
+      security: []
+      parameters:
+        - name: format
+          in: query
+          description: >-
+            `skill-md` (default, runs the binary), `agents-md` or `prompt`
+            (HTTP instructions inline).
+          schema: {type: string, enum: [skill-md, agents-md, prompt], default: skill-md}
+      responses:
+        '200':
+          description: Guidance as Markdown.
+          headers:
+            X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+          content:
+            text/markdown:
+              schema: {type: string}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '405': {$ref: '#/components/responses/MethodNotAllowed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /.well-known/agentfeedback.json:
+    get:
+      tags: [discovery]
+      operationId: getDiscovery
+      summary: Discovery document
+      description: Where the OpenAPI document, schemas, MCP endpoint and skill live. Unauthenticated; no data, no secrets.
+      security: []
+      responses:
+        '200':
+          description: Discovery document.
+          headers:
+            X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Discovery'}
+              example:
+                service: agentfeedback
+                version: 4.0.0
+                api_version: '1.0'
+                openapi: /api/v1/openapi.json
+                schemas: /api/v1/schemas
+                mcp: /mcp
+                skill: /skill
+                auth: {modes: [bearer, x-api-key]}
+                docs: https://agentfeedback.dev/docs
+        '405': {$ref: '#/components/responses/MethodNotAllowed'}
+        '500': {$ref: '#/components/responses/InternalError'}
+
+  /health:
+    get:
+      tags: [operations]
+      operationId: getHealth
+      summary: Liveness
+      description: Unauthenticated liveness probe.
+      security: []
+      responses:
+        '200':
+          description: Alive.
+          headers:
+            X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+          content:
+            text/plain:
+              schema: {type: string, const: OK}
+        '405': {$ref: '#/components/responses/MethodNotAllowed'}
+
+  /ready:
+    get:
+      tags: [operations]
+      operationId: getReady
+      summary: Readiness
+      description: Unauthenticated readiness probe. 503 while not ready.
+      security: []
+      responses:
+        '200':
+          description: Ready.
+          headers:
+            X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+          content:
+            text/plain:
+              schema: {type: string, const: READY}
+        '405': {$ref: '#/components/responses/MethodNotAllowed'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+
+  /metrics:
+    get:
+      tags: [operations]
+      operationId: getMetrics
+      summary: Metrics
+      description: Unauthenticated metrics in the Prometheus text exposition format.
+      security: []
+      responses:
+        '200':
+          description: Metrics.
+          headers:
+            X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+          content:
+            text/plain:
+              schema: {type: string}
+        '405': {$ref: '#/components/responses/MethodNotAllowed'}
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: '`Authorization: Bearer <key>`; scheme name case-insensitive. Either header authorises; neither shadows the other.'
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+      description: '`X-Api-Key: <key>`. Either header authorises; neither shadows the other.'
+
+  headers:
+    XRequestId:
+      description: Request identifier; present on every response.
+      schema: {type: string}
+    CacheControl:
+      description: '`no-store` on every authenticated response.'
+      schema: {type: string, const: no-store}
+    WWWAuthenticate:
+      description: '`Bearer` on 401.'
+      schema: {type: string}
+    Location:
+      description: Path of the stored record, e.g. `/api/v1/submissions/44`.
+      schema: {type: string}
+    Allow:
+      description: Methods the route accepts.
+      schema: {type: string}
+    RetryAfter:
+      description: Seconds to wait before retrying, when known.
+      schema: {type: integer, minimum: 0}
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      description: Record id; must match `^[1-9][0-9]*$`, anything else is 400.
+      schema: {type: integer, minimum: 1}
+    Kind:
+      name: kind
+      in: query
+      description: Token, normalised like the field; `unknown` selects un-kinded rows.
+      schema: {type: string}
+    SchemaVersion:
+      name: schema_version
+      in: query
+      description: Exact schema version.
+      schema: {type: integer, minimum: 1}
+    Key:
+      name: key
+      in: query
+      description: Exact key.
+      schema: {type: string}
+    Machine:
+      name: machine
+      in: query
+      description: Exact machine.
+      schema: {type: string}
+    Model:
+      name: model
+      in: query
+      description: Exact model.
+      schema: {type: string}
+    Project:
+      name: project
+      in: query
+      description: Exact project.
+      schema: {type: string}
+    Harness:
+      name: harness
+      in: query
+      description: Harness token.
+      schema: {type: string}
+    Category:
+      name: category
+      in: query
+      description: Friction payload `category`; other kinds never match.
+      schema: {type: string}
+    FixStatus:
+      name: fix_status
+      in: query
+      description: Friction payload `fix_status`; other kinds never match.
+      schema: {type: string}
+    ExcludeKind:
+      name: exclude_kind
+      in: query
+      description: Repeatable; rows of these kinds are omitted.
+      style: form
+      explode: true
+      schema:
+        type: array
+        items: {type: string}
+    Verdict:
+      name: verdict
+      in: query
+      description: Verdict token.
+      schema: {type: string}
+    Processed:
+      name: processed
+      in: query
+      description: '`false` is the queue.'
+      schema: {type: boolean}
+    Redacted:
+      name: redacted
+      in: query
+      description: 'Default: both.'
+      schema: {type: boolean}
+    ContentHash:
+      name: content_hash
+      in: query
+      description: Exact content hash.
+      schema: {type: string, pattern: '^[0-9a-f]{64}$'}
+    Since:
+      name: since
+      in: query
+      description: RFC 3339, inclusive; `+` must be percent-encoded.
+      schema: {type: string, format: date-time}
+    Until:
+      name: until
+      in: query
+      description: RFC 3339, inclusive; `+` must be percent-encoded.
+      schema: {type: string, format: date-time}
+    On:
+      name: 'on'
+      in: query
+      description: Which timestamp `since`/`until` (and `bucket`) apply to.
+      schema: {type: string, enum: [created_at, occurred_at], default: created_at}
+    Q:
+      name: q
+      in: query
+      description: Case-insensitive substring over `summary` and payload text; unranked; at most 200 bytes.
+      schema: {type: string}
+
+  responses:
+    Export:
+      description: NDJSON export, format 2.
+      headers:
+        X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+        Cache-Control: {$ref: '#/components/headers/CacheControl'}
+      content:
+        application/x-ndjson:
+          schema: {$ref: '#/components/schemas/Ndjson'}
+    JsonRpc:
+      description: JSON-RPC 2.0 response (MCP Streamable HTTP transport).
+      headers:
+        X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+        Cache-Control: {$ref: '#/components/headers/CacheControl'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/JsonRpc'}
+    BadRequest:
+      description: >-
+        `bad_request` (body not JSON, or not an object) or `validation_error`
+        (reads, processing, import, path parameters).
+      headers:
+        X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          example:
+            error: validation_error
+            message: limit must be between 1 and 500
+            request_id: 3f9c2a7e5b1d4c08
+            details:
+              - code: out_of_range
+                pointer: '?limit'
+                message: limit must be between 1 and 500
+    Unauthorized:
+      description: '`unauthorized`.'
+      headers:
+        X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+        WWW-Authenticate: {$ref: '#/components/headers/WWWAuthenticate'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    NotFound:
+      description: '`not_found`.'
+      headers:
+        X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    MethodNotAllowed:
+      description: '`method_not_allowed`.'
+      headers:
+        X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+        Allow: {$ref: '#/components/headers/Allow'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    Conflict:
+      description: '`replay_mismatch`: the key was already used with different content.'
+      headers:
+        X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          example:
+            error: replay_mismatch
+            message: key friction-workstation-a-019250f2 was already used with different content
+            request_id: 3f9c2a7e5b1d4c09
+            details:
+              - code: key_reused
+                pointer: /key
+                message: key friction-workstation-a-019250f2 is stored as submission 44 with different content
+                existing_id: 44
+    TooLarge:
+      description: '`request_too_large`.'
+      headers:
+        X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    RateLimited:
+      description: '`rate_limited` (hosted service only).'
+      headers:
+        X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+        Retry-After: {$ref: '#/components/headers/RetryAfter'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    InternalError:
+      description: '`internal_error`.'
+      headers:
+        X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    Unavailable:
+      description: '`unavailable`; `Retry-After` when known.'
+      headers:
+        X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+        Retry-After: {$ref: '#/components/headers/RetryAfter'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+
+  schemas:
+    Timestamp:
+      type: string
+      format: date-time
+      pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}Z$'
+      description: RFC 3339 UTC with six fractional digits.
+    FrictionPayload:
+      $ref: '../schemas/kinds/friction.v1.json'
+    ReviewPayload:
+      $ref: '../schemas/kinds/review.v1.json'
+    Submission:
+      type: object
+      additionalProperties: false
+      description: >-
+        The stored record: the envelope after inference plus server fields.
+        Optional members are omitted when unset, never sent as `null`. A
+        redacted record (tombstone) has `payload: {"redacted": true}`, no
+        `summary`, no `context`, and `redacted_at` set.
+      required: [id, uid, kind, schema_version, payload, content_hash, created_at]
+      properties:
+        id: {type: integer, minimum: 1}
+        uid: {type: string, format: uuid, description: UUIDv7 generated on create; preserved on import.}
+        kind: {$ref: '../schemas/envelope.v1.json#/properties/kind'}
+        schema_version: {$ref: '../schemas/envelope.v1.json#/properties/schema_version'}
+        key: {$ref: '../schemas/envelope.v1.json#/properties/key'}
+        summary: {$ref: '../schemas/envelope.v1.json#/properties/summary'}
+        machine: {$ref: '../schemas/envelope.v1.json#/properties/machine'}
+        model: {$ref: '../schemas/envelope.v1.json#/properties/model'}
+        harness: {$ref: '../schemas/envelope.v1.json#/properties/harness'}
+        project: {$ref: '../schemas/envelope.v1.json#/properties/project'}
+        occurred_at: {$ref: '#/components/schemas/Timestamp'}
+        context: {$ref: '../schemas/envelope.v1.json#/properties/context'}
+        payload:
+          $ref: '../schemas/envelope.v1.json#/properties/payload'
+          description: >-
+            Kind-specific content; see FrictionPayload
+            (`schemas/kinds/friction.v1.json`) and ReviewPayload
+            (`schemas/kinds/review.v1.json`). `{"redacted": true}` on a tombstone.
+        content_hash: {type: string, pattern: '^[0-9a-f]{64}$'}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+        processed_at: {$ref: '#/components/schemas/Timestamp'}
+        redacted_at: {$ref: '#/components/schemas/Timestamp'}
+        verdict: {type: string}
+        resolution: {type: string}
+        ref: {type: string}
+        processed_by: {type: string}
+    SubmissionListItem:
+      type: object
+      additionalProperties: false
+      description: The record minus `payload`; `payload` is present only with `include=payload`. Optional members are omitted, never `null`.
+      required: [id, uid, kind, schema_version, content_hash, created_at]
+      properties:
+        id: {type: integer, minimum: 1}
+        uid: {type: string, format: uuid}
+        kind: {$ref: '../schemas/envelope.v1.json#/properties/kind'}
+        schema_version: {$ref: '../schemas/envelope.v1.json#/properties/schema_version'}
+        key: {$ref: '../schemas/envelope.v1.json#/properties/key'}
+        summary: {$ref: '../schemas/envelope.v1.json#/properties/summary'}
+        machine: {$ref: '../schemas/envelope.v1.json#/properties/machine'}
+        model: {$ref: '../schemas/envelope.v1.json#/properties/model'}
+        harness: {$ref: '../schemas/envelope.v1.json#/properties/harness'}
+        project: {$ref: '../schemas/envelope.v1.json#/properties/project'}
+        occurred_at: {$ref: '#/components/schemas/Timestamp'}
+        context: {$ref: '../schemas/envelope.v1.json#/properties/context'}
+        payload: {$ref: '../schemas/envelope.v1.json#/properties/payload'}
+        content_hash: {type: string, pattern: '^[0-9a-f]{64}$'}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+        processed_at: {$ref: '#/components/schemas/Timestamp'}
+        redacted_at: {$ref: '#/components/schemas/Timestamp'}
+        verdict: {type: string}
+        resolution: {type: string}
+        ref: {type: string}
+        processed_by: {type: string}
+    Warning:
+      type: object
+      additionalProperties: false
+      required: [code, pointer, message]
+      properties:
+        code: {type: string}
+        pointer: {type: string, description: 'RFC 6901 pointer into the stored record; query parameters use `?name`.'}
+        message: {type: string}
+        existing_id: {type: integer, minimum: 1, description: Only on the 409 `key_reused` detail.}
+    Error:
+      type: object
+      required: [error, message, request_id]
+      properties:
+        error:
+          type: string
+          enum: [bad_request, validation_error, unauthorized, not_found, method_not_allowed, replay_mismatch, request_too_large, rate_limited, internal_error, unavailable]
+        message: {type: string, description: 'Names the field or parameter, the value received when short, and the accepted range or shape.'}
+        request_id: {type: string}
+        details:
+          type: array
+          items: {$ref: '#/components/schemas/Warning'}
+    CreateResponse:
+      type: object
+      required: [submission, warnings]
+      properties:
+        submission: {$ref: '#/components/schemas/Submission'}
+        warnings:
+          type: array
+          items: {$ref: '#/components/schemas/Warning'}
+    ListResponse:
+      type: object
+      required: [submissions, limit, total, has_more, next_before_id, next_after_id]
+      properties:
+        submissions:
+          type: array
+          items: {$ref: '#/components/schemas/SubmissionListItem'}
+        limit: {type: integer, minimum: 1, maximum: 500}
+        total: {type: integer, minimum: 0}
+        has_more: {type: boolean}
+        next_before_id: {type: [integer, 'null']}
+        next_after_id: {type: [integer, 'null']}
+    ProcessingMark:
+      type: object
+      additionalProperties: false
+      description: >-
+        `verdict`, `resolution`, `ref` and `processed_by` are allowed only with
+        `processed=true`.
+      properties:
+        processed: {type: boolean, default: true, description: Default `true` when absent; `null` is 400.}
+        verdict:
+          type: string
+          maxLength: 64
+          description: >-
+            Token of at most 64 bytes, normalised. Documented values: `fixed`,
+            `invalid`, `duplicate`, `wont_fix`, `deferred`, `upstream`,
+            `unverifiable`.
+        resolution: {type: string, minLength: 1, maxLength: 2000, description: 'Trimmed, at most 2000 bytes; blank is 400.'}
+        ref: {type: string, maxLength: 200, description: 'Trimmed, at most 200 bytes. When it points at another submission it holds that row''s `uid`, never its `id`.'}
+        processed_by: {type: string, maxLength: 200, description: 'Trimmed, at most 200 bytes.'}
+    BatchMark:
+      type: object
+      additionalProperties: false
+      required: [ids]
+      description: A ProcessingMark plus `ids`.
+      properties:
+        ids:
+          type: array
+          minItems: 1
+          maxItems: 500
+          description: Positive integers; duplicates collapsed.
+          items: {type: integer, minimum: 1}
+        processed: {$ref: '#/components/schemas/ProcessingMark/properties/processed'}
+        verdict: {$ref: '#/components/schemas/ProcessingMark/properties/verdict'}
+        resolution: {$ref: '#/components/schemas/ProcessingMark/properties/resolution'}
+        ref: {$ref: '#/components/schemas/ProcessingMark/properties/ref'}
+        processed_by: {$ref: '#/components/schemas/ProcessingMark/properties/processed_by'}
+    BatchMarkResponse:
+      type: object
+      required: [processed, updated, unchanged, not_found]
+      properties:
+        processed: {type: boolean}
+        verdict: {type: string}
+        updated: {type: array, items: {type: integer}}
+        unchanged: {type: array, items: {type: integer}}
+        not_found: {type: array, items: {type: integer}}
+    Stats:
+      type: object
+      required: [total, open, processed, redacted]
+      properties:
+        total: {type: integer, minimum: 0}
+        open: {type: integer, minimum: 0}
+        processed: {type: integer, minimum: 0}
+        redacted: {type: integer, minimum: 0}
+        groups:
+          type: array
+          maxItems: 100
+          description: Sorted by `total` descending.
+          items:
+            type: object
+            required: [keys, total, open, processed]
+            properties:
+              keys:
+                type: object
+                additionalProperties: {type: [string, integer]}
+              total: {type: integer}
+              open: {type: integer}
+              processed: {type: integer}
+        recurring:
+          type: array
+          items:
+            type: object
+            required: [content_hash, count, first_id, last_id]
+            properties:
+              content_hash: {type: string, pattern: '^[0-9a-f]{64}$'}
+              count: {type: integer}
+              first_id: {type: integer}
+              last_id: {type: integer}
+              summary: {type: string}
+              kind: {type: string}
+              project: {type: string}
+        series:
+          type: array
+          items:
+            type: object
+            required: [bucket, total, open]
+            properties:
+              bucket: {type: string, format: date}
+              total: {type: integer}
+              open: {type: integer}
+    KindVersions:
+      type: object
+      required: [kind, versions]
+      properties:
+        kind: {type: string}
+        versions:
+          type: array
+          items: {type: integer, minimum: 1}
+    SchemasList:
+      type: object
+      required: [schemas]
+      properties:
+        schemas:
+          type: array
+          items: {$ref: '#/components/schemas/KindVersions'}
+    Meta:
+      type: object
+      required: [service_version, api_version, export_format, dedupe_window_s, limits, kinds, features, client]
+      properties:
+        service_version: {type: string}
+        api_version: {type: string}
+        export_format: {type: integer}
+        dedupe_window_s: {type: integer}
+        limits:
+          type: object
+          properties:
+            body_bytes: {type: integer}
+            import_bytes: {type: integer}
+            list_max: {type: integer}
+            list_max_with_payload: {type: integer}
+            processed_ids_max: {type: integer}
+            context_entries: {type: integer}
+            context_value_bytes: {type: integer}
+            identifier_bytes: {type: integer, description: 'Limit for `machine`, `model`, `harness`, `project`. `key`, `kind` and context keys have no byte limit.'}
+            summary_bytes: {type: integer}
+        kinds:
+          type: array
+          items: {$ref: '#/components/schemas/KindVersions'}
+        features:
+          type: array
+          items: {type: string}
+        client:
+          type: object
+          properties:
+            min_version: {type: string}
+            latest_known: {type: string}
+    ImportResponse:
+      type: object
+      required: [imported, skipped, conflicts]
+      properties:
+        imported: {type: integer, minimum: 0}
+        skipped: {type: integer, minimum: 0}
+        conflicts:
+          type: array
+          items:
+            type: object
+            required: [line, uid, existing_id, reason]
+            properties:
+              line: {type: integer, minimum: 1}
+              uid: {type: string, format: uuid}
+              existing_id: {type: integer, minimum: 1}
+              reason: {type: string, enum: [key_mismatch]}
+        first_id: {type: integer, minimum: 1}
+        last_id: {type: integer, minimum: 1}
+    Discovery:
+      type: object
+      required: [service, version, api_version, openapi, schemas, mcp, skill, auth]
+      properties:
+        service: {type: string, const: agentfeedback}
+        version: {type: string}
+        api_version: {type: string}
+        openapi: {type: string}
+        schemas: {type: string}
+        mcp: {type: string}
+        skill: {type: string}
+        auth:
+          type: object
+          properties:
+            modes:
+              type: array
+              items: {type: string, enum: [bearer, x-api-key]}
+        docs: {type: string, format: uri}
+    Ndjson:
+      type: string
+      description: >-
+        NDJSON export format 2. Line 1 is the header
+        `{"export_format":2,"kind":…,"since":…,"after_id":…,"exported_at":…}`;
+        then one full record per line in ascending `id`; the last line is the
+        trailer `{"export_complete":true,"count":…,"first_id":…,"last_id":…,"sha256":…}`.
+        `sha256` is the lowercase hex SHA-256 over the record lines only, each
+        with its trailing newline, header and trailer excluded, in order.
+    JsonRpc:
+      type: object
+      description: A JSON-RPC 2.0 message as defined by the MCP Streamable HTTP transport.

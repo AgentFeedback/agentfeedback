@@ -1,0 +1,10 @@
+{
+  "row": "second 60 is not accepted",
+  "status": 201,
+  "warnings": [
+    {
+      "code": "invalid_format",
+      "pointer": "/context/occurred_at_raw"
+    }
+  ]
+}

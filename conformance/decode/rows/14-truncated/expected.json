@@ -1,0 +1,15 @@
+{
+  "row": "string envelope field over its byte limit",
+  "status": 201,
+  "note": "The cut is at the last complete code point at or before the limit: the two-byte and four-byte characters straddling it are dropped whole.",
+  "warnings": [
+    {
+      "code": "truncated",
+      "pointer": "/machine"
+    },
+    {
+      "code": "truncated",
+      "pointer": "/summary"
+    }
+  ]
+}

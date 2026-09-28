@@ -1,0 +1,70 @@
+{
+  "row": "null envelope members are absent, each with one coerced warning",
+  "status": 201,
+  "warnings": [
+    {
+      "code": "coerced",
+      "pointer": "/context"
+    },
+    {
+      "code": "coerced",
+      "pointer": "/harness"
+    },
+    {
+      "code": "coerced",
+      "pointer": "/key"
+    },
+    {
+      "code": "coerced",
+      "pointer": "/kind"
+    },
+    {
+      "code": "coerced",
+      "pointer": "/machine"
+    },
+    {
+      "code": "coerced",
+      "pointer": "/model"
+    },
+    {
+      "code": "coerced",
+      "pointer": "/occurred_at"
+    },
+    {
+      "code": "coerced",
+      "pointer": "/payload"
+    },
+    {
+      "code": "coerced",
+      "pointer": "/project"
+    },
+    {
+      "code": "coerced",
+      "pointer": "/schema_version"
+    },
+    {
+      "code": "coerced",
+      "pointer": "/summary"
+    },
+    {
+      "code": "missing_kind",
+      "pointer": "/kind"
+    },
+    {
+      "code": "missing_recommended",
+      "pointer": "/machine"
+    },
+    {
+      "code": "missing_recommended",
+      "pointer": "/model"
+    },
+    {
+      "code": "missing_recommended",
+      "pointer": "/summary"
+    },
+    {
+      "code": "payload_inferred",
+      "pointer": "/payload"
+    }
+  ]
+}

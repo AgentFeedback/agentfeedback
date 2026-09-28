@@ -1,0 +1,4 @@
+{
+  "rule": "x-trim removes Unicode White_Space on both ends; U+FEFF is not whitespace",
+  "sha256": "a45c08df3477064c785e6f73af5f38994d45438570568c1be0e182ffda392379"
+}

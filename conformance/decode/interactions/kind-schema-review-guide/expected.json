@@ -1,0 +1,39 @@
+{
+  "row": "review schema as a guide: unique slots, ranges, types, byte limits, unknown members",
+  "status": 201,
+  "note": "note has x-max-bytes 4000 without truncate: kept whole, too_long. A type mismatch stops further checks on that member.",
+  "warnings": [
+    {
+      "code": "duplicate_slot",
+      "pointer": "/payload/reviewers/1"
+    },
+    {
+      "code": "missing_recommended",
+      "pointer": "/payload/reviewers/2/status"
+    },
+    {
+      "code": "out_of_range",
+      "pointer": "/payload/reviewers/1/bytes"
+    },
+    {
+      "code": "out_of_range",
+      "pointer": "/payload/reviewers/1/score"
+    },
+    {
+      "code": "too_long",
+      "pointer": "/payload/reviewers/1/note"
+    },
+    {
+      "code": "type_mismatch",
+      "pointer": "/payload/reviewers/2/model"
+    },
+    {
+      "code": "type_mismatch",
+      "pointer": "/payload/target/pr"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/reviewers/2/extra"
+    }
+  ]
+}

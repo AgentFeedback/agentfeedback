@@ -1,0 +1,14 @@
+{
+  "row": "payload.moved sent as a non-object is wrapped before use",
+  "status": 201,
+  "warnings": [
+    {
+      "code": "moved_to_payload",
+      "pointer": "/payload/moved/category"
+    },
+    {
+      "code": "payload_wrapped",
+      "pointer": "/payload/moved"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "row": "schema_version 2^53-1 is accepted",
+  "status": 201,
+  "warnings": [
+    {
+      "code": "unknown_schema_version",
+      "pointer": "/schema_version"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "row": "known kind, version the server does not ship",
+  "status": 201,
+  "note": "No payload validation and no missing_recommended for the payload.",
+  "warnings": [
+    {
+      "code": "unknown_schema_version",
+      "pointer": "/schema_version"
+    }
+  ]
+}

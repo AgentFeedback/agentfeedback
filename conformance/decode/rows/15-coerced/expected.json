@@ -1,0 +1,19 @@
+{
+  "row": "envelope field of the wrong JSON type",
+  "status": 201,
+  "note": "The string is the canonical JSON of the value: sorted keys, number spelling kept.",
+  "warnings": [
+    {
+      "code": "coerced",
+      "pointer": "/machine"
+    },
+    {
+      "code": "coerced",
+      "pointer": "/project"
+    },
+    {
+      "code": "coerced",
+      "pointer": "/summary"
+    }
+  ]
+}

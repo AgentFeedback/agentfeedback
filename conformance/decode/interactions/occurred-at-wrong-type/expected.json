@@ -1,0 +1,15 @@
+{
+  "row": "occurred_at not a string: coerced, then unparseable",
+  "status": 201,
+  "note": "Both warnings point where the content ended up.",
+  "warnings": [
+    {
+      "code": "coerced",
+      "pointer": "/context/occurred_at_raw"
+    },
+    {
+      "code": "invalid_format",
+      "pointer": "/context/occurred_at_raw"
+    }
+  ]
+}

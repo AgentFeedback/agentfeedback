@@ -1,0 +1,10 @@
+{
+  "row": "occurred_at unparseable",
+  "status": 201,
+  "warnings": [
+    {
+      "code": "invalid_format",
+      "pointer": "/context/occurred_at_raw"
+    }
+  ]
+}

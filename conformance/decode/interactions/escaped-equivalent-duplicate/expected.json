@@ -1,0 +1,14 @@
+{
+  "row": "member names compare after unescaping",
+  "status": 201,
+  "warnings": [
+    {
+      "code": "duplicate_key",
+      "pointer": "/payload/a"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/a"
+    }
+  ]
+}

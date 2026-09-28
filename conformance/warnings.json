@@ -1,0 +1,39 @@
+{
+  "$comment": "The closed list of warning codes a server may return on create, one example each. Warnings are returned beside the stored submission and never stored. `keyword_codes` maps the JSON Schema keyword that fails in a kind schema to the code it produces. `duplicate_<member>` is a family: one code per x-unique-by member a kind schema declares (only `slot` today); a kind schema must never declare x-unique-by \"key\", which would collide with the decoder's duplicate_key.",
+  "codes": [
+    { "code": "missing_kind", "meaning": "kind was absent, null, empty after normalisation or not a string; stored as unknown", "example": { "code": "missing_kind", "pointer": "/kind", "message": "kind is missing, empty or not a string; stored as unknown" } },
+    { "code": "moved_to_payload", "meaning": "a top-level member the envelope does not know, or a context that was not an object, was moved into payload", "example": { "code": "moved_to_payload", "pointer": "/payload/Model", "message": "Model is not an envelope member; moved into payload; did you mean model" } },
+    { "code": "payload_inferred", "meaning": "payload was absent; it was built from the moved members, or is {}", "example": { "code": "payload_inferred", "pointer": "/payload", "message": "payload was absent; built from the members the envelope does not know" } },
+    { "code": "payload_wrapped", "meaning": "payload, or the reserved payload.moved, was not an object and was wrapped as {\"value\": ...}", "example": { "code": "payload_wrapped", "pointer": "/payload", "message": "payload was not an object; wrapped as {\"value\": ...}" } },
+    { "code": "duplicate_key", "meaning": "a member name appeared more than once in an object, or an inferred member replaced an earlier value under a reserved name; the last value is kept", "example": { "code": "duplicate_key", "pointer": "/summary", "message": "member 'summary' appears more than once; the last value is kept" } },
+    { "code": "invalid_utf8", "meaning": "invalid UTF-8 bytes or an escaped lone surrogate in a string or member name were replaced by U+FFFD", "example": { "code": "invalid_utf8", "pointer": "/payload/details", "message": "invalid UTF-8 or a lone surrogate escape replaced by U+FFFD" } },
+    { "code": "truncated", "meaning": "a string was cut to its byte limit, or context entries beyond the first 32 were moved to payload.context_overflow", "example": { "code": "truncated", "pointer": "/summary", "message": "summary cut to 2000 bytes" } },
+    { "code": "coerced", "meaning": "a member of the wrong JSON type was encoded as canonical JSON into a string, or a null envelope member was treated as absent", "example": { "code": "coerced", "pointer": "/machine", "message": "machine was not a string; encoded as canonical JSON" } },
+    { "code": "schema_version_defaulted", "meaning": "schema_version was not a positive integer spelled ^[1-9][0-9]*$ at most 2^53-1; stored as 1", "example": { "code": "schema_version_defaulted", "pointer": "/schema_version", "message": "schema_version is not a positive integer; defaulted to 1" } },
+    { "code": "missing_recommended", "meaning": "a member listed in x-recommended is absent", "example": { "code": "missing_recommended", "pointer": "/payload/category", "message": "category is recommended" } },
+    { "code": "unknown_field", "meaning": "a payload member the kind schema does not list; stored as sent", "example": { "code": "unknown_field", "pointer": "/payload/extra", "message": "'extra' is not a member the schema knows" } },
+    { "code": "type_mismatch", "meaning": "a payload member has a JSON type the kind schema does not allow", "example": { "code": "type_mismatch", "pointer": "/payload/reviewers/0/score", "message": "expected number, got string" } },
+    { "code": "out_of_range", "meaning": "a payload member violates minimum, maximum, enum, minLength, minItems, maxItems or maxProperties", "example": { "code": "out_of_range", "pointer": "/payload/fix_status", "message": "not one of ['none', 'proposed', 'applied']" } },
+    { "code": "too_long", "meaning": "a payload string exceeds its x-max-bytes and the schema does not truncate; stored whole", "example": { "code": "too_long", "pointer": "/payload/reviewers/1/note", "message": "longer than 4000 bytes" } },
+    { "code": "invalid_format", "meaning": "occurred_at did not parse as an RFC 3339 date-time and was kept as context.occurred_at_raw, or a payload string violates its format", "example": { "code": "invalid_format", "pointer": "/context/occurred_at_raw", "message": "occurred_at is not an RFC 3339 date-time; kept as context.occurred_at_raw" } },
+    { "code": "duplicate_<member>", "family": true, "meaning": "in an array with x-unique-by, two items share the named member's value", "example": { "code": "duplicate_slot", "pointer": "/payload/reviewers/1", "message": "slot 'sol' appears more than once" } },
+    { "code": "no_schema", "meaning": "the server ships no schema for this kind; the payload is stored unvalidated", "example": { "code": "no_schema", "pointer": "/kind", "message": "no schema for kind 'deploy-note'; payload stored unvalidated" } },
+    { "code": "unknown_schema_version", "meaning": "the kind is known but not this schema_version; the payload is stored unvalidated", "example": { "code": "unknown_schema_version", "pointer": "/schema_version", "message": "no schema for friction version 2" } },
+    { "code": "key_reused", "only_in": "409 replay_mismatch error details", "meaning": "the key already names a row with a different content_hash; details[0].existing_id is that row", "example": { "code": "key_reused", "pointer": "/key", "message": "key 'friction-workstation-a-019250f2' already names submission 41 with different content", "existing_id": 41 } }
+  ],
+  "keyword_codes": {
+    "type": "type_mismatch",
+    "minimum": "out_of_range",
+    "maximum": "out_of_range",
+    "enum": "out_of_range",
+    "minLength": "out_of_range",
+    "minItems": "out_of_range",
+    "maxItems": "out_of_range",
+    "maxProperties": "out_of_range",
+    "format": "invalid_format",
+    "x-max-bytes": "too_long",
+    "x-recommended": "missing_recommended",
+    "x-unique-by": "duplicate_<member>",
+    "properties": "unknown_field"
+  }
+}
