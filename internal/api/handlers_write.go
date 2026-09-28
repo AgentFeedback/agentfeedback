@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/agentfeedback/agentfeedback/internal/core"
+	"github.com/agentfeedback/agentfeedback/internal/v3/core"
 	"github.com/agentfeedback/agentfeedback/internal/v3/store"
 )
 

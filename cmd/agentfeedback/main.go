@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/agentfeedback/agentfeedback/internal/api"
-	"github.com/agentfeedback/agentfeedback/internal/core"
+	"github.com/agentfeedback/agentfeedback/internal/v3/core"
 	"github.com/agentfeedback/agentfeedback/internal/v3/store"
 )
 
