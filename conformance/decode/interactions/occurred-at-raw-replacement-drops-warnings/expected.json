@@ -1,0 +1,15 @@
+{
+  "row": "an unparseable occurred_at replacing a producer's context.occurred_at_raw drops that value's warnings",
+  "status": 201,
+  "note": "The producer's occurred_at_raw was an object holding a lone surrogate; it is discarded before the raw text takes its place, so neither coerced nor invalid_utf8 is reported for it.",
+  "warnings": [
+    {
+      "code": "duplicate_key",
+      "pointer": "/context/occurred_at_raw"
+    },
+    {
+      "code": "invalid_format",
+      "pointer": "/context/occurred_at_raw"
+    }
+  ]
+}

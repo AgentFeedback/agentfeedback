@@ -26,6 +26,8 @@ jobs:
           git diff --exit-code
       - name: race tests
         run: go test -race -count=1 ./...
+      - name: fuzz the decoder (bounded)
+        run: just fuzz
       - name: live HTTP end-to-end API contract
         env:
           E2E_API_KEY: ci-e2e-api-${{ github.run_id }}-${{ github.run_attempt }}

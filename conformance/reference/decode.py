@@ -83,6 +83,11 @@ def _collapse(warnings: list[Warning_], member: str) -> None:
             w.pointer = member
 
 
+def _drop(warnings: list[Warning_], pointer: str) -> None:
+    """A value is discarded: warnings about it and its parts go with it."""
+    warnings[:] = [w for w in warnings if not (w.pointer == pointer or w.pointer.startswith(pointer + "/"))]
+
+
 def _remap(warnings: list[Warning_], old: str, new: str) -> None:
     """Parse-time warnings point into the body as sent; when inference moves a
     member, its warnings move with it."""
@@ -125,8 +130,9 @@ def decode(body: bytes, schemas: dict[tuple[str, int], dict] | None = None) -> R
     if payload is None:
         payload = {}
 
-    # Unknown top-level members move into payload; a flat body becomes the payload.
-    unknown = [n for n in value if n not in ENVELOPE_MEMBERS]
+    # Unknown top-level members move into payload, in code point order of
+    # their names; a flat body becomes the payload.
+    unknown = sorted(n for n in value if n not in ENVELOPE_MEMBERS)
     for name in unknown:
         hint = ""
         if name.lower() in ENVELOPE_MEMBERS:
@@ -202,6 +208,7 @@ def decode(body: bytes, schemas: dict[tuple[str, int], dict] | None = None) -> R
                 warnings.append(Warning_("coerced", "/occurred_at", "occurred_at was not a string"))
         else:
             if "occurred_at_raw" in context:
+                _drop(warnings, "/context/occurred_at_raw")
                 warnings.append(Warning_("duplicate_key", "/context/occurred_at_raw", "context.occurred_at_raw replaced"))
             _remap(warnings, "/occurred_at", "/context/occurred_at_raw")
             context["occurred_at_raw"] = text
@@ -214,11 +221,14 @@ def decode(body: bytes, schemas: dict[tuple[str, int], dict] | None = None) -> R
         keys = sorted(context)
         overflow = {k: context[k] for k in keys[CONTEXT_ENTRIES:]}
         context = {k: context[k] for k in keys[:CONTEXT_ENTRIES]}
-        target = "/payload/context_overflow" if "context_overflow" not in payload else "/payload/moved/context_overflow"
+        placed_in = _place(payload, "context_overflow", overflow, warnings, "truncated",
+                           f"context has more than {CONTEXT_ENTRIES} entries; the rest moved to payload.context_overflow")
+        placed.add(placed_in)
+        # Remap after placing: placing may wrap a non-object payload.moved,
+        # and that remap must not catch the overflow entries.
+        target = "/payload/moved/context_overflow" if placed_in == "moved" else "/payload/context_overflow"
         for k in overflow:
             _remap(warnings, "/context/" + escape_token(k), target + "/" + escape_token(k))
-        placed.add(_place(payload, "context_overflow", overflow, warnings, "truncated",
-                          f"context has more than {CONTEXT_ENTRIES} entries; the rest moved to payload.context_overflow"))
     for k in list(context):
         v = context[k]
         p = "/context/" + escape_token(k)
@@ -261,9 +271,11 @@ def _place(payload: dict, name: str, val, warnings: list[Warning_], code: str, m
     replaces the earlier value with a duplicate_key warning. Parse-time
     warnings under ``old_pointer`` follow the member. Returns the top-level
     payload member that received it."""
-    if name not in payload:
+    # under_moved, not the returned name: a member itself named "moved"
+    # that finds no payload.moved is placed at the top level.
+    under_moved = name in payload
+    if not under_moved:
         pointer = "/payload/" + escape_token(name)
-        placed_in = name
     else:
         moved = payload.get("moved")
         if "moved" in payload and not isinstance(moved, dict):
@@ -272,17 +284,17 @@ def _place(payload: dict, name: str, val, warnings: list[Warning_], code: str, m
             warnings.append(Warning_("payload_wrapped", "/payload/moved", "payload.moved is reserved and was not an object; wrapped"))
         payload.setdefault("moved", {})
         pointer = "/payload/moved/" + escape_token(name)
-        placed_in = "moved"
         if name in payload["moved"]:
+            _drop(warnings, pointer)
             warnings.append(Warning_("duplicate_key", pointer, f"payload.moved.{name} replaced"))
     if old_pointer is not None:
         _remap(warnings, old_pointer, pointer)
-    if placed_in == "moved":
+    if under_moved:
         payload["moved"][name] = val
     else:
         payload[name] = val
     warnings.append(Warning_(code, pointer, message))
-    return placed_in
+    return "moved" if under_moved else name
 
 
 def _move_into_payload(payload: dict, name: str, val, warnings: list[Warning_], hint: str) -> str:

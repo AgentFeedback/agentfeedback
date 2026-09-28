@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"payload\":{\"x\":0,\"moved\":\"s\",\"context_overflow\":1},\"x\":1,\"x\":2,\"moved\":3,\"context\":\"nope\",\"context\":{\"occurred_at_raw\":\"p\"},\"occurred_at\":\"2026-13-01T00:00:00Z\"}")

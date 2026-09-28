@@ -82,8 +82,8 @@ message says `did you mean kind`.
 | duplicate member name in any object (names compare after unescaping: `"a"` and `"a"` are the same member) | last value wins; warnings about the discarded value are dropped | `duplicate_key` |
 | envelope member that is JSON `null` | treated as absent; the absent rules then apply | `coerced` |
 | `payload` present but not an object | wrapped as `{"value": <it>}` | `payload_wrapped` |
-| top-level member the envelope does not know | moved into `payload` | `moved_to_payload` |
-| moved member, `context_raw` or `context_overflow` whose name already exists in `payload` | stored under `payload.moved.<name>`; a non-object `payload.moved` is wrapped first (`payload_wrapped`); a value already under `payload.moved.<name>` is replaced (`duplicate_key`) | `moved_to_payload` (`truncated` for `context_overflow`) |
+| top-level member the envelope does not know | moved into `payload`, one member at a time in code point order of their names | `moved_to_payload` |
+| moved member, `context_raw` or `context_overflow` whose name already exists in `payload` | stored under `payload.moved.<name>`; a non-object `payload.moved` is wrapped first (`payload_wrapped`); a value already under `payload.moved.<name>` is replaced and its warnings dropped (`duplicate_key`) | `moved_to_payload` (`truncated` for `context_overflow`) |
 | `payload` absent | the moved members become the payload; none: `{}` | `payload_inferred` |
 | `kind` absent, null, empty after normalisation, or not a string | `unknown` | `missing_kind` (and nothing else about `kind`) |
 | `schema_version` absent or null | `1` | none (null: `coerced` only) |
@@ -91,7 +91,7 @@ message says `did you mean kind`.
 | `key`, `summary`, `machine`, `model`, `harness`, `project` or `occurred_at` of the wrong JSON type | encoded as canonical JSON into a string, then treated as a string; warnings about the value's parts collapse onto the member | `coerced` |
 | `summary`, `machine`, `model`, `harness`, `project` over their byte limit (2000, 200, 200, 200, 200) | truncated | `truncated` |
 | `summary` with newlines | CR LF, lone CR and lone LF each become one space | none |
-| `occurred_at` unparseable | dropped; the text kept as `context.occurred_at_raw` (replacing a producer's own with `duplicate_key`); its warnings move there | `invalid_format` |
+| `occurred_at` unparseable | dropped; the text kept as `context.occurred_at_raw` (replacing a producer's own, whose warnings are dropped, with `duplicate_key`); its warnings move there | `invalid_format` |
 | `context` not an object | moved to `payload.context_raw` | `moved_to_payload` |
 | `context` over 32 entries (after `occurred_at_raw` was added) | the first 32 by key in code point order kept; the rest moved to `payload.context_overflow` as an object | `truncated` |
 | `context` value not a string | encoded as canonical JSON into a string | `coerced` |

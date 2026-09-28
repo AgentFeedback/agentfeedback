@@ -21,6 +21,10 @@ tidy:
 test:
     go test -race -count=1 ./...
 
+# Fuzz the decoder for a bounded time on top of its committed seed corpus.
+fuzz:
+    go test -run='^$' -fuzz='^FuzzDecode$' -fuzztime=30s ./pkg/envelope
+
 # Run locally against a database in ./local (created on demand).
 run-local: build
     mkdir -p local
