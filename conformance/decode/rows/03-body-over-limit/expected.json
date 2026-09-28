@@ -1,0 +1,6 @@
+{
+  "row": "body over 10 MiB",
+  "status": 413,
+  "note": "10485761 bytes: one over the cap. The cap counts the raw request body.",
+  "error": "request_too_large"
+}

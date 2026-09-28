@@ -1,0 +1,5 @@
+{
+  "rule": "kind-schema transforms happen before identity: category Docs hashes as docs",
+  "sha256": "b38446c2918b61714ba19f501f869b2bb213b7f6361c492c3653894d9647f9e2",
+  "note": "Same hash as a body sent with category docs."
+}

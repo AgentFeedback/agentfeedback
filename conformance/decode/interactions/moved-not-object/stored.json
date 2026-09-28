@@ -1,0 +1,1 @@
+{"kind":"friction","machine":"workstation-a","model":"claude-fable-5-1","payload":{"category":"tooling","details":"d","moved":{"category":"Docs","value":"by hand"}},"schema_version":1,"summary":"the linter ignores its config file"}

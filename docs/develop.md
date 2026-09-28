@@ -17,11 +17,14 @@ scripts/                        e2e.sh (live contract suite), deploy.sh, release
 skills/agentfeedback/           submit/query/process client skill (copied as-is into a harness; no tests inside)
 skills/agentfeedback-triage/    processor skill (SKILL.md, digest.sh; optional cluster.py + reference/clustering.md)
 tests/skill/                    hermetic tests for both skills' scripts (mock server, isolated HOME)
-docs/                           api.md (contract), operate.md, develop.md, security.md, releases.md
+docs/                           api.md (contract of the running service), openapi.yaml (v1 contract of the next major release), operate.md, develop.md, security.md, releases.md
+schemas/                        JSON Schema 2020-12: the submission envelope and the kind schemas (friction, review)
+conformance/                    the executable contract: decode fixtures, hash vectors, the warning list, a Python reference implementation (README inside)
 ```
 
 Go toolchain and module versions are pinned in `go.mod`. Tools: `just`,
-`shellcheck`, `python3`, Docker (only for the compose stack and image).
+`shellcheck`, `python3`, `uv` and `npx` (contract gate), Docker (only for the
+compose stack and image).
 
 ## Commands
 
@@ -31,6 +34,10 @@ just test           # go test -race -count=1 ./...  (SQLite on temp files; no se
 just run-local      # serve on 127.0.0.1:8090 with a database in ./local/
 bash scripts/e2e.sh <API_KEY> [BASE_URL]      # live contract suite against a running service
 bash tests/skill/run-tests.sh                 # hermetic client tests (mock server, needs python3)
+just contract                                 # contract gate: the two commands below
+uv run --locked --script scripts/contract-check.py   # schemas valid 2020-12, every example validates, fixtures agree with conformance/reference
+npx --yes @redocly/cli@2.54.2 lint docs/openapi.yaml # OpenAPI lint (recommended ruleset, redocly.yaml)
+python3 conformance/reference/fixtures.py     # the fixtures alone, no dependencies
 shellcheck -x -P SCRIPTDIR skills/*/scripts/*.sh tests/skill/run-tests.sh
 python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remote>... [--live]   # cluster.py calibration
 ```
@@ -44,6 +51,15 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
 - **Write-once payloads.** Only `processed_at` and `resolution` ever change
   after insert. Never add an update path for content; a correction is a new
   submission.
+- **The contract is files first.** `docs/openapi.yaml`, `schemas/` and
+  `conformance/` are the normative v1 contract; Go code and any second
+  implementation follow them, never the reverse. A contract change edits
+  those files and the fixtures in the same commit, and `just contract` must
+  stay green. Fixtures are written by hand from the contract and checked
+  against `conformance/reference/`; a disagreement is settled by reading the
+  contract, never by regenerating a fixture from an implementation. Until the
+  v1 server packages land, the running service still implements
+  [api.md](api.md).
 - **Hash forms are frozen.** Frictions and reviews hash the exact Go structs
   from API 1.0 (field order matters); events hash canonical JSON. Changing
   either turns every stored row into a replay mismatch. A test pins a fixed
@@ -84,6 +100,8 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
 4. Skill scripts touched: the shellcheck command above and `bash tests/skill/run-tests.sh`
    all green.
 5. Docs touched: every relative link resolves.
+6. Contract files touched (`schemas/`, `docs/openapi.yaml`, `conformance/`):
+   `just contract` green.
 
 CI runs the same gates and, on `main`, publishes the image as
 `ghcr.io/agentfeedback/agentfeedback:<sha>` and `:latest`.

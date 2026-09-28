@@ -71,8 +71,18 @@ jobs:
       - name: hermetic client tests (mock server with isolated HOME)
         run: bash tests/skill/run-tests.sh
 
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.2.0
+      - name: schemas, examples, conformance fixtures against the reference
+        run: uv run --locked --script scripts/contract-check.py
+      - name: OpenAPI lint
+        run: npx --yes @redocly/cli@2.54.2 lint docs/openapi.yaml
+
   image:
-    needs: [test, skill]
+    needs: [test, skill, contract]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:

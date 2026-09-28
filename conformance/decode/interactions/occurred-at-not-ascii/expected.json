@@ -1,0 +1,10 @@
+{
+  "row": "RFC 3339 digits are ASCII; fullwidth digits do not parse",
+  "status": 201,
+  "warnings": [
+    {
+      "code": "invalid_format",
+      "pointer": "/context/occurred_at_raw"
+    }
+  ]
+}

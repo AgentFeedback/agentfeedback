@@ -1,0 +1,15 @@
+{
+  "row": "friction schema transforms silently and warns on violations",
+  "status": 201,
+  "note": "x-normalize: token rewrote category without a warning; fix_ref has x-max-bytes without truncate.",
+  "warnings": [
+    {
+      "code": "out_of_range",
+      "pointer": "/payload/fix_status"
+    },
+    {
+      "code": "too_long",
+      "pointer": "/payload/fix_ref"
+    }
+  ]
+}

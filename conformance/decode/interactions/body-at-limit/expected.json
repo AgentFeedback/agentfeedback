@@ -1,0 +1,26 @@
+{
+  "row": "body exactly 10 MiB is accepted",
+  "status": 201,
+  "warnings": [
+    {
+      "code": "missing_recommended",
+      "pointer": "/machine"
+    },
+    {
+      "code": "missing_recommended",
+      "pointer": "/model"
+    },
+    {
+      "code": "missing_recommended",
+      "pointer": "/payload/category"
+    },
+    {
+      "code": "missing_recommended",
+      "pointer": "/payload/details"
+    },
+    {
+      "code": "truncated",
+      "pointer": "/summary"
+    }
+  ]
+}

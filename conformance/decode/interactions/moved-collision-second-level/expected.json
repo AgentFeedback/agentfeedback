@@ -1,0 +1,14 @@
+{
+  "row": "moved member collides under payload.moved too",
+  "status": 201,
+  "warnings": [
+    {
+      "code": "duplicate_key",
+      "pointer": "/payload/moved/category"
+    },
+    {
+      "code": "moved_to_payload",
+      "pointer": "/payload/moved/category"
+    }
+  ]
+}

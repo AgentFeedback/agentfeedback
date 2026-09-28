@@ -1,0 +1,19 @@
+{
+  "row": "payload present but not an object",
+  "status": 201,
+  "note": "`value` was placed by inference and gets no unknown_field from the kind schema.",
+  "warnings": [
+    {
+      "code": "missing_recommended",
+      "pointer": "/payload/category"
+    },
+    {
+      "code": "missing_recommended",
+      "pointer": "/payload/details"
+    },
+    {
+      "code": "payload_wrapped",
+      "pointer": "/payload"
+    }
+  ]
+}

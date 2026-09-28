@@ -1,0 +1,1 @@
+{"kind":"friction","machine":"workstation-a","model":"claude-fable-5-1","payload":{"Model":"gpt-5.6-sol","category":"tooling","details":"expected .lintrc to apply; it did not","severity":"high"},"schema_version":1,"summary":"the linter ignores its config file"}

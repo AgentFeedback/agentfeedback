@@ -1,0 +1,1 @@
+{"kind":"friction","machine":"workstation-a","model":"claude-fable-5-1","occurred_at":"0026-09-27T00:00:00.000000Z","payload":{"category":"tooling","details":"expected .lintrc to apply; it did not"},"schema_version":1,"summary":"the linter ignores its config file"}

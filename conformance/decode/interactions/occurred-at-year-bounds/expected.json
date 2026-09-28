@@ -1,0 +1,10 @@
+{
+  "row": "a UTC result outside years 0001-9999 is unparseable",
+  "status": 201,
+  "warnings": [
+    {
+      "code": "invalid_format",
+      "pointer": "/context/occurred_at_raw"
+    }
+  ]
+}

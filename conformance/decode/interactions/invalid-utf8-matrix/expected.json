@@ -1,0 +1,55 @@
+{
+  "row": "every kind of ill-formed sequence, in values and in a member name",
+  "status": 201,
+  "note": "Maximal subparts (Unicode ch. 3, table 3-8): C0 and F8 are never valid lead bytes, ED A0 is an encoded surrogate, F0 9F is a truncated sequence. A replaced member name is addressed by its replaced form.",
+  "warnings": [
+    {
+      "code": "invalid_utf8",
+      "pointer": "/payload/lead_5"
+    },
+    {
+      "code": "invalid_utf8",
+      "pointer": "/payload/na�me"
+    },
+    {
+      "code": "invalid_utf8",
+      "pointer": "/payload/overlong"
+    },
+    {
+      "code": "invalid_utf8",
+      "pointer": "/payload/surrogate"
+    },
+    {
+      "code": "invalid_utf8",
+      "pointer": "/payload/table_3_8"
+    },
+    {
+      "code": "invalid_utf8",
+      "pointer": "/payload/truncated_end"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/lead_5"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/na�me"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/overlong"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/surrogate"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/table_3_8"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/truncated_end"
+    }
+  ]
+}

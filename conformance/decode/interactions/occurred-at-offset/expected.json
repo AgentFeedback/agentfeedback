@@ -1,0 +1,6 @@
+{
+  "row": "occurred_at with an offset and seven fractional digits",
+  "status": 201,
+  "note": "Stored as UTC with six fractional digits; the seventh digit is truncated, not rounded.",
+  "warnings": []
+}

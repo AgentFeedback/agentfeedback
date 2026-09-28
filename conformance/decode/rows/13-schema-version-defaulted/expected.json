@@ -1,0 +1,10 @@
+{
+  "row": "schema_version not a positive integer spelled ^[1-9][0-9]*$",
+  "status": 201,
+  "warnings": [
+    {
+      "code": "schema_version_defaulted",
+      "pointer": "/schema_version"
+    }
+  ]
+}

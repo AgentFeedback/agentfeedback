@@ -1,0 +1,11 @@
+{
+  "row": "escaped lone surrogate in a string",
+  "status": 201,
+  "note": "A valid surrogate pair in details decodes to U+1F600 without a warning.",
+  "warnings": [
+    {
+      "code": "invalid_utf8",
+      "pointer": "/summary"
+    }
+  ]
+}

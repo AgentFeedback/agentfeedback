@@ -1,0 +1,14 @@
+{
+  "row": "an unparseable occurred_at replaces a producer-sent context.occurred_at_raw",
+  "status": 201,
+  "warnings": [
+    {
+      "code": "duplicate_key",
+      "pointer": "/context/occurred_at_raw"
+    },
+    {
+      "code": "invalid_format",
+      "pointer": "/context/occurred_at_raw"
+    }
+  ]
+}

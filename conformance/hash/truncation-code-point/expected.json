@@ -1,0 +1,4 @@
+{
+  "rule": "truncation cuts at the last complete code point at or before the byte limit",
+  "sha256": "d54f5b47991430e3cadb20039816ce396b5735641d214f369a4bd32613a017be"
+}

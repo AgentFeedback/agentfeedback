@@ -1,0 +1,22 @@
+{
+  "row": "context values are strings: coercion and truncation",
+  "status": 201,
+  "warnings": [
+    {
+      "code": "coerced",
+      "pointer": "/context/git_dirty"
+    },
+    {
+      "code": "coerced",
+      "pointer": "/context/n"
+    },
+    {
+      "code": "coerced",
+      "pointer": "/context/obj"
+    },
+    {
+      "code": "truncated",
+      "pointer": "/context/long"
+    }
+  ]
+}

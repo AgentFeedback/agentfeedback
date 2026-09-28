@@ -1,0 +1,15 @@
+{
+  "row": "occurred_at_raw pushes context past 32 entries",
+  "status": 201,
+  "note": "`occurred_at_raw` sorts after `c31`, so it is the entry that overflows, and its warning points where it ended up.",
+  "warnings": [
+    {
+      "code": "invalid_format",
+      "pointer": "/payload/context_overflow/occurred_at_raw"
+    },
+    {
+      "code": "truncated",
+      "pointer": "/payload/context_overflow"
+    }
+  ]
+}

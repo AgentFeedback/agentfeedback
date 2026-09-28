@@ -1,0 +1,4 @@
+{
+  "rule": "a moved member that collides lands under payload.moved and is part of identity",
+  "sha256": "e32dfff8b550834de56bdef860ef135f0b9878954ee7678c9bfcd1fea8f2f513"
+}

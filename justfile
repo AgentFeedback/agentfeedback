@@ -29,6 +29,11 @@ run-local: build
     API_KEY=${API_KEY:-local-dev-key} \
     ./bin/agentfeedback
 
+# Validate the contract files: schemas, OpenAPI document, examples, conformance fixtures. Needs uv and npx.
+contract:
+    uv run --locked --script scripts/contract-check.py
+    npx --yes @redocly/cli@2.54.2 lint docs/openapi.yaml
+
 # Build the Docker image tagged agentfeedback.
 docker-build:
     docker build -t agentfeedback .

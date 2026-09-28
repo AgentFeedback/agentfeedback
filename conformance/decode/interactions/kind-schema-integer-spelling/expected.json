@@ -1,0 +1,11 @@
+{
+  "row": "2.0 satisfies type integer; slot uniqueness compares strings only",
+  "status": 201,
+  "note": "JSON Schema integer means a number with a zero fraction, whatever its spelling; the number 1 and the string \"1\" are not the same slot.",
+  "warnings": [
+    {
+      "code": "type_mismatch",
+      "pointer": "/payload/reviewers/0/slot"
+    }
+  ]
+}

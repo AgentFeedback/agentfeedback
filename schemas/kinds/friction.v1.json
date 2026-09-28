@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentfeedback.dev/schemas/kinds/friction.v1.json",
+  "title": "Friction: what slowed an agent down",
+  "type": "object",
+  "additionalProperties": true,
+  "x-recommended": ["category", "details"],
+  "properties": {
+    "category": {
+      "type": "string", "minLength": 1, "x-max-bytes": 200, "x-normalize": "token",
+      "examples": ["documentation", "tooling", "config", "environment", "process"]
+    },
+    "details": {
+      "type": "string",
+      "description": "Expected versus actual, and what it cost."
+    },
+    "suggested_fix": {
+      "type": "string",
+      "description": "The concrete fix."
+    },
+    "fix_status": {
+      "type": "string", "enum": ["none", "proposed", "applied"], "default": "none",
+      "description": "applied: the fix is already committed; name it in fix_ref."
+    },
+    "fix_ref": {
+      "type": "string", "x-max-bytes": 200,
+      "description": "Commit (repo@sha), PR or URL of an applied or proposed fix."
+    },
+    "severity": {
+      "type": "string", "enum": ["low", "medium", "high"]
+    }
+  },
+  "examples": [
+    { "category": "documentation", "details": "Step 3 says --init; the flag was removed in 3.0.", "suggested_fix": "Drop the flag from the README.", "fix_status": "applied", "fix_ref": "example@a1b2c3d", "severity": "low" }
+  ]
+}

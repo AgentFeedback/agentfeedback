@@ -1,0 +1,10 @@
+{
+  "row": "schema_version above 2^53-1 defaults",
+  "status": 201,
+  "warnings": [
+    {
+      "code": "schema_version_defaulted",
+      "pointer": "/schema_version"
+    }
+  ]
+}

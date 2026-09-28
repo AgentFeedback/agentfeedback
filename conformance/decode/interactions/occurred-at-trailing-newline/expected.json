@@ -1,0 +1,10 @@
+{
+  "row": "the whole string must be the date-time",
+  "status": 201,
+  "warnings": [
+    {
+      "code": "invalid_format",
+      "pointer": "/context/occurred_at_raw"
+    }
+  ]
+}

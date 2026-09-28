@@ -1,0 +1,14 @@
+{
+  "row": "duplicate member name in any object",
+  "status": 201,
+  "warnings": [
+    {
+      "code": "duplicate_key",
+      "pointer": "/payload/details"
+    },
+    {
+      "code": "duplicate_key",
+      "pointer": "/summary"
+    }
+  ]
+}

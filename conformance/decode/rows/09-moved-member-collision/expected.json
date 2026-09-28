@@ -1,0 +1,11 @@
+{
+  "row": "moved member whose name already exists in payload",
+  "status": 201,
+  "note": "payload.moved is not validated by the kind schema, so the moved category is stored as sent.",
+  "warnings": [
+    {
+      "code": "moved_to_payload",
+      "pointer": "/payload/moved/category"
+    }
+  ]
+}

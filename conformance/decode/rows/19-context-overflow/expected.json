@@ -1,0 +1,11 @@
+{
+  "row": "context over 32 entries",
+  "status": 201,
+  "note": "Code point order: `Z` (U+005A) sorts before `c00`, so `c31` is the entry that overflows.",
+  "warnings": [
+    {
+      "code": "truncated",
+      "pointer": "/payload/context_overflow"
+    }
+  ]
+}

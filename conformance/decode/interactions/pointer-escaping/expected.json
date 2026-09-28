@@ -1,0 +1,19 @@
+{
+  "row": "RFC 6901 escaping of / and ~ in pointers",
+  "status": 201,
+  "note": "The duplicate was detected at the top level and its warning moved with the member.",
+  "warnings": [
+    {
+      "code": "duplicate_key",
+      "pointer": "/payload/a~1b"
+    },
+    {
+      "code": "moved_to_payload",
+      "pointer": "/payload/a~1b"
+    },
+    {
+      "code": "moved_to_payload",
+      "pointer": "/payload/m~0n"
+    }
+  ]
+}

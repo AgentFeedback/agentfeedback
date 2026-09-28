@@ -1,0 +1,1 @@
+{"kind":"friction","summary":"a\r\nb\rc\nd","machine":"workstation-a","model":"claude-fable-5-1","payload":{"category":"tooling","details":"expected .lintrc to apply; it did not"}}

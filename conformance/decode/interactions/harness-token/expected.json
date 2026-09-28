@@ -1,0 +1,11 @@
+{
+  "row": "harness is token-normalised then truncated",
+  "status": 201,
+  "note": "Trim, lower-case and whitespace runs come before the cut; nothing is re-trimmed after it.",
+  "warnings": [
+    {
+      "code": "truncated",
+      "pointer": "/harness"
+    }
+  ]
+}
