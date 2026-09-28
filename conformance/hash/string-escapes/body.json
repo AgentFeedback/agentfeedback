@@ -1,1 +1,1 @@
-{"kind":"friction","summary":"the linter ignores its config file","machine":"workstation-a","model":"claude-fable-5-1","payload":{"category":"tooling","details":"quote\" back\\ nl\n cr\r tab\t bell\u0007 del slash/ lt<gt>amp& ls  ps  nul\u0000 é 😀"}}
+{"kind":"friction","summary":"the linter ignores its config file","machine":"workstation-a","model":"claude-fable-5-1","payload":{"category":"tooling","details":"quote\" back\\ nl\n cr\r tab\t bell\u0007 bs\b ff\f us\u001f del slash/ lt<gt>amp& ls  ps  nul\u0000 é 😀"}}

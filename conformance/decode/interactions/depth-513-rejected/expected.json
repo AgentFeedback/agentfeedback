@@ -1,0 +1,5 @@
+{
+  "row": "nesting deeper than 512 levels is rejected like non-JSON",
+  "status": 400,
+  "error": "bad_request"
+}

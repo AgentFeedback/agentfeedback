@@ -31,7 +31,7 @@ def read_body(d: Path) -> bytes:
     body = d / "body.json"
     gen = d / "body.gen.json"
     if body.exists() == gen.exists():
-        raise SystemExit(f"{d}: exactly one of body.json and body.gen.json is required")
+        raise ValueError(f"{d}: exactly one of body.json and body.gen.json is required")
     if body.exists():
         return body.read_bytes()
     return gen_body(json.loads(gen.read_text(encoding="utf-8")))

@@ -14,6 +14,10 @@ from dataclasses import dataclass, field
 
 _NUMBER = re.compile(rb"-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?")
 _WS = b" \t\n\r"
+# Containers nested deeper than this are rejected like non-JSON (the body
+# object itself is level 1). Keeps every implementation, and the SQLite JSON
+# functions behind the store, inside their own depth limits.
+MAX_DEPTH = 512
 
 
 class RawNumber(str):
@@ -46,6 +50,12 @@ class Reader:
     data: bytes
     pos: int = 0
     warnings: list[Warning_] = field(default_factory=list)
+    depth: int = 0
+
+    def _enter(self) -> None:
+        self.depth += 1
+        if self.depth > MAX_DEPTH:
+            raise NotJSON(f"nested deeper than {MAX_DEPTH} levels")
 
     def parse(self):
         self._skip_ws()
@@ -85,11 +95,13 @@ class Reader:
         raise NotJSON(f"unexpected byte 0x{c:02x} at offset {self.pos}")
 
     def _object(self, pointer: str) -> dict:
+        self._enter()
         self.pos += 1
         result: dict = {}
         self._skip_ws()
         if self._peek() == 0x7D:
             self.pos += 1
+            self.depth -= 1
             return result
         while True:
             self._skip_ws()
@@ -98,6 +110,13 @@ class Reader:
             # The name's own pointer is the member it names.
             name = self._string(None)
             member = pointer + "/" + escape_token(name)
+            if name in result:
+                # Last value wins. Warnings about the discarded value point at
+                # content that no longer exists, so they are dropped too.
+                self.warnings = [w for w in self.warnings
+                                 if not (w.pointer == member or w.pointer.startswith(member + "/"))]
+                self.warnings.append(Warning_("duplicate_key", member, f"member {name!r} appears more than once; the last value is kept"))
+                del result[name]
             if self._pending_name_warning:
                 self.warnings.append(Warning_("invalid_utf8", member, "invalid UTF-8 in a member name replaced by U+FFFD"))
                 self._pending_name_warning = False
@@ -107,11 +126,6 @@ class Reader:
             self.pos += 1
             self._skip_ws()
             value = self._value(member)
-            if name in result:
-                # Last value wins; warnings already emitted for the discarded value stay,
-                # since they point at the same member.
-                self.warnings.append(Warning_("duplicate_key", member, f"member {name!r} appears more than once; the last value is kept"))
-                del result[name]
             result[name] = value
             self._skip_ws()
             c = self._peek()
@@ -120,15 +134,18 @@ class Reader:
                 continue
             if c == 0x7D:
                 self.pos += 1
+                self.depth -= 1
                 return result
             raise NotJSON(f"expected ',' or '}}' at offset {self.pos}")
 
     def _array(self, pointer: str) -> list:
+        self._enter()
         self.pos += 1
         result: list = []
         self._skip_ws()
         if self._peek() == 0x5D:
             self.pos += 1
+            self.depth -= 1
             return result
         while True:
             self._skip_ws()
@@ -140,6 +157,7 @@ class Reader:
                 continue
             if c == 0x5D:
                 self.pos += 1
+                self.depth -= 1
                 return result
             raise NotJSON(f"expected ',' or ']' at offset {self.pos}")
 

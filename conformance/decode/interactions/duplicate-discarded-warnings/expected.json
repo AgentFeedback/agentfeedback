@@ -1,0 +1,19 @@
+{
+  "row": "warnings about a discarded duplicate value are dropped",
+  "status": 201,
+  "note": "The invalid_utf8 warnings of the two discarded values point at content that no longer exists, so they go with it.",
+  "warnings": [
+    {
+      "code": "duplicate_key",
+      "pointer": "/payload/details"
+    },
+    {
+      "code": "duplicate_key",
+      "pointer": "/payload/x"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/x"
+    }
+  ]
+}

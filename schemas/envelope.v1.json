@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agentfeedback.dev/schemas/envelope.v1.json",
   "title": "AgentFeedback submission envelope",
-  "description": "One submission as the server stores it after inference. Custom x- keywords: x-max-bytes (UTF-8 byte limit), x-trim (surrounding whitespace removed before validation, storage and hashing), x-normalize: \"token\" (trim, lower-case, runs of whitespace to \"-\"), x-recommended (a missing member warns), x-unique-by (duplicate values of the named member warn), x-on-violation (\"warn\", the default; \"truncate\": an over-long string is cut to the limit with a warning; \"move\": the member is moved into payload with a warning). The schema describes what the server produces; it is never used to reject a submission.",
+  "description": "One submission as the server stores it after inference. Custom x- keywords: x-max-bytes (UTF-8 byte limit), x-trim (surrounding whitespace removed before validation, storage and hashing), x-normalize: \"token\" (trim, lower-case, runs of whitespace to \"-\"), x-recommended (a missing member warns), x-unique-by (duplicate values of the named member warn), x-on-violation (\"warn\", the default; \"truncate\": an over-long string is cut to the limit, with a warning in the envelope and silently inside a kind schema; \"move\": the member is moved into payload with a warning, envelope only). The schema describes what the server produces; it is never used to reject a submission.",
   "type": "object",
   "additionalProperties": { "x-on-violation": "move" },
   "x-recommended": ["kind", "summary", "machine", "model"],
@@ -13,8 +13,8 @@
       "description": "What the payload is. Schemas attach to (kind, schema_version). Server-shipped: friction, review. Missing or empty: stored as unknown."
     },
     "schema_version": {
-      "type": "integer", "minimum": 1, "default": 1,
-      "description": "Version of the payload schema for this kind. Absent, non-integer or < 1: 1 with a warning."
+      "type": "integer", "minimum": 1, "maximum": 9007199254740991, "default": 1,
+      "description": "Version of the payload schema for this kind. Absent: 1, silently. Present but not spelled as a plain positive integer at most 2^53-1 (1.0, 1e0, \"2\", 0): 1 with a warning."
     },
     "key": {
       "type": "string", "minLength": 1, "x-trim": true,
@@ -46,7 +46,7 @@
         "git_remote":     { "type": "string", "description": "credentials, query and fragment stripped" },
         "git_branch":     { "type": "string" },
         "git_commit":     { "type": "string" },
-        "git_dirty":      { "type": "string", "enum": ["true", "false"] },
+        "git_dirty":      { "type": "string", "description": "true or false as the collector saw it" },
         "git_upstream":   { "type": "string" },
         "git_tag":        { "type": "string" },
         "git_default_branch": { "type": "string" },

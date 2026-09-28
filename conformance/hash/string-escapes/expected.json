@@ -1,4 +1,4 @@
 {
-  "rule": "minimal escaping: \" \\ LF CR TAB by name, other C0 controls as \\u00xx lower-case hex, everything else raw",
-  "sha256": "ae919c071bf807df3c679b73b694aaa4c6c64f4453eb749503b7de8af76e2311"
+  "rule": "minimal escaping: \" \\ LF CR TAB by name, other C0 controls (including U+0008 and U+000C) as \\u00xx lower-case hex, everything else raw",
+  "sha256": "0ee5892e4e242241326bf79f49766a8cc6ecd36f3e9af645da87a287f8513576"
 }

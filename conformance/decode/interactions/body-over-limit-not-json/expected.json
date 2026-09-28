@@ -1,0 +1,5 @@
+{
+  "row": "the size check comes before parsing",
+  "status": 413,
+  "error": "request_too_large"
+}

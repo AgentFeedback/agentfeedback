@@ -1,0 +1,10 @@
+{
+  "row": "a 5000-digit schema_version defaults like any other out-of-range spelling",
+  "status": 201,
+  "warnings": [
+    {
+      "code": "schema_version_defaulted",
+      "pointer": "/schema_version"
+    }
+  ]
+}

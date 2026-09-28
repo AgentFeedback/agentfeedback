@@ -21,9 +21,60 @@ from .text import token, trim, truncate_bytes, utf8_len
 _SUPPORTED = {
     "$schema", "$id", "title", "description", "examples", "default",
     "type", "enum", "minimum", "maximum", "minLength", "minItems", "maxItems",
-    "maxProperties", "properties", "additionalProperties", "items",
+    "maxProperties", "properties", "additionalProperties", "items", "format",
     "x-max-bytes", "x-trim", "x-normalize", "x-recommended", "x-unique-by", "x-on-violation",
 }
+_FORMATS = {"date-time"}
+
+# The warning code each failing keyword produces (conformance/warnings.json
+# carries the same table; the contract check compares them).
+KEYWORD_CODES = {
+    "type": "type_mismatch",
+    "minimum": "out_of_range",
+    "maximum": "out_of_range",
+    "enum": "out_of_range",
+    "minLength": "out_of_range",
+    "minItems": "out_of_range",
+    "maxItems": "out_of_range",
+    "maxProperties": "out_of_range",
+    "format": "invalid_format",
+    "x-max-bytes": "too_long",
+    "x-recommended": "missing_recommended",
+    "x-unique-by": "duplicate_<member>",
+    "properties": "unknown_field",
+}
+
+
+def check_schema(schema, where: str = "") -> None:
+    """Raise ValueError if any subschema uses a keyword or value this guide
+    cannot apply, so nothing in a kind schema is ever silently ignored."""
+    if not isinstance(schema, dict):
+        return
+    unknown = set(schema) - _SUPPORTED
+    if unknown:
+        raise ValueError(f"kind schema uses unsupported keywords at {where or '/'}: {sorted(unknown)}")
+    if "format" in schema and schema["format"] not in _FORMATS:
+        raise ValueError(f"kind schema uses unsupported format {schema['format']!r} at {where or '/'}")
+    if schema.get("x-on-violation") not in (None, "warn", "truncate"):
+        raise ValueError(f"kind schema uses x-on-violation {schema['x-on-violation']!r} at {where or '/'}; only the envelope may move")
+    for name, sub in schema.get("properties", {}).items():
+        check_schema(sub, f"{where}/properties/{name}")
+    for key in ("items", "additionalProperties"):
+        check_schema(schema.get(key), f"{where}/{key}")
+
+
+def _is_string(v) -> bool:
+    return isinstance(v, str) and not isinstance(v, RawNumber)
+
+
+def _enum_has(schema: dict, value) -> bool:
+    for allowed in schema["enum"]:
+        if isinstance(value, RawNumber):
+            if isinstance(allowed, (int, float)) and not isinstance(allowed, bool) and Decimal(str(value)) == Decimal(str(allowed)):
+                return True
+        elif value == allowed and type(value) is type(allowed):
+            return True
+    return False
 
 
 def validate(payload: dict, schema: dict, placed: set[str] | None = None) -> list[Warning_]:
@@ -62,10 +113,6 @@ def _matches_type(actual: str, wanted) -> bool:
 def _apply(value, schema: dict, pointer: str, warnings: list[Warning_], placed: set[str] = frozenset()):
     """Validate ``value`` in place (transforms mutate containers). Returns the
     possibly transformed value so callers holding a scalar can store it."""
-    unknown = set(schema) - _SUPPORTED
-    if unknown:
-        raise ValueError(f"kind schema uses unsupported keywords at {pointer}: {sorted(unknown)}")
-
     actual = _type_of(value)
     if "type" in schema and not _matches_type(actual, schema["type"]):
         warnings.append(Warning_("type_mismatch", pointer, f"expected {schema['type']}, got {actual}"))
@@ -84,8 +131,10 @@ def _apply(value, schema: dict, pointer: str, warnings: list[Warning_], placed: 
                 warnings.append(Warning_("too_long", pointer, f"longer than {limit} bytes"))
         if "minLength" in schema and len(value) < schema["minLength"]:
             warnings.append(Warning_("out_of_range", pointer, f"shorter than {schema['minLength']} code points"))
-        if "enum" in schema and value not in schema["enum"]:
+        if "enum" in schema and not _enum_has(schema, value):
             warnings.append(Warning_("out_of_range", pointer, f"not one of {schema['enum']}"))
+        if schema.get("format") == "date-time" and _parse_date_time(value) is None:
+            warnings.append(Warning_("invalid_format", pointer, "not an RFC 3339 date-time"))
         return value
 
     if actual in ("integer", "number"):
@@ -94,7 +143,7 @@ def _apply(value, schema: dict, pointer: str, warnings: list[Warning_], placed: 
             warnings.append(Warning_("out_of_range", pointer, f"below {schema['minimum']}"))
         if "maximum" in schema and d > Decimal(str(schema["maximum"])):
             warnings.append(Warning_("out_of_range", pointer, f"above {schema['maximum']}"))
-        if "enum" in schema and value not in schema["enum"]:
+        if "enum" in schema and not _enum_has(schema, value):
             warnings.append(Warning_("out_of_range", pointer, f"not one of {schema['enum']}"))
         return value
 
@@ -111,7 +160,7 @@ def _apply(value, schema: dict, pointer: str, warnings: list[Warning_], placed: 
         if member:
             seen: set = set()
             for i, item in enumerate(value):
-                if isinstance(item, dict) and isinstance(item.get(member), str):
+                if isinstance(item, dict) and _is_string(item.get(member)):
                     if item[member] in seen:
                         warnings.append(Warning_(f"duplicate_{member}", f"{pointer}/{i}", f"{member} {item[member]!r} appears more than once"))
                     seen.add(item[member])
@@ -135,6 +184,11 @@ def _apply(value, schema: dict, pointer: str, warnings: list[Warning_], placed: 
                 warnings.append(Warning_("missing_recommended", f"{pointer}/{escape_token(name)}", f"{name} is recommended"))
         return value
 
-    if "enum" in schema and value not in schema["enum"]:
+    if "enum" in schema and not _enum_has(schema, value):
         warnings.append(Warning_("out_of_range", pointer, f"not one of {schema['enum']}"))
     return value
+
+
+def _parse_date_time(text: str):
+    from .decode import _parse_rfc3339  # local import: decode imports this module
+    return _parse_rfc3339(text)

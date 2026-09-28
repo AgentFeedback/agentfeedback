@@ -37,7 +37,7 @@ from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT202012
 
 ROOT = Path(__file__).resolve().parents[1]
-SCHEMA_FILES = ["schemas/envelope.v1.json", "schemas/kinds/friction.v1.json", "schemas/kinds/review.v1.json"]
+SCHEMA_FILES = sorted(str(p.relative_to(ROOT)) for p in (ROOT / "schemas").rglob("*.json"))
 OPENAPI = ROOT / "docs" / "openapi.yaml"
 OPENAPI_URI = "file:///docs/openapi.yaml"
 
@@ -112,6 +112,8 @@ def lint_keywords(schema: dict, where: str) -> None:
             fail(f"{where}: x-recommended names {name!r}, which properties does not declare")
     if "x-unique-by" in schema and schema.get("type") != "array":
         fail(f"{where}: x-unique-by on a non-array")
+    if schema.get("x-on-violation") == "move" and where != "schemas/envelope.v1.json/additionalProperties":
+        fail(f"{where}: x-on-violation move is only for the envelope's additionalProperties")
     if "x-normalize" in schema and "x-trim" in schema:
         fail(f"{where}: x-normalize implies x-trim; declare one")
 
@@ -181,12 +183,22 @@ def validate_openapi_examples(doc: dict, registry: Registry) -> int:
             for i, param in enumerate(op.get("parameters") or []):
                 if isinstance(param, dict) and "schema" in param and "example" in param:
                     check(param["example"], f"{op_p}/parameters/{i}/schema", f"{op_p}/parameters/{i}/example")
+    for name, resp in ((doc.get("components") or {}).get("responses") or {}).items():
+        media_types(resp, f"/components/responses/{name}")
     for name, schema in ((doc.get("components") or {}).get("schemas") or {}).items():
-        for i, example in enumerate(schema.get("examples", [])):
-            check(example, f"/components/schemas/{name}", f"/components/schemas/{name}/examples/{i}")
-        if "example" in schema:
-            check(schema["example"], f"/components/schemas/{name}", f"/components/schemas/{name}/example")
+        def on_schema(sub: dict, where: str) -> None:
+            for i, example in enumerate(sub.get("examples", [])):
+                check(example, _pointer_of(where), f"{where}/examples/{i}")
+            if "example" in sub:
+                check(sub["example"], _pointer_of(where), f"{where}/example")
+        walk_schema(schema, f"/components/schemas/{name}", on_schema)
     return count
+
+
+def _pointer_of(where: str) -> str:
+    """walk_schema builds paths with raw names; turn one into a JSON Pointer."""
+    parts = where.split("/")[1:]
+    return "/" + "/".join(pointer_escape(part) for part in parts)
 
 
 _EXPECTED_DECODE = {
@@ -264,7 +276,11 @@ def main() -> int:
         walk_schema(schema, rel, lint_keywords)
     registry = registry_with_schemas(schemas)
 
-    examples = sum(validate_examples_in_schema(s, rel, registry) for rel, s in schemas.items())
+    examples = 0
+    for rel, schema in schemas.items():
+        if not schema.get("examples"):
+            fail(f"{rel}: no top-level examples")
+        examples += validate_examples_in_schema(schema, rel, registry)
 
     doc = yaml.safe_load(OPENAPI.read_text(encoding="utf-8"))
     registry = registry.with_resource(OPENAPI_URI, Resource.from_contents(doc, default_specification=DRAFT202012))
@@ -280,7 +296,35 @@ def main() -> int:
     check_fixtures(schemas["schemas/envelope.v1.json"], registry, codes, families)
 
     sys.path.insert(0, str(ROOT / "conformance"))
+    from reference import decode as ref_decode, guide as ref_guide, rawjson as ref_rawjson  # noqa: E402
     from reference.fixtures import run as run_fixtures  # noqa: E402
+
+    if warnings_doc.get("keyword_codes") != ref_guide.KEYWORD_CODES:
+        fail("conformance/warnings.json keyword_codes differs from the reference's table")
+    for code in set(warnings_doc.get("keyword_codes", {}).values()):
+        if code not in codes:
+            fail(f"conformance/warnings.json keyword_codes names unknown code {code!r}")
+    for rel, schema in schemas.items():
+        if rel.startswith("schemas/kinds/"):
+            try:
+                ref_guide.check_schema(schema)
+            except ValueError as e:
+                fail(f"{rel}: {e}")
+
+    manifest = load_json(ROOT / "conformance" / "manifest.json")
+    for group in ("decode/rows", "decode/interactions", "hash"):
+        on_disk = sorted(p.name for p in (ROOT / "conformance" / group).iterdir() if p.is_dir())
+        listed = sorted(manifest.get(group, []))
+        if on_disk != listed:
+            fail(f"conformance/manifest.json {group}: listed {listed} but on disk {on_disk}")
+
+    limits = doc["paths"]["/api/v1/meta"]["get"]["responses"]["200"]["content"]["application/json"]["example"]["limits"]
+    for name, want in (("body_bytes", ref_decode.BODY_LIMIT), ("context_entries", ref_decode.CONTEXT_ENTRIES),
+                       ("context_value_bytes", ref_decode.CONTEXT_VALUE_BYTES), ("summary_bytes", 2000), ("identifier_bytes", 200)):
+        if limits.get(name) != want:
+            fail(f"docs/openapi.yaml /meta example limits.{name} is {limits.get(name)}, the reference uses {want}")
+    if manifest.get("max_depth") != ref_rawjson.MAX_DEPTH:
+        fail("conformance/manifest.json max_depth differs from the reference")
 
     try:
         if run_fixtures() != 0:
@@ -293,7 +337,7 @@ def main() -> int:
             print(f"contract-check: {p}", file=sys.stderr)
         print(f"contract-check: {len(problems)} problem(s)", file=sys.stderr)
         return 1
-    print(f"contract-check: {len(schemas)} schemas, {examples} examples, warnings list and fixtures OK")
+    print(f"contract-check: {len(schemas)} schemas, {examples} examples, warnings list, manifest and fixtures OK")
     return 0
 
 

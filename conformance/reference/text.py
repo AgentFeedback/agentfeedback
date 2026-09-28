@@ -8,7 +8,8 @@ where the contract wants the simple, context-free mapping of each code point.
 
 from __future__ import annotations
 
-# Unicode White_Space property (PropList.txt, unchanged since Unicode 6.0).
+# Unicode White_Space property (PropList.txt, unchanged since Unicode 6.3,
+# when U+180E left the set).
 WHITE_SPACE = frozenset(
     [chr(c) for c in range(0x09, 0x0E)]           # TAB, LF, VT, FF, CR
     + [chr(0x20), chr(0x85), chr(0xA0), chr(0x1680)]

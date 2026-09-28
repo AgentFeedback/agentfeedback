@@ -9,7 +9,10 @@ info:
     HTTP API of AgentFeedback, a service that stores write-once feedback from AI
     coding agents. The contract is this document together with the JSON Schemas
     under `schemas/` and the conformance kit under `conformance/`. This is the API
-    of the next major release.
+    of the next major release. Schemas use the custom keyword `x-max-bytes` for
+    UTF-8 byte limits, since JSON Schema `maxLength` counts code points. The
+    server serves this document at `/api/v1/openapi.json` in bundled form, with
+    the referenced schema files inlined.
 servers:
   - url: https://api.agentfeedback.io
     description: Hosted
@@ -84,11 +87,6 @@ paths:
                   payload: {category: documentation, details: The --fast flag was removed in 3.0., fix_status: applied, fix_ref: example@a1b2c3d}
                   content_hash: 9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a
                   created_at: '2026-09-27T10:00:01.123456Z'
-                  processed_at: '2026-09-27T14:02:00.000000Z'
-                  verdict: fixed
-                  resolution: already applied by the reporter
-                  ref: example@a1b2c3d
-                  processed_by: workstation-b/triage-2026-09-27
                 warnings: []
         '200':
           description: Replay of an existing record (keyed replay or keyless duplicate).
@@ -205,6 +203,27 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/Submission'}
+              example:
+                id: 44
+                uid: 019250f2-8c3e-7a4b-9d1e-2f3a4b5c6d7e
+                kind: friction
+                schema_version: 1
+                key: friction-workstation-a-019250f2
+                summary: README install step 3 references a flag that no longer exists
+                machine: workstation-a
+                model: claude-fable-5-1
+                harness: claude-code
+                project: example
+                occurred_at: '2026-09-27T09:58:12.000000Z'
+                context: {git_commit: a1b2c3d, client: agentfeedback/4.0.0}
+                payload: {category: documentation, details: The --fast flag was removed in 3.0., fix_status: applied, fix_ref: example@a1b2c3d}
+                content_hash: 9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a
+                created_at: '2026-09-27T10:00:01.123456Z'
+                processed_at: '2026-09-27T14:02:00.000000Z'
+                verdict: fixed
+                resolution: already applied by the reporter
+                ref: example@a1b2c3d
+                processed_by: workstation-b/triage-2026-09-27
         '400': {$ref: '#/components/responses/BadRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
@@ -658,6 +677,11 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/JsonRpc'
+        '202':
+          description: 'Accepted: the body was a JSON-RPC notification or response; no body is returned.'
+          headers:
+            X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+            Mcp-Session-Id: {$ref: '#/components/headers/McpSessionId'}
         '400': {$ref: '#/components/responses/BadRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '405': {$ref: '#/components/responses/MethodNotAllowed'}
@@ -686,6 +710,11 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/JsonRpc'
+        '202':
+          description: 'Accepted: the body was a JSON-RPC notification or response; no body is returned.'
+          headers:
+            X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+            Mcp-Session-Id: {$ref: '#/components/headers/McpSessionId'}
         '400': {$ref: '#/components/responses/BadRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '405': {$ref: '#/components/responses/MethodNotAllowed'}
@@ -819,7 +848,7 @@ components:
       description: Request identifier; present on every response.
       schema: {type: string}
     CacheControl:
-      description: '`no-store` on every authenticated response.'
+      description: '`no-store` on every response of an authenticated route, success or error.'
       schema: {type: string, const: no-store}
     WWWAuthenticate:
       description: '`Bearer` on 401.'
@@ -829,6 +858,10 @@ components:
       schema: {type: string}
     Allow:
       description: Methods the route accepts.
+      schema: {type: string}
+    McpSessionId:
+      description: Session identifier assigned at initialization; the client sends it back on later requests.
+      required: false
       schema: {type: string}
     RetryAfter:
       description: Seconds to wait before retrying, when known.
@@ -950,15 +983,24 @@ components:
       headers:
         X-Request-Id: {$ref: '#/components/headers/XRequestId'}
         Cache-Control: {$ref: '#/components/headers/CacheControl'}
+        Mcp-Session-Id: {$ref: '#/components/headers/McpSessionId'}
       content:
         application/json:
           schema: {$ref: '#/components/schemas/JsonRpc'}
+        text/event-stream:
+          schema:
+            type: string
+            description: >-
+              The server may answer a request with a server-sent event stream
+              carrying JSON-RPC messages when the client's `Accept` header
+              allows it.
     BadRequest:
       description: >-
         `bad_request` (body not JSON, or not an object) or `validation_error`
         (reads, processing, import, path parameters).
       headers:
         X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+        Cache-Control: {$ref: '#/components/headers/CacheControl'}
       content:
         application/json:
           schema: {$ref: '#/components/schemas/Error'}
@@ -974,6 +1016,7 @@ components:
       description: '`unauthorized`.'
       headers:
         X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+        Cache-Control: {$ref: '#/components/headers/CacheControl'}
         WWW-Authenticate: {$ref: '#/components/headers/WWWAuthenticate'}
       content:
         application/json:
@@ -982,6 +1025,7 @@ components:
       description: '`not_found`.'
       headers:
         X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+        Cache-Control: {$ref: '#/components/headers/CacheControl'}
       content:
         application/json:
           schema: {$ref: '#/components/schemas/Error'}
@@ -989,6 +1033,7 @@ components:
       description: '`method_not_allowed`.'
       headers:
         X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+        Cache-Control: {$ref: '#/components/headers/CacheControl'}
         Allow: {$ref: '#/components/headers/Allow'}
       content:
         application/json:
@@ -997,6 +1042,7 @@ components:
       description: '`replay_mismatch`: the key was already used with different content.'
       headers:
         X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+        Cache-Control: {$ref: '#/components/headers/CacheControl'}
       content:
         application/json:
           schema: {$ref: '#/components/schemas/Error'}
@@ -1013,6 +1059,7 @@ components:
       description: '`request_too_large`.'
       headers:
         X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+        Cache-Control: {$ref: '#/components/headers/CacheControl'}
       content:
         application/json:
           schema: {$ref: '#/components/schemas/Error'}
@@ -1020,6 +1067,7 @@ components:
       description: '`rate_limited` (hosted service only).'
       headers:
         X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+        Cache-Control: {$ref: '#/components/headers/CacheControl'}
         Retry-After: {$ref: '#/components/headers/RetryAfter'}
       content:
         application/json:
@@ -1028,6 +1076,7 @@ components:
       description: '`internal_error`.'
       headers:
         X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+        Cache-Control: {$ref: '#/components/headers/CacheControl'}
       content:
         application/json:
           schema: {$ref: '#/components/schemas/Error'}
@@ -1035,6 +1084,7 @@ components:
       description: '`unavailable`; `Retry-After` when known.'
       headers:
         X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+        Cache-Control: {$ref: '#/components/headers/CacheControl'}
         Retry-After: {$ref: '#/components/headers/RetryAfter'}
       content:
         application/json:
@@ -1164,14 +1214,14 @@ components:
         processed: {type: boolean, default: true, description: Default `true` when absent; `null` is 400.}
         verdict:
           type: string
-          maxLength: 64
+          x-max-bytes: 64
           description: >-
             Token of at most 64 bytes, normalised. Documented values: `fixed`,
             `invalid`, `duplicate`, `wont_fix`, `deferred`, `upstream`,
             `unverifiable`.
-        resolution: {type: string, minLength: 1, maxLength: 2000, description: 'Trimmed, at most 2000 bytes; blank is 400.'}
-        ref: {type: string, maxLength: 200, description: 'Trimmed, at most 200 bytes. When it points at another submission it holds that row''s `uid`, never its `id`.'}
-        processed_by: {type: string, maxLength: 200, description: 'Trimmed, at most 200 bytes.'}
+        resolution: {type: string, minLength: 1, x-max-bytes: 2000, description: 'Trimmed, at most 2000 bytes; blank is 400.'}
+        ref: {type: string, x-max-bytes: 200, description: 'Trimmed, at most 200 bytes. When it points at another submission it holds that row''s `uid`, never its `id`.'}
+        processed_by: {type: string, x-max-bytes: 200, description: 'Trimmed, at most 200 bytes.'}
     BatchMark:
       type: object
       additionalProperties: false
@@ -1304,6 +1354,18 @@ components:
               uid: {type: string, format: uuid}
               existing_id: {type: integer, minimum: 1}
               reason: {type: string, enum: [key_mismatch]}
+        warnings:
+          type: array
+          description: Normalisation warnings per imported record, the same codes as on create; a warning never rejects the import.
+          items:
+            type: object
+            additionalProperties: false
+            required: [line, code, pointer, message]
+            properties:
+              line: {type: integer, minimum: 1, description: 1-based line of the NDJSON body.}
+              code: {type: string}
+              pointer: {type: string, description: RFC 6901 pointer into the imported record.}
+              message: {type: string}
         first_id: {type: integer, minimum: 1}
         last_id: {type: integer, minimum: 1}
     Discovery:

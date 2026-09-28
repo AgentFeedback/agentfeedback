@@ -1,0 +1,1 @@
+{"kind":"review","machine":"m","model":"x","payload":{"reviewers":[{"model":"a","slot":1,"status":"completed","valid":2.0},{"model":"b","slot":"1","status":"completed"}],"skill":"r"},"schema_version":1,"summary":"s"}

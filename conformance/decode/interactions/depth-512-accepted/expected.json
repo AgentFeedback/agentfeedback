@@ -1,0 +1,11 @@
+{
+  "row": "512 nested levels (the body object counts as one) are accepted",
+  "status": 201,
+  "note": "body object (1) + payload (2) + 509 arrays + the innermost empty array = 512 levels.",
+  "warnings": [
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/deep"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "row": "a parse-time warning follows occurred_at into context",
+  "status": 201,
+  "warnings": [
+    {
+      "code": "invalid_format",
+      "pointer": "/context/occurred_at_raw"
+    },
+    {
+      "code": "invalid_utf8",
+      "pointer": "/context/occurred_at_raw"
+    }
+  ]
+}

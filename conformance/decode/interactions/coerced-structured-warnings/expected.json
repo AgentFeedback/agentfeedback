@@ -1,0 +1,22 @@
+{
+  "row": "warnings inside a value that was coerced to a string collapse onto the member",
+  "status": 201,
+  "warnings": [
+    {
+      "code": "coerced",
+      "pointer": "/context/k"
+    },
+    {
+      "code": "coerced",
+      "pointer": "/summary"
+    },
+    {
+      "code": "invalid_utf8",
+      "pointer": "/context/k"
+    },
+    {
+      "code": "invalid_utf8",
+      "pointer": "/summary"
+    }
+  ]
+}

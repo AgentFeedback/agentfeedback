@@ -41,8 +41,9 @@ _RECOMMENDED = ("kind", "summary", "machine", "model")
 HASH_MEMBERS = ("kind", "schema_version", "machine", "model", "harness", "project", "summary", "payload")
 
 _SCHEMAS_DIR = Path(__file__).resolve().parents[2] / "schemas" / "kinds"
+# RFC 3339 section 5.6 date-time: ASCII digits only, no leap second, T/Z in either case.
 _RFC3339 = re.compile(
-    r"^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(?:[Zz]|([+-])(\d{2}):(\d{2}))$"
+    r"([0-9]{4})-([0-9]{2})-([0-9]{2})[Tt]([0-9]{2}):([0-9]{2}):([0-9]{2})(?:\.([0-9]+))?(?:[Zz]|([+-])([0-9]{2}):([0-9]{2}))"
 )
 
 
@@ -64,12 +65,22 @@ def load_kind_schemas() -> dict[tuple[str, int], dict]:
     for path in sorted(_SCHEMAS_DIR.glob("*.v*.json")):
         kind, _, rest = path.name.partition(".v")
         version = int(rest.removesuffix(".json"))
-        schemas[(kind, version)] = json.loads(path.read_text(encoding="utf-8"))
+        schema = json.loads(path.read_text(encoding="utf-8"))
+        guide.check_schema(schema)
+        schemas[(kind, version)] = schema
     return schemas
 
 
 def _is_string(v) -> bool:
     return isinstance(v, str) and not isinstance(v, RawNumber)
+
+
+def _collapse(warnings: list[Warning_], member: str) -> None:
+    """A structured value became one string: warnings about its parts now
+    point at the member itself."""
+    for w in warnings:
+        if w.pointer.startswith(member + "/"):
+            w.pointer = member
 
 
 def _remap(warnings: list[Warning_], old: str, new: str) -> None:
@@ -140,7 +151,7 @@ def decode(body: bytes, schemas: dict[tuple[str, int], dict] | None = None) -> R
     sv = value.get("schema_version")
     if sv is None:
         version = 1
-    elif isinstance(sv, RawNumber) and re.fullmatch(r"[1-9][0-9]*", str(sv)) and int(sv) <= SCHEMA_VERSION_MAX:
+    elif isinstance(sv, RawNumber) and re.fullmatch(r"[1-9][0-9]*", str(sv)) and len(str(sv)) <= 16 and int(sv) <= SCHEMA_VERSION_MAX:
         version = int(sv)
     else:
         version = 1
@@ -154,6 +165,7 @@ def decode(body: bytes, schemas: dict[tuple[str, int], dict] | None = None) -> R
         s = value[name]
         if not _is_string(s):
             s = canonical(s)
+            _collapse(warnings, "/" + name)
             warnings.append(Warning_("coerced", "/" + name, f"{name} was not a string; encoded as canonical JSON"))
         s = trim(s)
         if name == "summary":
@@ -181,6 +193,8 @@ def decode(body: bytes, schemas: dict[tuple[str, int], dict] | None = None) -> R
         raw = value["occurred_at"]
         coerced = not _is_string(raw)
         text = raw if _is_string(raw) else canonical(raw)
+        if coerced:
+            _collapse(warnings, "/occurred_at")
         parsed = _parse_rfc3339(text)
         if parsed is not None:
             env["occurred_at"] = parsed
@@ -189,6 +203,7 @@ def decode(body: bytes, schemas: dict[tuple[str, int], dict] | None = None) -> R
         else:
             if "occurred_at_raw" in context:
                 warnings.append(Warning_("duplicate_key", "/context/occurred_at_raw", "context.occurred_at_raw replaced"))
+            _remap(warnings, "/occurred_at", "/context/occurred_at_raw")
             context["occurred_at_raw"] = text
             if coerced:
                 warnings.append(Warning_("coerced", "/context/occurred_at_raw", "occurred_at was not a string"))
@@ -209,6 +224,7 @@ def decode(body: bytes, schemas: dict[tuple[str, int], dict] | None = None) -> R
         p = "/context/" + escape_token(k)
         if not _is_string(v):
             v = canonical(v)
+            _collapse(warnings, p)
             warnings.append(Warning_("coerced", p, "context values are strings; encoded as canonical JSON"))
         v, cut = truncate_bytes(v, CONTEXT_VALUE_BYTES)
         if cut:
@@ -251,6 +267,7 @@ def _place(payload: dict, name: str, val, warnings: list[Warning_], code: str, m
     else:
         moved = payload.get("moved")
         if "moved" in payload and not isinstance(moved, dict):
+            _remap(warnings, "/payload/moved", "/payload/moved/value")
             payload["moved"] = {"value": moved}
             warnings.append(Warning_("payload_wrapped", "/payload/moved", "payload.moved is reserved and was not an object; wrapped"))
         payload.setdefault("moved", {})
@@ -275,23 +292,24 @@ def _move_into_payload(payload: dict, name: str, val, warnings: list[Warning_], 
 
 def _parse_rfc3339(text: str) -> str | None:
     """RFC 3339 section 5.6 date-time without leap seconds. Returns the UTC
-    form with six fractional digits, or None."""
-    m = _RFC3339.match(text)
+    form with six fractional digits, or None. A result outside years 0001 to
+    9999 is unrepresentable and counts as unparseable."""
+    m = _RFC3339.fullmatch(text)
     if not m:
         return None
     year, month, day, hour, minute, second, frac, sign, oh, om = m.groups()
     try:
         dt = datetime(int(year), int(month), int(day), int(hour), int(minute), int(second), tzinfo=timezone.utc)
-    except ValueError:
+        dt = dt.replace(microsecond=int((frac or "")[:6].ljust(6, "0")))
+        if sign:
+            if int(oh) > 23 or int(om) > 59:
+                return None
+            offset = timedelta(hours=int(oh), minutes=int(om))
+            dt = dt - offset if sign == "+" else dt + offset
+    except (ValueError, OverflowError):
         return None
-    micros = int((frac or "")[:6].ljust(6, "0"))
-    dt = dt.replace(microsecond=micros)
-    if sign:
-        if int(oh) > 23 or int(om) > 59:
-            return None
-        offset = timedelta(hours=int(oh), minutes=int(om))
-        dt = dt - offset if sign == "+" else dt + offset
-    return dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    return (f"{dt.year:04d}-{dt.month:02d}-{dt.day:02d}T{dt.hour:02d}:{dt.minute:02d}:{dt.second:02d}"
+            f".{dt.microsecond:06d}Z")
 
 
 def gen_body(spec: dict) -> bytes:
