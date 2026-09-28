@@ -3,6 +3,8 @@ package envelope
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
@@ -182,5 +184,21 @@ func TestTreeOmitsAbsentMembers(t *testing.T) {
 	}
 	if tree := env.Tree(); reflect.ValueOf(tree["payload"]).Pointer() != reflect.ValueOf(env.Payload).Pointer() {
 		t.Error("Tree copies the payload")
+	}
+}
+
+func TestDecodeWithLimit(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{"kind":"friction"}`)
+	if _, _, err := DecodeWithLimit(body, len(body)); err != nil {
+		t.Fatalf("at the limit: %v", err)
+	}
+	_, _, err := DecodeWithLimit(body, len(body)-1)
+	var r *Rejection
+	if !errors.As(err, &r) || r.Status != 413 || r.Code != "request_too_large" {
+		t.Fatalf("over the limit: %v", err)
+	}
+	if want := fmt.Sprintf("body over %d bytes", len(body)-1); r.Message != want {
+		t.Errorf("message %q, want %q", r.Message, want)
 	}
 }

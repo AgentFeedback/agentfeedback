@@ -3,6 +3,8 @@ package envelope
 import (
 	"encoding/json"
 	"strconv"
+
+	"github.com/agentfeedback/agentfeedback/pkg/canonjson"
 )
 
 // BodyLimit is the largest body the contract accepts, in bytes. Exactly
@@ -56,6 +58,31 @@ func (e *Envelope) Tree() map[string]any {
 		t["context"] = context
 	}
 	return t
+}
+
+// identityMembers are the members of the stored envelope that content
+// identity covers. key, occurred_at, context and every server field are
+// outside identity.
+var identityMembers = []string{"kind", "schema_version", "machine", "model", "harness", "project", "summary", "payload"}
+
+// IdentityTree returns the identity input: the stored envelope's tree
+// restricted to identityMembers, absent members omitted, schema_version
+// always present. The payload map is the envelope's own, not a copy.
+func (e *Envelope) IdentityTree() map[string]any {
+	tree := e.Tree()
+	identity := make(map[string]any, len(identityMembers))
+	for _, name := range identityMembers {
+		if v, ok := tree[name]; ok {
+			identity[name] = v
+		}
+	}
+	return identity
+}
+
+// ContentHash returns content_hash: the lower-case hex SHA-256 of the
+// canonical JSON of IdentityTree.
+func (e *Envelope) ContentHash() string {
+	return canonjson.Sum(e.IdentityTree())
 }
 
 // Rejection is the error Decode returns for the four bodies the contract

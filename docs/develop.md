@@ -7,14 +7,15 @@ How to change the service and the skills, verify, and release. Read
 
 ```
 cmd/agentfeedback/              main: `serve` (default), `import <jsonl>`, `backup <dest.db>`
-internal/api/                   HTTP: mux, middleware (auth, recovery, request id, log, metrics, body limits), handlers, DTOs
-internal/core/                  validation, per-family canonical hashing, create/list/get/processed/export
+internal/api/                   HTTP of the running v3 service: mux, middleware (auth, recovery, request id, log, metrics, body limits), handlers, DTOs
+internal/core/                  v1 service, no net/http: create with identity and dedupe, get, list, marks, redaction, stats, export and import format 2, meta; typed problems
 internal/store/                 SQLite for the v1 API: open + pragmas + the application_id stamp, the single init migration, hand-written SQL, query plans pinned by a test
-internal/v3/store/              the v3 service's store, moved here unchanged; the running service uses it until the v1 core lands, then it goes
+internal/v3/core/               the v3 service's core, moved here unchanged; the running service uses it until the v1 HTTP layer lands, then it goes
+internal/v3/store/              the v3 service's store, moved here unchanged; same lifetime as internal/v3/core
 internal/canonjson/             canonical JSON of the v3 event hash (frozen: hash forms never change); not the v1 writer
 pkg/schema/                     v1 schema engine: embedded schemas compiled at init, the x- keywords, guide validation, the text and date-time rules
-pkg/envelope/                   v1 decoder: token-stream parse (spellings, duplicates, UTF-8 repair), inference table, normalisation order, guide and recommended checks
-pkg/canonjson/                  v1 canonical JSON writer on the write path's JSON tree; identity hashes and stored bytes are written with it
+pkg/envelope/                   v1 decoder: token-stream parse (spellings, duplicates, UTF-8 repair), inference table, normalisation order, guide and recommended checks; the content_hash member set
+pkg/canonjson/                  v1 canonical JSON writer on the write path's JSON tree and its SHA-256; identity hashes and stored bytes are written with it
 infra/agentfeedback/            compose stacks (local build, image-based deploy) and .env.example
 scripts/                        e2e.sh (live contract suite), deploy.sh, release.py,
                                 eval-cluster.py (live cluster.py calibration; discloses report text)
@@ -73,10 +74,13 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
   `json.Number`, `bool`, `nil`; numbers keep their spelling). The decoder,
   the CLI and the HTTP layer call it and never re-implement a rule. Its tests
   read `conformance/` directly; a fixture change is a test change.
-- **Hash forms are frozen.** Frictions and reviews hash the exact Go structs
-  from API 1.0 (field order matters); events hash canonical JSON. Changing
-  either turns every stored row into a replay mismatch. A test pins a fixed
-  vector for each.
+- **Hash forms are frozen.** In the v1 API, `content_hash` is the SHA-256 of
+  the canonical JSON of the identity members; `conformance/hash/` pins it and
+  `pkg/envelope` and `internal/core` run every vector. In the v3 service,
+  frictions and reviews hash the exact Go structs from API 1.0 (field order
+  matters) and events hash `internal/canonjson`; a test pins a fixed vector
+  for each. Changing any of them turns every stored row into a replay
+  mismatch.
 - **Migrations are forward-only and append-only.** New numbered file under
   `internal/store/migrations/`, applied in one transaction, version recorded
   in `schema_version`. A binary that meets a newer schema refuses to start,

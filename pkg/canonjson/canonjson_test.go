@@ -131,3 +131,11 @@ func TestConformanceCanonical(t *testing.T) {
 		})
 	}
 }
+
+func TestSum(t *testing.T) {
+	t.Parallel()
+	// SHA-256 of the two bytes "{}".
+	if got, want := Sum(map[string]any{}), "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"; got != want {
+		t.Errorf("Sum({}) = %s, want %s", got, want)
+	}
+}

@@ -20,8 +20,16 @@ var versionSpelling = regexp.MustCompile(`^[1-9][0-9]*$`)
 // its warnings, or a *Rejection for one of the four refused bodies (then the
 // envelope and the warnings are nil).
 func Decode(body []byte) (*Envelope, []schema.Detail, error) {
-	if len(body) > BodyLimit {
-		return nil, nil, &Rejection{Status: 413, Code: "request_too_large", Message: fmt.Sprintf("body over %d bytes", BodyLimit)}
+	return DecodeWithLimit(body, BodyLimit)
+}
+
+// DecodeWithLimit is Decode with limit in place of BodyLimit: a body over
+// limit bytes is 413 request_too_large, and the message states limit. The
+// import path uses it with its own cap, since a stored envelope can exceed
+// BodyLimit after invalid UTF-8 was expanded to U+FFFD.
+func DecodeWithLimit(body []byte, limit int) (*Envelope, []schema.Detail, error) {
+	if len(body) > limit {
+		return nil, nil, &Rejection{Status: 413, Code: "request_too_large", Message: fmt.Sprintf("body over %d bytes", limit)}
 	}
 	det := newDetails()
 	value, err := parse(body, det)

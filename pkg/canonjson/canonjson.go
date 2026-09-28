@@ -18,6 +18,8 @@
 package canonjson
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -29,6 +31,13 @@ const hexDigits = "0123456789abcdef"
 // Marshal returns the canonical form of v.
 func Marshal(v any) []byte {
 	return Append(nil, v)
+}
+
+// Sum returns the lower-case hex SHA-256 digest of the canonical form of v:
+// the content identity digest when v is the identity tree.
+func Sum(v any) string {
+	digest := sha256.Sum256(Marshal(v))
+	return hex.EncodeToString(digest[:])
 }
 
 // Append appends the canonical form of v to dst and returns the result.
