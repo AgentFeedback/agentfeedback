@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -124,8 +125,12 @@ func TestQueryPlans(t *testing.T) {
 	// Stats groups: one key each. Keys with an index group in index order;
 	// model, harness and schema_version have none and build a temporary
 	// b-tree over the whole table.
-	for _, k := range []string{"kind", "project", "category", "fix_status", "machine", "verdict"} {
-		add("group by "+k, "ix_submissions_"+k, false, mustGroups(ListFilter{}, k))
+	for k, index := range map[string]string{
+		"kind": "ix_submissions_kind_created", "project": "ix_submissions_project",
+		"category": "ix_submissions_category", "fix_status": "ix_submissions_fix_status",
+		"machine": "ix_submissions_machine", "verdict": "ix_submissions_verdict",
+	} {
+		add("group by "+k, index, false, mustGroups(ListFilter{}, k))
 	}
 	for _, k := range []string{"model", "harness", "schema_version"} {
 		add("group by "+k, "", false, mustGroups(ListFilter{}, k))
@@ -169,7 +174,9 @@ func TestQueryPlans(t *testing.T) {
 					t.Fatalf("expected the integer primary key, got %q", access)
 				}
 			default:
-				if !strings.Contains(access, "INDEX "+c.index) {
+				// The whole name: ix_submissions_kind must not pass for
+				// ix_submissions_kind_created.
+				if !regexp.MustCompile(`INDEX ` + regexp.QuoteMeta(c.index) + `( |$)`).MatchString(access) {
 					t.Fatalf("expected index %s, got %q", c.index, access)
 				}
 			}

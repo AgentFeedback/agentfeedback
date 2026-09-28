@@ -703,34 +703,46 @@ func TestStats(t *testing.T) {
 		}
 	})
 
-	t.Run("week buckets at the boundaries", func(t *testing.T) {
-		// Sunday 23:59:59 belongs to the week before Monday 00:00:00; the
-		// turn of the year keeps the ISO Monday.
+	t.Run("buckets at the boundaries", func(t *testing.T) {
+		// The last microsecond of a Sunday is still that Sunday and the week
+		// before Monday 00:00:00; the turn of the year keeps the ISO Monday;
+		// the ends of the contract's date range stay in range.
 		for _, c := range []struct {
-			at   string
-			want string
+			at        string
+			day, week string
 		}{
-			{"2026-09-27T23:59:59Z", "2026-09-21"},
-			{"2026-09-28T00:00:00Z", "2026-09-28"},
-			{"2026-10-04T12:00:00Z", "2026-09-28"},
-			{"2026-01-01T00:00:00Z", "2025-12-29"},
-			{"2025-01-05T00:00:00Z", "2024-12-30"},
-			{"2024-12-30T00:00:00Z", "2024-12-30"},
+			{"2026-09-27T23:59:59.999999Z", "2026-09-27", "2026-09-21"},
+			{"2026-09-28T00:00:00Z", "2026-09-28", "2026-09-28"},
+			{"2026-10-04T12:00:00Z", "2026-10-04", "2026-09-28"},
+			{"2026-01-01T00:00:00Z", "2026-01-01", "2025-12-29"},
+			{"2025-01-05T00:00:00Z", "2025-01-05", "2024-12-30"},
+			{"2024-12-30T00:00:00Z", "2024-12-30", "2024-12-30"},
+			{"1969-12-31T23:59:59.999999Z", "1969-12-31", "1969-12-29"},
+			{"0001-01-01T00:00:00Z", "0001-01-01", "0001-01-01"},
+			{"9999-12-31T23:59:59.999999Z", "9999-12-31", "9999-12-27"},
 		} {
-			ts, err := time.Parse(time.RFC3339, c.at)
+			ts, err := time.Parse(time.RFC3339Nano, c.at)
 			if err != nil {
 				t.Fatal(err)
 			}
-			s := newSub("u-week-" + c.at)
-			s.Project, s.CreatedAt = "weeks", ts.UnixMicro()
+			s := newSub("u-bucket-" + c.at)
+			s.Project, s.CreatedAt = "buckets", ts.UnixMicro()
 			mustInsert(t, db, s)
 			run(func(q Querier) error {
-				weeks, err := StatsSeries(ctx, q, ListFilter{Project: "weeks", Since: &s.CreatedAt, Until: &s.CreatedAt}, BucketWeek)
+				only := ListFilter{Project: "buckets", Since: &s.CreatedAt, Until: &s.CreatedAt}
+				days, err := StatsSeries(ctx, q, only, BucketDay)
 				if err != nil {
 					return err
 				}
-				if len(weeks) != 1 || weeks[0].Bucket != c.want {
-					t.Fatalf("%s: got %v, want week %s", c.at, weeks, c.want)
+				if len(days) != 1 || days[0].Bucket != c.day {
+					t.Fatalf("%s: got %v, want day %s", c.at, days, c.day)
+				}
+				weeks, err := StatsSeries(ctx, q, only, BucketWeek)
+				if err != nil {
+					return err
+				}
+				if len(weeks) != 1 || weeks[0].Bucket != c.week {
+					t.Fatalf("%s: got %v, want week %s", c.at, weeks, c.week)
 				}
 
 				return nil
@@ -1073,6 +1085,31 @@ func TestQSearchesFromEveryReaderConnection(t *testing.T) {
 	for err := range errs {
 		if err != nil {
 			t.Fatal(err)
+		}
+	}
+}
+
+func TestQStopsAtAnEmbeddedNul(t *testing.T) {
+	t.Parallel()
+
+	// Pins the documented limit of qClause: text before a NUL is searched,
+	// text after it is not. If this starts failing on the "after" cases the
+	// driver has changed how it passes TEXT arguments and the comment on
+	// qClause can go.
+	db := openTest(t)
+	s := newSub("u-nul")
+	s.Summary = "head\x00Tail of the summary"
+	s.Payload = json.RawMessage(`{"details":"before\u0000Needle after"}`)
+	mustInsert(t, db, s)
+
+	for _, needle := range []string{"head", "before"} {
+		if got := listIDs(t, db, ListFilter{Q: needle}, Page{Limit: 10}); len(got) != 1 {
+			t.Fatalf("q=%q: %v, want the row", needle, got)
+		}
+	}
+	for _, needle := range []string{"needle after", "tail of the summary"} {
+		if got := listIDs(t, db, ListFilter{Q: needle}, Page{Limit: 10}); len(got) != 0 {
+			t.Fatalf("q=%q: %v, the text after a NUL is documented as unsearchable", needle, got)
 		}
 	}
 }

@@ -6,7 +6,9 @@ import (
 	"errors"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -134,6 +136,68 @@ func TestOpenRefusesADatabaseItDidNotCreate(t *testing.T) {
 	if !strings.Contains(err.Error(), path) || !strings.Contains(err.Error(), "DATABASE_PATH") {
 		t.Fatalf("error must name the file and the way out, got %q", err)
 	}
+
+	// Any schema object counts, not only tables.
+	viewOnly := filepath.Join(t.TempDir(), "views.db")
+	raw, err = sql.Open("sqlite", dsn(viewOnly, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.ExecContext(ctx, `CREATE VIEW v AS SELECT 1`); err != nil {
+		t.Fatal(err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(ctx, viewOnly); !errors.Is(err, ErrForeignDatabase) {
+		t.Fatalf("a database holding only a view must be refused, got %v", err)
+	}
+}
+
+func TestConcurrentFirstOpensAgreeOnOneSchema(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "shared.db")
+
+	// serve and a restore starting on the same fresh file at once: both
+	// must come up, and schema_version must hold exactly one row.
+	const openers = 4
+	var wg sync.WaitGroup
+	errs := make(chan error, openers)
+	for i := 0; i < openers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			db, err := Open(ctx, path)
+			if err != nil {
+				errs <- err
+
+				return
+			}
+			errs <- db.Close()
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent open: %v", err)
+		}
+	}
+
+	db, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	var rows int
+	if err := db.reader.QueryRowContext(ctx, "SELECT count(*) FROM schema_version").Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 1 {
+		t.Fatalf("schema_version holds %d rows, want 1", rows)
+	}
 }
 
 func TestOpenResumesAfterAnInterruptedFirstOpen(t *testing.T) {
@@ -148,7 +212,7 @@ func TestOpenResumesAfterAnInterruptedFirstOpen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := raw.ExecContext(ctx, "PRAGMA application_id = 1633837617"); err != nil {
+	if _, err := raw.ExecContext(ctx, "PRAGMA application_id = "+strconv.Itoa(applicationID)); err != nil {
 		t.Fatal(err)
 	}
 	if err := raw.Close(); err != nil {

@@ -230,7 +230,10 @@ const (
 // depth, after the simple lower-case mapping on both sides. Keys, numbers and
 // booleans are not searched, and escaped text is matched in its decoded form.
 // It has no index by design; another filter in the same request narrows the
-// rows it scans.
+// rows it scans. Known limit: the driver hands TEXT arguments to Go functions
+// as C strings, so text after an embedded NUL (a decoded \u0000) is not
+// searched; SQLite's own replace() stops at the NUL too, so it cannot be
+// masked in SQL.
 const qClause = `(instr(` + lowerFunc + `(summary), ?) > 0 OR EXISTS (
 		SELECT 1 FROM json_tree(payload) WHERE type = 'text' AND instr(` + lowerFunc + `(value), ?) > 0))`
 
@@ -629,15 +632,19 @@ func seriesSQL(f ListFilter, bucket string) (string, []any, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	// Microseconds become fractional unixepoch seconds; date() floors them
-	// to the UTC day. The week is the Monday on or before that day: step
-	// back six days, then forward to the next Monday (or stay on one).
+	// Whole seconds, floored also for timestamps before 1970, so the last
+	// microsecond of a day stays in it (a fractional unixepoch is rounded to
+	// milliseconds by date(), which would carry 23:59:59.999999 over
+	// midnight and year 9999 out of range). The week is the Monday on or
+	// before the day: step back six days, then forward to the next Monday
+	// (or stay on one).
+	seconds := `((` + on + ` - ((` + on + ` % 1000000) + 1000000) % 1000000) / 1000000)`
 	var expr string
 	switch bucket {
 	case BucketDay:
-		expr = `date(` + on + ` / 1000000.0, 'unixepoch')`
+		expr = `date(` + seconds + `, 'unixepoch')`
 	case BucketWeek:
-		expr = `date(` + on + ` / 1000000.0, 'unixepoch', '-6 days', 'weekday 1')`
+		expr = `date(` + seconds + `, 'unixepoch', '-6 days', 'weekday 1')`
 	default:
 		return "", nil, fmt.Errorf("stats series: bucket must be %s or %s, got %q", BucketDay, BucketWeek, bucket)
 	}

@@ -353,23 +353,9 @@ func loadMigrations() ([]migration, error) {
 // migration newer than the database's recorded version, each in its own
 // transaction.
 func (db *DB) migrate(ctx context.Context) error {
-	if err := db.checkStamp(ctx); err != nil {
+	current, err := db.bootstrap(ctx)
+	if err != nil {
 		return err
-	}
-	if _, err := db.writer.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)`); err != nil {
-		return fmt.Errorf("create schema_version: %w", err)
-	}
-
-	var current int
-	err := db.writer.QueryRowContext(ctx, "SELECT version FROM schema_version").Scan(&current)
-	switch {
-	case errors.Is(err, sql.ErrNoRows):
-		if _, err := db.writer.ExecContext(ctx, "INSERT INTO schema_version (version) VALUES (0)"); err != nil {
-			return fmt.Errorf("initialize schema_version: %w", err)
-		}
-		current = 0
-	case err != nil:
-		return fmt.Errorf("read schema version: %w", err)
 	}
 
 	migs, err := loadMigrations()
@@ -396,30 +382,68 @@ func (db *DB) migrate(ctx context.Context) error {
 	return nil
 }
 
+// bootstrap checks the stamp and reads or creates the schema_version row,
+// all inside one IMMEDIATE transaction: two processes opening the same fresh
+// file at once (serve and a restore, say) serialise on the write lock, and
+// the second sees the first one's row instead of inserting its own.
+func (db *DB) bootstrap(ctx context.Context) (int, error) {
+	tx, err := db.writer.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin bootstrap of %s: %w", db.path, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := checkStamp(ctx, tx, db.path); err != nil {
+		return 0, err
+	}
+	if _, err := tx.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)`); err != nil {
+		return 0, fmt.Errorf("create schema_version: %w", err)
+	}
+
+	var current int
+	err = tx.QueryRowContext(ctx, "SELECT version FROM schema_version").Scan(&current)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		if _, err := tx.ExecContext(ctx, "INSERT INTO schema_version (version) VALUES (0)"); err != nil {
+			return 0, fmt.Errorf("initialize schema_version: %w", err)
+		}
+		current = 0
+	case err != nil:
+		return 0, fmt.Errorf("read schema version: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit bootstrap of %s: %w", db.path, err)
+	}
+
+	return current, nil
+}
+
 // checkStamp verifies the application_id stamp, writing it on a database that
-// has no tables yet. The stamp goes in before schema_version exists, so an
-// open interrupted after this point still passes next time.
-func (db *DB) checkStamp(ctx context.Context) error {
+// has no schema objects yet. The stamp goes in before schema_version exists,
+// so an open interrupted after this point still passes next time.
+func checkStamp(ctx context.Context, q Querier, path string) error {
 	var stamp int64
-	if err := db.writer.QueryRowContext(ctx, "PRAGMA application_id").Scan(&stamp); err != nil {
-		return fmt.Errorf("read application_id of %s: %w", db.path, err)
+	if err := q.QueryRowContext(ctx, "PRAGMA application_id").Scan(&stamp); err != nil {
+		return fmt.Errorf("read application_id of %s: %w", path, err)
 	}
 	if stamp == applicationID {
 		return nil
 	}
 
-	var tables int
-	if err := db.writer.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type = 'table'").Scan(&tables); err != nil {
-		return fmt.Errorf("inspect %s: %w", db.path, err)
+	// Tables, views, indexes and triggers alike: anything at all means the
+	// file belongs to something else.
+	var objects int
+	if err := q.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master").Scan(&objects); err != nil {
+		return fmt.Errorf("inspect %s: %w", path, err)
 	}
-	if tables > 0 {
-		return fmt.Errorf("%w: %s holds tables but not this service's application_id stamp; "+
+	if objects > 0 {
+		return fmt.Errorf("%w: %s holds a schema but not this service's application_id stamp; "+
 			"a database of the previous major version is not migrated, start with a new DATABASE_PATH",
-			ErrForeignDatabase, db.path)
+			ErrForeignDatabase, path)
 	}
 	// PRAGMA takes no bound parameters; the value is a package constant.
-	if _, err := db.writer.ExecContext(ctx, "PRAGMA application_id = "+strconv.Itoa(applicationID)); err != nil {
-		return fmt.Errorf("stamp %s: %w", db.path, err)
+	if _, err := q.ExecContext(ctx, "PRAGMA application_id = "+strconv.Itoa(applicationID)); err != nil {
+		return fmt.Errorf("stamp %s: %w", path, err)
 	}
 
 	return nil
