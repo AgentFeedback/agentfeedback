@@ -11,6 +11,7 @@ internal/api/                   HTTP: mux, middleware (auth, recovery, request i
 internal/core/                  validation, per-family canonical hashing, create/list/get/processed/export
 internal/store/                 SQLite: open + pragmas, embedded forward-only migrations, hand-written SQL
 internal/canonjson/             canonical JSON for event hashing
+pkg/schema/                     v1 schema engine: embedded schemas compiled at init, the x- keywords, guide validation, the text and date-time rules
 infra/agentfeedback/            compose stacks (local build, image-based deploy) and .env.example
 scripts/                        e2e.sh (live contract suite), deploy.sh, release.py,
                                 eval-cluster.py (live cluster.py calibration; discloses report text)
@@ -18,7 +19,7 @@ skills/agentfeedback/           submit/query/process client skill (copied as-is 
 skills/agentfeedback-triage/    processor skill (SKILL.md, digest.sh; optional cluster.py + reference/clustering.md)
 tests/skill/                    hermetic tests for both skills' scripts (mock server, isolated HOME)
 docs/                           api.md (contract of the running service), openapi.yaml (v1 contract of the next major release), operate.md, develop.md, security.md, releases.md
-schemas/                        JSON Schema 2020-12: the submission envelope and the kind schemas (friction, review)
+schemas/                        JSON Schema 2020-12: the submission envelope and the kind schemas (friction, review); embed.go makes them a Go package for pkg/schema
 conformance/                    the executable contract: decode fixtures, hash vectors, the warning list, a Python reference implementation (README inside)
 ```
 
@@ -60,6 +61,13 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
   contract, never by regenerating a fixture from an implementation. Until the
   v1 server packages land, the running service still implements
   [api.md](api.md).
+- **One implementation of the contract's text and schema rules.**
+  `pkg/schema` owns trimming, token normalisation, byte truncation,
+  date-time parsing, RFC 6901 escaping and the x- keywords, and it works on
+  the JSON tree the decoder produces (`map[string]any`, `[]any`, `string`,
+  `json.Number`, `bool`, `nil`; numbers keep their spelling). The decoder,
+  the CLI and the HTTP layer call it and never re-implement a rule. Its tests
+  read `conformance/` directly; a fixture change is a test change.
 - **Hash forms are frozen.** Frictions and reviews hash the exact Go structs
   from API 1.0 (field order matters); events hash canonical JSON. Changing
   either turns every stored row into a replay mismatch. A test pins a fixed
