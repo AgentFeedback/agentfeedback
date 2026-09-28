@@ -3,8 +3,6 @@ package schema
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -38,7 +36,7 @@ func parseBody(raw []byte) (map[string]any, string) {
 	if !utf8.Valid(raw) {
 		return nil, "invalid UTF-8 (decoder territory)"
 	}
-	if dup := duplicateMember(raw); dup != "" {
+	if dup, found := firstDuplicateKey(raw); found {
 		return nil, "duplicate member " + dup + " (decoder territory)"
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
@@ -52,54 +50,6 @@ func parseBody(raw []byte) (map[string]any, string) {
 		return nil, "not an object"
 	}
 	return obj, ""
-}
-
-// duplicateMember walks the token stream and returns the first member name
-// that repeats within one object, or "".
-func duplicateMember(raw []byte) string {
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.UseNumber()
-	type frame struct {
-		object bool
-		seen   map[string]bool
-		key    bool // an object frame expecting a member name next
-	}
-	var stack []*frame
-	for {
-		tok, err := dec.Token()
-		if errors.Is(err, io.EOF) || err != nil {
-			return ""
-		}
-		top := (*frame)(nil)
-		if len(stack) > 0 {
-			top = stack[len(stack)-1]
-		}
-		switch t := tok.(type) {
-		case json.Delim:
-			switch t {
-			case '{':
-				stack = append(stack, &frame{object: true, seen: map[string]bool{}, key: true})
-				continue
-			case '[':
-				stack = append(stack, &frame{})
-				continue
-			default:
-				stack = stack[:len(stack)-1]
-			}
-		case string:
-			if top != nil && top.object && top.key {
-				if top.seen[t] {
-					return t
-				}
-				top.seen[t] = true
-				top.key = false
-				continue
-			}
-		}
-		if top != nil && top.object {
-			top.key = true
-		}
-	}
 }
 
 func readJSON(t *testing.T, path string) map[string]any {
@@ -227,6 +177,10 @@ func TestConformanceOccurredAt(t *testing.T) {
 		t.Run(f.name, func(t *testing.T) {
 			got, parsed := NormalizeDateTime(sent)
 			stored, present := f.stored["occurred_at"].(string)
+			// The raw text is a context value, cut at the context value limit.
+			contextRule := Envelope()
+			contextRule, _ = contextRule.Property("context")
+			wantRaw, _ := TruncateBytes(sent, contextRule.AdditionalProperties().MaxBytes())
 			// The raw text lands in context, or in payload.context_overflow
 			// when the context was already full.
 			context, _ := f.stored["context"].(map[string]any)
@@ -241,7 +195,7 @@ func TestConformanceOccurredAt(t *testing.T) {
 				t.Fatalf("parsed %q as %q; stored form has %q (%v)", sent, got, stored, present)
 			case !parsed && present:
 				t.Fatalf("did not parse %q; stored form has %q", sent, stored)
-			case !parsed && (!kept || raw != sent):
+			case !parsed && (!kept || raw != wantRaw):
 				t.Fatalf("did not parse %q; stored context.occurred_at_raw is %q (%v)", sent, raw, kept)
 			}
 			checked++

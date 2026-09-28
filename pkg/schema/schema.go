@@ -47,6 +47,7 @@ type Schema struct {
 	properties    map[string]*Schema
 	additional    *Schema
 	items         *Schema
+	empty         bool // the node had no keywords at all
 }
 
 type bound struct {
@@ -286,7 +287,60 @@ func compile(raw []byte, m mode) (*Schema, error) {
 	if !ok {
 		return nil, errors.New("schema is not an object")
 	}
+	if name, dup := firstDuplicateKey(raw); dup {
+		return nil, fmt.Errorf("member %q appears more than once", name)
+	}
 	return (&compiler{mode: m}).node(obj, "")
+}
+
+// firstDuplicateKey walks the token stream of a JSON document and returns
+// the first member name that repeats within one object. encoding/json keeps
+// the last value silently; a schema file must not rely on that.
+func firstDuplicateKey(raw []byte) (string, bool) {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	type frame struct {
+		seen      map[string]bool // nil for an array
+		expectKey bool
+	}
+	var stack []*frame
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			return "", false // io.EOF, or a syntax error that Decode reports
+		}
+		var top *frame
+		if len(stack) > 0 {
+			top = stack[len(stack)-1]
+		}
+		if delim, ok := tok.(json.Delim); ok {
+			switch delim {
+			case '{':
+				stack = append(stack, &frame{seen: map[string]bool{}, expectKey: true})
+				continue
+			case '[':
+				stack = append(stack, &frame{})
+				continue
+			}
+			stack = stack[:len(stack)-1]
+			if len(stack) == 0 {
+				return "", false
+			}
+			top = stack[len(stack)-1]
+		} else if top != nil && top.seen != nil && top.expectKey {
+			name, _ := tok.(string) // the decoder guarantees a string here
+			if top.seen[name] {
+				return name, true
+			}
+			top.seen[name] = true
+			top.expectKey = false
+			continue
+		}
+		// A value just ended; an object parent expects a member name next.
+		if top != nil && top.seen != nil {
+			top.expectKey = true
+		}
+	}
 }
 
 type compiler struct{ mode mode }
@@ -299,7 +353,7 @@ func (c *compiler) node(obj map[string]any, where string) (*Schema, error) {
 	fail := func(format string, args ...any) error {
 		return fmt.Errorf("%s: %s", at, fmt.Sprintf(format, args...))
 	}
-	s := &Schema{}
+	s := &Schema{empty: len(obj) == 0}
 	for _, k := range slices.Sorted(maps.Keys(obj)) {
 		if !keywords[k] {
 			return nil, fail("unsupported keyword %q", k)

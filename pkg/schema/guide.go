@@ -139,7 +139,9 @@ func (g *guide) apply(s *Schema, v any, pointer string, root bool) any {
 		if s.maxItems != nil && len(arr) > *s.maxItems {
 			g.warn(code("maxItems"), pointer, fmt.Sprintf("more than %d items", *s.maxItems))
 		}
-		if s.items != nil {
+		// An items schema without any keyword is skipped, as the reference
+		// does (an empty dict is false there); one with keywords applies.
+		if s.items != nil && !s.items.empty {
 			for i := range arr {
 				arr[i] = g.apply(s.items, arr[i], pointer+"/"+strconv.Itoa(i), false)
 			}
@@ -186,7 +188,8 @@ func (g *guide) apply(s *Schema, v any, pointer string, root bool) any {
 		}
 		return obj
 	}
-	// null and boolean: only enum applies.
+	// null and boolean: only enum applies. Like the reference, enum is not
+	// applied to arrays or objects; no shipped schema declares one there.
 	g.checkEnum(s, v, pointer)
 	return v
 }

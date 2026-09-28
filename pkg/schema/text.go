@@ -28,7 +28,10 @@ func Trim(s string) string {
 
 // LowerSimple lower-cases every code point with the simple, context-free
 // mapping: U+0130 becomes U+0069 alone, a capital sigma becomes U+03C3
-// wherever it stands, KELVIN SIGN becomes k. s must be valid UTF-8.
+// wherever it stands, KELVIN SIGN becomes k. The mapping is the Go
+// toolchain's unicode table (unicode.Version); the contract names Unicode
+// 15.0 and accepts newer tables, since the fixtures use only code points
+// stable since Unicode 6.3. s must be valid UTF-8.
 func LowerSimple(s string) string {
 	for i := 0; i < len(s); i++ {
 		if c := s[i]; c >= 'A' && c <= 'Z' || c >= utf8.RuneSelf {

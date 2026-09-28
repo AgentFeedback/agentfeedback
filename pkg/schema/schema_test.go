@@ -191,6 +191,8 @@ func TestCompileRejectsWhatTheContractForbids(t *testing.T) {
 		{"additionalProperties number", `{"additionalProperties":1}`, modeKind, "boolean or a schema object"},
 		{"properties not object", `{"properties":[]}`, modeKind, "properties must be an object"},
 		{"not an object", `[]`, modeKind, "not an object"},
+		{"duplicate keyword", `{"minLength":1,"minLength":5}`, modeKind, `member "minLength" appears more than once`},
+		{"duplicate nested keyword", `{"properties":{"a":{"type":"string"},"a":{}}}`, modeKind, `member "a" appears more than once`},
 		{"trailing data", `{} {}`, modeKind, "trailing data"},
 		{"not json", `{`, modeKind, "unexpected EOF"},
 	}
@@ -279,6 +281,33 @@ func TestKeywordCodesMatchWarningsJSON(t *testing.T) {
 	for _, c := range []string{codeNoSchema, codeUnknownSchemaVersion} {
 		if !listed[c] {
 			t.Errorf("code %q is not in warnings.json", c)
+		}
+	}
+}
+
+func TestFirstDuplicateKey(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		src  string
+		want string
+		dup  bool
+	}{
+		{`{"o":{"x":1},"o":2}`, "o", true},
+		{`{"payload":{},"kind":"review","summary":"review"}`, "", false},
+		{`{"a":{},"b":"x","c":"x"}`, "", false},
+		{`{"a":[{"k":1},{"k":2}],"b":[[],{}]}`, "", false},
+		{`{"a":{"k":1,"k":2}}`, "k", true},
+		{`{"a":[1,2],"a":3}`, "a", true},
+		{`{"kind":"x","payload":{"category":"a","details":"d"},"a/b":1,"a/b":2}`, "a/b", true},
+		{`{}`, "", false},
+		{`[1,1,{"z":null,"z":true}]`, "z", true},
+		{`{"a":"a","b":"a"}`, "", false},
+		{`{"x":1`, "", false},
+	}
+	for _, tc := range tests {
+		name, dup := firstDuplicateKey([]byte(tc.src))
+		if name != tc.want || dup != tc.dup {
+			t.Errorf("firstDuplicateKey(%s) = %q, %v; want %q, %v", tc.src, name, dup, tc.want, tc.dup)
 		}
 	}
 }

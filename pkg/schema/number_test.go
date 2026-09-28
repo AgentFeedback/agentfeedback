@@ -49,7 +49,14 @@ func TestDecimalCompare(t *testing.T) {
 		{"9", "10", -1}, {"10", "9", 1}, {"123", "13", 1}, {"12", "123", -1}, {"1.5", "1.25", 1},
 		{"0.5", "1", -1}, {"1e-1", "0.2", -1}, {"1.2e1", "12", 0},
 		{"1e" + strings.Repeat("9", 30), "1e18", 1}, {"1e-" + strings.Repeat("9", 30), "1e-18", -1},
-		{"1e" + strings.Repeat("9", 30), "1e" + strings.Repeat("9", 40), 0}, // both saturate
+		{"1e" + strings.Repeat("9", 30), "1e" + strings.Repeat("9", 40), -1},
+		{"1e100000000000000000000", "1e100000000000000000001", -1},
+		{"10e99999999999999999999", "1e100000000000000000000", 0},
+		{"9e99999999999999999999", "1e100000000000000000000", -1},
+		{"1e-100000000000000000000", "1e-99999999999999999999", -1},
+		{"-1e100000000000000000000", "-1e100000000000000000001", 1},
+		{"1.5e100000000000000000000", "15e99999999999999999999", 0},
+		{"1e" + strings.Repeat("9", 5000), "2e" + strings.Repeat("9", 5000), -1},
 		{"5", "4.999999999999999999999999", 1}, {"1", "1.000000000000000000000001", -1},
 	}
 	for _, tc := range tests {
@@ -115,5 +122,46 @@ func TestJSONEqual(t *testing.T) {
 		if got := jsonEqual(tc.a, tc.b); got != tc.want {
 			t.Errorf("jsonEqual(%#v, %#v) = %v, want %v", tc.a, tc.b, got, tc.want)
 		}
+	}
+}
+
+func TestBigIntArithmetic(t *testing.T) {
+	t.Parallel()
+	tests := []struct{ a, b, sum string }{
+		{"0", "0", "0"}, {"1", "2", "3"}, {"999", "1", "1000"}, {"1", "999", "1000"},
+		{"-1", "1", "0"}, {"1", "-1", "0"}, {"-5", "3", "-2"}, {"5", "-3", "2"}, {"-5", "-3", "-8"},
+		{"1000", "-1", "999"}, {"-1000", "1", "-999"}, {"10", "-100", "-90"},
+		{"99999999999999999999", "1", "100000000000000000000"},
+		{"100000000000000000000", "-1", "99999999999999999999"},
+	}
+	parse := func(s string) bigInt {
+		neg := strings.HasPrefix(s, "-")
+		return bigFromDigits(strings.TrimPrefix(s, "-"), neg)
+	}
+	render := func(b bigInt) string {
+		if b.isZero() {
+			return "0"
+		}
+		if b.neg {
+			return "-" + b.mag
+		}
+		return b.mag
+	}
+	for _, tc := range tests {
+		if got := render(parse(tc.a).add(parse(tc.b))); got != tc.sum {
+			t.Errorf("%s + %s = %s, want %s", tc.a, tc.b, got, tc.sum)
+		}
+		if got := render(parse(tc.sum).sub(parse(tc.b))); got != render(parse(tc.a)) {
+			t.Errorf("%s - %s = %s, want %s", tc.sum, tc.b, got, tc.a)
+		}
+	}
+	if n, ok := parse("-123").small(); !ok || n != -123 {
+		t.Fatalf("small = %d, %v", n, ok)
+	}
+	if _, ok := parse(strings.Repeat("9", 19)).small(); ok {
+		t.Fatal("19 digits should not be small")
+	}
+	if bigFromInt(0).neg || bigFromInt(-7).mag != "7" || !bigFromInt(-7).neg {
+		t.Fatal("bigFromInt")
 	}
 }

@@ -94,6 +94,8 @@ func TestGuideKeywords(t *testing.T) {
 		{"unknown_field nested and escaped", `{"properties":{"o":{"type":"object","properties":{}}}}`, `{"o":{"a/b":1,"m~n":2}}`, []string{"unknown_field /payload/o/a~1b", "unknown_field /payload/o/m~0n"}, ""},
 		{"additionalProperties schema is not applied", `{"properties":{"o":{"type":"object","additionalProperties":{"type":"string"}}}}`, `{"o":{"x":1}}`, []string{"unknown_field /payload/o/x"}, ""},
 		{"unlisted members are not descended", `{"type":"object","properties":{}}`, `{"deep":{"deeper":{"x":1}}}`, []string{"unknown_field /payload/deep"}, ""},
+		{"items without keywords is skipped like the reference", `{"properties":{"r":{"type":"array","items":{}}}}`, `{"r":[{"x":1},2]}`, nil, ""},
+		{"items with a keyword applies", `{"properties":{"r":{"type":"array","items":{"type":"object"}}}}`, `{"r":[{"x":1},2]}`, []string{"unknown_field /payload/r/0/x", "type_mismatch /payload/r/1"}, ""},
 		{"items transform in place", `{"properties":{"r":{"type":"array","items":{"type":"string","x-trim":true}}}}`, `{"r":[" a ","b "]}`, nil, `{"r":["a","b"]}`},
 		{"empty schema lists no members", `{}`, `{"a":[1,{"b":null}]}`, []string{"unknown_field /payload/a"}, ""},
 		{"root type mismatch is one warning", `{"type":"array"}`, `{"a":1}`, []string{"type_mismatch /payload"}, ""},
