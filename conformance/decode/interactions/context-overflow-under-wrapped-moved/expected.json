@@ -1,0 +1,23 @@
+{
+  "row": "context overflow placed under a wrapped payload.moved keeps its entries' warnings",
+  "status": 201,
+  "note": "payload.context_overflow is taken, so the overflow goes under payload.moved, which is a non-object and is wrapped first. The lone surrogate inside the overflowed entry is reported where that entry ended up, not under the wrapped value.",
+  "warnings": [
+    {
+      "code": "invalid_utf8",
+      "pointer": "/payload/moved/context_overflow/zz/a"
+    },
+    {
+      "code": "payload_wrapped",
+      "pointer": "/payload/moved"
+    },
+    {
+      "code": "truncated",
+      "pointer": "/payload/moved/context_overflow"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/context_overflow"
+    }
+  ]
+}

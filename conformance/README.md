@@ -82,7 +82,7 @@ message says `did you mean kind`.
 | duplicate member name in any object (names compare after unescaping: `"a"` and `"a"` are the same member) | last value wins; warnings about the discarded value are dropped | `duplicate_key` |
 | envelope member that is JSON `null` | treated as absent; the absent rules then apply | `coerced` |
 | `payload` present but not an object | wrapped as `{"value": <it>}` | `payload_wrapped` |
-| top-level member the envelope does not know | moved into `payload` | `moved_to_payload` |
+| top-level member the envelope does not know | moved into `payload`, one member at a time in code point order of their names | `moved_to_payload` |
 | moved member, `context_raw` or `context_overflow` whose name already exists in `payload` | stored under `payload.moved.<name>`; a non-object `payload.moved` is wrapped first (`payload_wrapped`); a value already under `payload.moved.<name>` is replaced (`duplicate_key`) | `moved_to_payload` (`truncated` for `context_overflow`) |
 | `payload` absent | the moved members become the payload; none: `{}` | `payload_inferred` |
 | `kind` absent, null, empty after normalisation, or not a string | `unknown` | `missing_kind` (and nothing else about `kind`) |

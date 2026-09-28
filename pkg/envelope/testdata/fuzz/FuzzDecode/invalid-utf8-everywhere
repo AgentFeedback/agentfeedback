@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"ki\xffnd\":\"\xc0\x80\",\"summary\":\"\xed\xa0\x80\",\"pay\xf8load\":{\"a\":\"\xf0\x9f\"},\"context\":{\"\xff\":\"\xff\"}}")

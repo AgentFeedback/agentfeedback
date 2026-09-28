@@ -10,8 +10,10 @@ cmd/agentfeedback/              main: `serve` (default), `import <jsonl>`, `back
 internal/api/                   HTTP: mux, middleware (auth, recovery, request id, log, metrics, body limits), handlers, DTOs
 internal/core/                  validation, per-family canonical hashing, create/list/get/processed/export
 internal/store/                 SQLite: open + pragmas, embedded forward-only migrations, hand-written SQL
-internal/canonjson/             canonical JSON for event hashing
+internal/canonjson/             canonical JSON of the v3 event hash (frozen: hash forms never change); not the v1 writer
 pkg/schema/                     v1 schema engine: embedded schemas compiled at init, the x- keywords, guide validation, the text and date-time rules
+pkg/envelope/                   v1 decoder: token-stream parse (spellings, duplicates, UTF-8 repair), inference table, normalisation order, guide and recommended checks
+pkg/canonjson/                  v1 canonical JSON writer on the write path's JSON tree; identity hashes and stored bytes are written with it
 infra/agentfeedback/            compose stacks (local build, image-based deploy) and .env.example
 scripts/                        e2e.sh (live contract suite), deploy.sh, release.py,
                                 eval-cluster.py (live cluster.py calibration; discloses report text)
@@ -32,6 +34,7 @@ compose stack and image).
 ```bash
 just check          # gofmt, go vet, go mod tidy, build — the pre-commit gate
 just test           # go test -race -count=1 ./...  (SQLite on temp files; no services needed)
+just fuzz           # go test -fuzz=FuzzDecode -fuzztime=30s ./pkg/envelope: the decoder on top of its seed corpus (every fixture body)
 just run-local      # serve on 127.0.0.1:8090 with a database in ./local/
 bash scripts/e2e.sh <API_KEY> [BASE_URL]      # live contract suite against a running service
 bash tests/skill/run-tests.sh                 # hermetic client tests (mock server, needs python3)
@@ -103,12 +106,15 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
 
 1. `just check` clean.
 2. `go test -race -count=1 ./...` green.
-3. API touched: build, serve on a temp database, `bash scripts/e2e.sh` all
+3. Decoder touched (`pkg/envelope/`): `just fuzz` green; a crash it finds is
+   committed under `pkg/envelope/testdata/fuzz/FuzzDecode/` as a regression
+   seed beside the fix.
+4. API touched: build, serve on a temp database, `bash scripts/e2e.sh` all
    green.
-4. Skill scripts touched: the shellcheck command above and `bash tests/skill/run-tests.sh`
+5. Skill scripts touched: the shellcheck command above and `bash tests/skill/run-tests.sh`
    all green.
-5. Docs touched: every relative link resolves.
-6. Contract files touched (`schemas/`, `docs/openapi.yaml`, `conformance/`):
+6. Docs touched: every relative link resolves.
+7. Contract files touched (`schemas/`, `docs/openapi.yaml`, `conformance/`):
    `just contract` green.
 
 CI runs the same gates and, on `main`, publishes the image as

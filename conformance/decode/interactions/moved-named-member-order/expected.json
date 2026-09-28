@@ -1,0 +1,23 @@
+{
+  "row": "unknown members move in code point order; one of them is the reserved name moved",
+  "status": 201,
+  "note": "`moved` sorts before `x`, so it lands at payload.moved first; `x` then collides with the producer's own x, finds a non-object payload.moved and wraps it, and the earlier member's warning follows its content to /payload/moved/value.",
+  "warnings": [
+    {
+      "code": "moved_to_payload",
+      "pointer": "/payload/moved/value"
+    },
+    {
+      "code": "moved_to_payload",
+      "pointer": "/payload/moved/x"
+    },
+    {
+      "code": "payload_wrapped",
+      "pointer": "/payload/moved"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/x"
+    }
+  ]
+}
