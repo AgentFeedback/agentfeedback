@@ -63,6 +63,9 @@ func Append(dst []byte, v any) []byte {
 	case map[string]any:
 		keys := make([]string, 0, len(x))
 		for k := range x {
+			if !utf8.ValidString(k) {
+				panic("canonjson: member name is not valid UTF-8")
+			}
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)

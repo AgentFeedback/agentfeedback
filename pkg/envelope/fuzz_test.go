@@ -20,7 +20,8 @@ import (
 // spellings out of the question, which is what makes it usable: 1e400 is
 // valid JSON) and a token scan for "is an object" and the nesting depth; and
 // what it stores obeys the contract's shape. The seed corpus is every
-// fixture body plus the hand-written cases under testdata/fuzz/FuzzDecode.
+// fixture body.json (the generated size cases are the conformance tests'
+// business) plus the hand-written cases under testdata/fuzz/FuzzDecode.
 func FuzzDecode(f *testing.F) {
 	for _, sub := range []string{"decode/rows", "decode/interactions", "hash"} {
 		dirs, err := filepath.Glob(filepath.Join(conformanceDir, sub, "*", "body.json"))
@@ -78,14 +79,15 @@ func FuzzDecode(f *testing.F) {
 		if !json.Valid(stored) {
 			t.Fatalf("stored envelope is not JSON: %s", stored)
 		}
-		// Canonical form is a fixed point: parsing it back and writing it again
-		// gives the same bytes.
-		again, _, err := Decode(stored)
+		// Canonical form is a fixed point of parse and write. Not of Decode:
+		// a stored envelope is not always an admissible request (nothing is
+		// re-trimmed after a cut, so a truncated member may end in a space).
+		again, err := parse(stored, newDetails())
 		if err != nil {
-			t.Fatalf("stored envelope rejected: %v", err)
+			t.Fatalf("stored envelope does not parse: %v", err)
 		}
-		if !bytes.Equal(canonjson.Marshal(again.Tree()), stored) {
-			t.Fatalf("stored envelope is not a fixed point:\n %s\n %s", stored, canonjson.Marshal(again.Tree()))
+		if !bytes.Equal(canonjson.Marshal(again), stored) {
+			t.Fatalf("stored envelope is not a fixed point:\n %s\n %s", stored, canonjson.Marshal(again))
 		}
 	})
 }

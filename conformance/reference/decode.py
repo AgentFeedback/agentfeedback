@@ -83,6 +83,11 @@ def _collapse(warnings: list[Warning_], member: str) -> None:
             w.pointer = member
 
 
+def _drop(warnings: list[Warning_], pointer: str) -> None:
+    """A value is discarded: warnings about it and its parts go with it."""
+    warnings[:] = [w for w in warnings if not (w.pointer == pointer or w.pointer.startswith(pointer + "/"))]
+
+
 def _remap(warnings: list[Warning_], old: str, new: str) -> None:
     """Parse-time warnings point into the body as sent; when inference moves a
     member, its warnings move with it."""
@@ -203,6 +208,7 @@ def decode(body: bytes, schemas: dict[tuple[str, int], dict] | None = None) -> R
                 warnings.append(Warning_("coerced", "/occurred_at", "occurred_at was not a string"))
         else:
             if "occurred_at_raw" in context:
+                _drop(warnings, "/context/occurred_at_raw")
                 warnings.append(Warning_("duplicate_key", "/context/occurred_at_raw", "context.occurred_at_raw replaced"))
             _remap(warnings, "/occurred_at", "/context/occurred_at_raw")
             context["occurred_at_raw"] = text
@@ -279,6 +285,7 @@ def _place(payload: dict, name: str, val, warnings: list[Warning_], code: str, m
         payload.setdefault("moved", {})
         pointer = "/payload/moved/" + escape_token(name)
         if name in payload["moved"]:
+            _drop(warnings, pointer)
             warnings.append(Warning_("duplicate_key", pointer, f"payload.moved.{name} replaced"))
     if old_pointer is not None:
         _remap(warnings, old_pointer, pointer)

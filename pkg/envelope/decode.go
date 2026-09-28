@@ -7,7 +7,6 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
-	"strings"
 
 	"github.com/agentfeedback/agentfeedback/pkg/canonjson"
 	"github.com/agentfeedback/agentfeedback/pkg/schema"
@@ -103,8 +102,8 @@ func (d *decoder) infer(value map[string]any) (*Envelope, bool) {
 	slices.Sort(unknown)
 	for _, name := range unknown {
 		hint := ""
-		if isEnvelopeMember[strings.ToLower(name)] {
-			hint = "; did you mean " + strings.ToLower(name)
+		if lower := schema.LowerSimple(name); isEnvelopeMember[lower] {
+			hint = "; did you mean " + lower
 		}
 		d.place(payload, name, value[name], "moved_to_payload",
 			name+" is not an envelope member; moved into payload"+hint, path(name))
@@ -206,6 +205,8 @@ func (d *decoder) infer(value map[string]any) (*Envelope, bool) {
 			}
 		} else {
 			if _, taken := context["occurred_at_raw"]; taken {
+				// The producer's value is discarded, and so are its warnings.
+				d.det.detach(path("context", "occurred_at_raw"))
 				d.warn("duplicate_key", "context.occurred_at_raw replaced", "context", "occurred_at_raw")
 			}
 			d.det.remap(path("occurred_at"), path("context", "occurred_at_raw"))
@@ -255,8 +256,9 @@ func (d *decoder) infer(value map[string]any) (*Envelope, bool) {
 // place puts an inferred member into payload under name, or under
 // payload.moved.<name> when the name is taken; a non-object payload.moved is
 // wrapped first, and a second value under the same reserved name replaces
-// the earlier one with duplicate_key. The warnings under from, when given,
-// follow the content. It records the top-level payload member that received
+// the earlier one with duplicate_key, dropping the earlier value's warnings
+// as the parser does for a duplicate member. The warnings under from, when
+// given, follow the content. It records the top-level payload member that received
 // it in placed and returns the path the content ended up at.
 func (d *decoder) place(payload map[string]any, name string, value any, code, message string, from []string) []string {
 	var at []string
@@ -279,6 +281,8 @@ func (d *decoder) place(payload map[string]any, name string, value any, code, me
 		}
 		at = path("payload", "moved", name)
 		if _, dup := object[name]; dup {
+			// The earlier value is discarded, and so are its warnings.
+			d.det.detach(at)
 			d.warn("duplicate_key", "payload.moved."+name+" replaced", at...)
 		}
 		object[name] = value

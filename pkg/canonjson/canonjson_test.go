@@ -80,6 +80,12 @@ func TestPanicsOnNonTreeValue(t *testing.T) {
 		{"float64", 1.5},
 		{"struct", struct{ A int }{1}},
 		{"nested int", map[string]any{"a": []any{1}}},
+		{"number not a JSON number", json.Number("abc")},
+		{"number with leading zero", json.Number("01")},
+		{"number with trailing dot", json.Number("1.")},
+		{"string not UTF-8", "\xff"},
+		{"nested string not UTF-8", []any{map[string]any{"a": "\xc0\x80"}}},
+		{"member name not UTF-8", map[string]any{"\xff": "v"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

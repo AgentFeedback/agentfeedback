@@ -417,7 +417,7 @@ func unescape(text string) (string, bool, error) {
 			continue
 		case 'u':
 		default:
-			return "", false, fmt.Errorf("invalid escape \\%c", e)
+			return "", false, errors.New("invalid escape sequence")
 		}
 		cp, err := hex4(text, i+2)
 		if err != nil {

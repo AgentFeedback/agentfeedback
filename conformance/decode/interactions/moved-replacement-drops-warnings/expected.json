@@ -1,0 +1,19 @@
+{
+  "row": "a moved member replacing a value under payload.moved drops that value's warnings",
+  "status": 201,
+  "note": "The producer's payload.moved.x held a lone surrogate; the moved x replaces it, so the invalid_utf8 warning about the discarded value goes with it, as with a duplicate member.",
+  "warnings": [
+    {
+      "code": "duplicate_key",
+      "pointer": "/payload/moved/x"
+    },
+    {
+      "code": "moved_to_payload",
+      "pointer": "/payload/moved/x"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/x"
+    }
+  ]
+}
