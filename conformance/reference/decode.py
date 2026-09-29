@@ -182,6 +182,8 @@ def decode(body: bytes, schemas: dict[tuple[str, int], dict] | None = None) -> R
             s, cut = truncate_bytes(s, limit)
             if cut:
                 warnings.append(Warning_("truncated", "/" + name, f"{name} cut to {limit} bytes"))
+                if transform != "token":
+                    s = trim(s)  # a trimmed member is trimmed again after a cut
         if s == "":
             continue  # empty after normalisation: omitted
         env[name] = s

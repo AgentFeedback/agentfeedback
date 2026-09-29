@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/agentfeedback/agentfeedback/internal/core"
+	"github.com/agentfeedback/agentfeedback/internal/v3/core"
 )
 
 func TestMapSubmissionError(t *testing.T) {

@@ -126,7 +126,9 @@ def _apply(value, schema: dict, pointer: str, warnings: list[Warning_], placed: 
         limit = schema.get("x-max-bytes")
         if limit is not None and utf8_len(value) > limit:
             if schema.get("x-on-violation") == "truncate":
-                value, _ = truncate_bytes(value, limit)
+                value, cut = truncate_bytes(value, limit)
+                if cut and schema.get("x-trim") and schema.get("x-normalize") != "token":
+                    value = trim(value)  # a trimmed member is trimmed again after a cut
             else:
                 warnings.append(Warning_("too_long", pointer, f"longer than {limit} bytes"))
         if "minLength" in schema and len(value) < schema["minLength"]:

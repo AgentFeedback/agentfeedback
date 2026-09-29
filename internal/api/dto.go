@@ -3,7 +3,7 @@ package api
 import (
 	"encoding/json"
 
-	"github.com/agentfeedback/agentfeedback/internal/core"
+	"github.com/agentfeedback/agentfeedback/internal/v3/core"
 )
 
 // ReviewerDTO is a single reviewer's contribution within a review submission.

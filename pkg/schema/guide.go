@@ -104,7 +104,10 @@ func (g *guide) apply(s *Schema, v any, pointer string, root bool) any {
 		}
 		if s.maxBytes > 0 && len(str) > s.maxBytes {
 			if s.onViolation == "truncate" {
-				str, _ = TruncateBytes(str, s.maxBytes)
+				var cut bool
+				if str, cut = TruncateBytes(str, s.maxBytes); cut && s.trim && s.normalize != "token" {
+					str = Trim(str) // a trimmed member is trimmed again after a cut
+				}
 			} else {
 				g.warn(code("x-max-bytes"), pointer, fmt.Sprintf("longer than %d bytes", s.maxBytes))
 			}

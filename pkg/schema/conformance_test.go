@@ -109,7 +109,8 @@ func allDecodeFixtures(t *testing.T) []fixture {
 }
 
 // normaliseMember applies the contract's fixed order to one envelope string:
-// trim, newlines to spaces in summary, token normalisation, truncation.
+// trim, newlines to spaces in summary, token normalisation, truncation, and
+// a second trim after a cut for a member that is not a token.
 func normaliseMember(name, s string) string {
 	rule, _ := Envelope().Property(name)
 	s = Trim(s)
@@ -120,7 +121,10 @@ func normaliseMember(name, s string) string {
 		s = Token(s)
 	}
 	if rule.MaxBytes() > 0 && rule.OnViolation() == "truncate" {
-		s, _ = TruncateBytes(s, rule.MaxBytes())
+		var cut bool
+		if s, cut = TruncateBytes(s, rule.MaxBytes()); cut && rule.Normalize() != "token" {
+			s = Trim(s)
+		}
 	}
 	return s
 }

@@ -1,0 +1,12 @@
+{
+  "row": "a trimmed member cut at its byte limit is trimmed again",
+  "status": 201,
+  "warnings": [
+    { "code": "truncated", "pointer": "/machine" },
+    { "code": "missing_recommended", "pointer": "/summary" },
+    { "code": "missing_recommended", "pointer": "/model" },
+    { "code": "missing_recommended", "pointer": "/payload/category" },
+    { "code": "missing_recommended", "pointer": "/payload/details" }
+  ],
+  "note": "The cut at 200 bytes leaves 199 a and a space; step 5 trims the space."
+}

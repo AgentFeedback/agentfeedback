@@ -20,11 +20,22 @@ var versionSpelling = regexp.MustCompile(`^[1-9][0-9]*$`)
 // its warnings, or a *Rejection for one of the four refused bodies (then the
 // envelope and the warnings are nil).
 func Decode(body []byte) (*Envelope, []schema.Detail, error) {
-	if len(body) > BodyLimit {
-		return nil, nil, &Rejection{Status: 413, Code: "request_too_large", Message: fmt.Sprintf("body over %d bytes", BodyLimit)}
+	return DecodeWithLimits(body, BodyLimit, MaxDepth)
+}
+
+// DecodeWithLimits is Decode with maxBytes in place of BodyLimit and
+// maxDepth in place of MaxDepth: a body over maxBytes is 413
+// request_too_large and one nested deeper than maxDepth is 400 bad_request,
+// each message stating the limit. The import path re-decodes stored
+// envelopes with it, which can exceed both request limits: invalid UTF-8
+// expands to U+FFFD, and inference nests values up to StoredDepthHeadroom
+// levels deeper.
+func DecodeWithLimits(body []byte, maxBytes, maxDepth int) (*Envelope, []schema.Detail, error) {
+	if len(body) > maxBytes {
+		return nil, nil, &Rejection{Status: 413, Code: "request_too_large", Message: fmt.Sprintf("body over %d bytes", maxBytes)}
 	}
 	det := newDetails()
-	value, err := parse(body, det)
+	value, err := parse(body, det, maxDepth)
 	if err != nil {
 		return nil, nil, &Rejection{Status: 400, Code: "bad_request", Message: err.Error()}
 	}
@@ -158,6 +169,11 @@ func (d *decoder) infer(value map[string]any) (*Envelope, bool) {
 			var cut bool
 			if s, cut = schema.TruncateBytes(s, rule.limit); cut {
 				d.warn("truncated", fmt.Sprintf("%s cut to %d bytes", name, rule.limit), name)
+				if !rule.token {
+					// Step 5: a trimmed member is trimmed again after a cut,
+					// so its stored form is a fixed point of the write path.
+					s = schema.Trim(s)
+				}
 			}
 		}
 		if s == "" {

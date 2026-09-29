@@ -1,7 +1,7 @@
 {
   "row": "harness is token-normalised then truncated",
   "status": 201,
-  "note": "Trim, lower-case and whitespace runs come before the cut; nothing is re-trimmed after it.",
+  "note": "Trim, lower-case and whitespace runs come before the cut; a token is not re-trimmed after it (no whitespace survives token normalisation), so it may end in -.",
   "warnings": [
     {
       "code": "truncated",

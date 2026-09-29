@@ -3,6 +3,8 @@ package envelope
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
@@ -182,5 +184,30 @@ func TestTreeOmitsAbsentMembers(t *testing.T) {
 	}
 	if tree := env.Tree(); reflect.ValueOf(tree["payload"]).Pointer() != reflect.ValueOf(env.Payload).Pointer() {
 		t.Error("Tree copies the payload")
+	}
+}
+
+func TestDecodeWithLimits(t *testing.T) {
+	t.Parallel()
+	deep := []byte(`{"a":[[0]]}`) // depth 3
+	if _, _, err := DecodeWithLimits(deep, BodyLimit, 3); err != nil {
+		t.Fatalf("at the depth limit: %v", err)
+	}
+	_, _, err := DecodeWithLimits(deep, BodyLimit, 2)
+	var d *Rejection
+	if !errors.As(err, &d) || d.Status != 400 || !strings.Contains(d.Message, "deeper than 2 levels") {
+		t.Fatalf("over the depth limit: %v", err)
+	}
+	body := []byte(`{"kind":"friction"}`)
+	if _, _, err := DecodeWithLimits(body, len(body), MaxDepth); err != nil {
+		t.Fatalf("at the limit: %v", err)
+	}
+	_, _, err = DecodeWithLimits(body, len(body)-1, MaxDepth)
+	var r *Rejection
+	if !errors.As(err, &r) || r.Status != 413 || r.Code != "request_too_large" {
+		t.Fatalf("over the limit: %v", err)
+	}
+	if want := fmt.Sprintf("body over %d bytes", len(body)-1); r.Message != want {
+		t.Errorf("message %q, want %q", r.Message, want)
 	}
 }

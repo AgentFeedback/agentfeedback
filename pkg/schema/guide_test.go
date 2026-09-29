@@ -77,6 +77,8 @@ func TestGuideKeywords(t *testing.T) {
 		{"maxProperties", `{"properties":{"a":{"type":"object","maxProperties":1}}}`, `{"a":{"x":1,"y":2}}`, []string{"out_of_range /payload/a", "unknown_field /payload/a/x", "unknown_field /payload/a/y"}, ""},
 		{"format date-time", `{"properties":{"a":{"type":"string","format":"date-time"}}}`, `{"a":"yesterday"}`, []string{"invalid_format /payload/a"}, ""},
 		{"format date-time ok", `{"properties":{"a":{"type":"string","format":"date-time"}}}`, `{"a":"2026-01-01T00:00:00Z"}`, nil, ""},
+		{"trimmed member re-trimmed after a cut", `{"properties":{"a":{"type":"string","x-trim":true,"x-max-bytes":3,"x-on-violation":"truncate"}}}`, `{"a":" ab cd"}`, nil, `{"a":"ab"}`},
+		{"token not re-trimmed after a cut", `{"properties":{"a":{"type":"string","x-normalize":"token","x-max-bytes":3,"x-on-violation":"truncate"}}}`, `{"a":"ab cd"}`, nil, `{"a":"ab-"}`},
 		{"x-max-bytes warns without truncate", `{"properties":{"a":{"type":"string","x-max-bytes":3}}}`, `{"a":"abcd"}`, []string{"too_long /payload/a"}, ""},
 		{"x-max-bytes counts bytes", `{"properties":{"a":{"type":"string","x-max-bytes":3}}}`, `{"a":"éé"}`, []string{"too_long /payload/a"}, ""},
 		{"x-on-violation truncate is silent", `{"properties":{"a":{"type":"string","x-max-bytes":3,"x-on-violation":"truncate"}}}`, `{"a":"aéb"}`, nil, `{"a":"aé"}`},
