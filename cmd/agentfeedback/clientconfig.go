@@ -107,7 +107,7 @@ func configPath(getenv func(string) string) (string, error) {
 	return filepath.Join(dir, "config.toml"), nil
 }
 
-// cacheDir holds the spool (spool/, spool/rejected/) and the client log
+// cacheDir holds the spool (spool/, rejected/ beside it) and the client log
 // (log/client.jsonl).
 func cacheDir(getenv func(string) string) (string, error) {
 	return xdgDir(getenv, "XDG_CACHE_HOME", ".cache")

@@ -12,12 +12,13 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/agentfeedback/agentfeedback/pkg/client"
 )
 
 const (
@@ -208,7 +209,7 @@ func diagnose(getenv func(string) string, urlFlag, clientVer string) (doctorRepo
 		return r, err
 	}
 	r.Spool = countSpool(cache, problem)
-	r.Recent = tailLog(filepath.Join(cache, "log", "client.jsonl"), settings.APIKey.Value, problem)
+	r.Recent = tailLog(client.LogPath(cache), settings.APIKey.Value, problem)
 
 	r.Status = "ok"
 	if len(r.Problems) > 0 {
@@ -395,7 +396,7 @@ func cmpInt(a, b int) int {
 // regular files in the sibling rejected/. A missing directory holds none.
 func countSpool(cache string, problem func(error)) spoolCheck {
 	var s spoolCheck
-	for _, name := range listFiles(filepath.Join(cache, "spool"), problem) {
+	for _, name := range listFiles(client.SpoolDir(cache), problem) {
 		switch {
 		case strings.HasPrefix(name, "."):
 		case strings.HasSuffix(name, ".rejected"):
@@ -404,7 +405,7 @@ func countSpool(cache string, problem func(error)) spoolCheck {
 			s.Pending++
 		}
 	}
-	s.Rejected += len(listFiles(filepath.Join(cache, "rejected"), problem))
+	s.Rejected += len(listFiles(client.RejectedDir(cache), problem))
 
 	return s
 }
