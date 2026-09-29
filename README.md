@@ -20,7 +20,7 @@ Two parts:
 
 | You want to | Read |
 |---|---|
-| Install the skill and file feedback from an agent | [`skills/agentfeedback/SKILL.md`](skills/agentfeedback/SKILL.md) |
+| Install the skill and file feedback from an agent | [`skills/agentfeedback/scripts/README.md`](skills/agentfeedback/scripts/README.md) (the bash client of the current release) |
 | Triage the queue | [`skills/agentfeedback-triage/SKILL.md`](skills/agentfeedback-triage/SKILL.md) |
 | Call the API directly | [`docs/api.md`](docs/api.md) |
 | Run, deploy, back up, migrate | [`docs/operate.md`](docs/operate.md) |

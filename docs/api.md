@@ -2,7 +2,7 @@
 
 The contract producers and processors integrate against. Self-contained: read
 this, then write the calls. Prefer the shipped client scripts in
-[`skills/agentfeedback/`](../skills/agentfeedback/SKILL.md); they implement
+[`skills/agentfeedback/scripts/`](../skills/agentfeedback/scripts/README.md); they implement
 spooling, retries, receipt validation and outcome reporting. Hand-roll HTTP
 only for a producer the client does not cover.
 
@@ -149,7 +149,7 @@ curl -sS -X POST "$AGENT_FEEDBACK_URL/api/v1/frictions" \
 
 One record per completed multi-reviewer run: per-reviewer status, timing and
 grading. The client builds this from a run directory; see the
-[run-directory contract](../skills/agentfeedback/SKILL.md#run-directory-contract).
+[run-directory contract](../skills/agentfeedback/scripts/README.md#run-directory-contract).
 
 | Field | Type | Required | Notes |
 |---|---|---|---|

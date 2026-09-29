@@ -13,6 +13,7 @@ internal/core/                  v1 service, no net/http: create with identity an
 internal/store/                 SQLite for the v1 API: open + pragmas + the application_id stamp, the single init migration, hand-written SQL, query plans pinned by a test
 internal/v3/core/               the v3 service's core, moved here unchanged; the running service uses it until the v1 HTTP layer lands, then it goes
 internal/v3/store/              the v3 service's store, moved here unchanged; same lifetime as internal/v3/core
+internal/skillgen/               skill generator: source/ (skill.json plus one Markdown fragment per teaching point) rendered into skill-md, agents-md, cursor, prompt and mcp; `skill render`
 internal/canonjson/             canonical JSON of the v3 event hash (frozen: hash forms never change); not the v1 writer
 pkg/schema/                     v1 schema engine: embedded schemas compiled at init, the x- keywords, guide validation, the text and date-time rules
 pkg/envelope/                   v1 decoder: token-stream parse (spellings, duplicates, UTF-8 repair), inference table, normalisation order, guide and recommended checks; the content_hash member set
@@ -20,7 +21,7 @@ pkg/canonjson/                  v1 canonical JSON writer on the write path's JSO
 infra/agentfeedback/            compose stacks (local build, image-based deploy) and .env.example
 scripts/                        e2e.sh (live contract suite), deploy.sh, release.py,
                                 eval-cluster.py (live cluster.py calibration; discloses report text)
-skills/agentfeedback/           submit/query/process client skill (copied as-is into a harness; no tests inside)
+skills/agentfeedback/           submission skill: SKILL.md generated from internal/skillgen/source; scripts/ is the bash client of the running service, documented in scripts/README.md (copied as-is into a harness; no tests inside)
 skills/agentfeedback-triage/    processor skill (SKILL.md, digest.sh; optional cluster.py + reference/clustering.md)
 tests/skill/                    hermetic tests for both skills' scripts (mock server, isolated HOME)
 docs/                           api.md (contract of the running service), openapi.yaml (v1 contract of the next major release; embed.go makes it a Go package for internal/api), operate.md, develop.md, security.md, releases.md
@@ -39,6 +40,7 @@ just ci             # every gate of "Verification before you are done", in order
 just check          # gofmt, go vet, go mod tidy, build — the pre-commit gate
 just test           # go test -race -count=1 ./...  (SQLite on temp files; no services needed)
 just fuzz           # go test -fuzz=FuzzDecode -fuzztime=30s ./pkg/envelope: the decoder on top of its seed corpus (every fixture body)
+just skills         # regenerate the checked-in skill renders (skills/agentfeedback/SKILL.md) from internal/skillgen/source
 just e2e            # live contract suite against a fresh server on a temporary database (scripts/gate-e2e.sh, port 18080)
 just run-local      # serve on 127.0.0.1:8090 with a database in ./local/
 just image-push <tag>...                      # multi-arch image to ghcr.io/agentfeedback/agentfeedback; release step only
@@ -98,6 +100,11 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
 - **Docs are written for agents first.** Lead with the command, state the
   rule, skip the anecdote. One doc per task, no duplicated facts; keep the
   README route table true. Nothing machine-, user- or organization-specific.
+- **Skill renders are generated.** `skills/agentfeedback/SKILL.md` is the
+  `skill-md` render of `internal/skillgen/source/`; edit the fragments, run
+  `just skills`, and commit both. Text outside a `<!-- only: … -->` block
+  reaches every form; the prompt form assumes nothing but HTTP, and no
+  checked-in render names a server URL.
 - **Skill directories are copied as-is into harnesses.** No tests or tooling inside
   `skills/*/`; tests live in `tests/skill/`. Script comments state rules, not
   history: no dates, incident numbers or machine names.
@@ -118,16 +125,17 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
 ## Verification before you are done
 
 1. `just check` clean.
-2. `just test` (`go test -race -count=1 ./...`) green.
-3. Decoder touched (`pkg/envelope/`): `just fuzz` green; a crash it finds is
+2. `just skills` leaves every checked-in render unchanged (`git diff --exit-code`).
+3. `just test` (`go test -race -count=1 ./...`) green.
+4. Decoder touched (`pkg/envelope/`): `just fuzz` green; a crash it finds is
    committed under `pkg/envelope/testdata/fuzz/FuzzDecode/` as a regression
    seed beside the fix.
-4. API touched: build, serve on a temp database, `bash scripts/e2e.sh` all
+5. API touched: build, serve on a temp database, `bash scripts/e2e.sh` all
    green.
-5. Skill scripts touched: the shellcheck command above and `bash tests/skill/run-tests.sh`
+6. Skill scripts touched: the shellcheck command above and `bash tests/skill/run-tests.sh`
    all green.
-6. Docs touched: every relative link resolves.
-7. Contract files touched (`schemas/`, `docs/openapi.yaml`, `conformance/`):
+7. Docs touched: every relative link resolves.
+8. Contract files touched (`schemas/`, `docs/openapi.yaml`, `conformance/`):
    `just contract` green.
 
 `just ci` runs all of the above in order and fails if `just check` rewrote a

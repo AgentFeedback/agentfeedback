@@ -46,6 +46,9 @@ var catalogue = map[string]error{
 	"errInitWrite":      errInitWrite("/c.toml", errors.New("denied")),
 	"errSchemaKind":     errSchemaKind("x", []string{"envelope", "friction"}),
 	"errSchemaVersion":  errSchemaVersion("friction", "9", []string{"1"}),
+	"errSkillForm":      errSkillForm("x", []string{"skill-md", "prompt"}),
+	"errSkillServer":    errSkillServer("ftp://x", "the scheme is not http or https"),
+	"errSkillVerb":      errSkillVerb("list"),
 }
 
 var nextVerbs = []string{

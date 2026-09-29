@@ -44,6 +44,7 @@ var commands = []command{
 	{"doctor", "check the client configuration and the server connection", runDoctor},
 	{"version", "print the client version", runVersion},
 	{"schema", "schema [<kind> [<version>]]: list the schemas or print one", runSchema},
+	{"skill", "skill render <form> [--server URL]: print the submission guidance in one form", runSkill},
 	{"help", "print this help", nil},
 }
 

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/agentfeedback/agentfeedback/internal/skillgen"
 	"github.com/agentfeedback/agentfeedback/pkg/schema"
 )
 
@@ -683,6 +684,60 @@ func TestRun_FlagErrorPrintedOnce(t *testing.T) {
 		}
 		if out := lastJSONLine(t, r.stdout); out["status"] != "error" {
 			t.Fatalf("%v: %+v", args, r)
+		}
+	}
+}
+
+func TestSkillRender(t *testing.T) {
+	isolate(t)
+	want, err := skillgen.Render(skillgen.FormPrompt, "https://feedback.example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"skill", "render", "prompt", "--server", "https://feedback.example.com/"},
+		{"skill", "render", "--server=https://feedback.example.com", "prompt"},
+	} {
+		if r := runCLI(t, "", args...); r.code != 0 || r.stdout != string(want) || r.stderr != "" {
+			t.Fatalf("%v: code %d, stderr %q", args, r.code, r.stderr)
+		}
+	}
+	checkedIn, err := os.ReadFile("../../skills/agentfeedback/SKILL.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := runCLI(t, "", "skill", "render", "skill-md"); r.code != 0 || r.stdout != string(checkedIn) {
+		t.Fatalf("skill-md: code %d, differs from the checked-in SKILL.md", r.code)
+	}
+
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"skill"}, "wrong number of arguments for skill"},
+		{[]string{"skill", "list"}, `unknown skill subcommand "list"`},
+		{[]string{"skill", "render"}, "wrong number of arguments for skill"},
+		{[]string{"skill", "render", "prompt", "mcp"}, "wrong number of arguments for skill"},
+		{[]string{"skill", "render", "docs"}, `no skill form "docs"; the forms are skill-md, agents-md, cursor, prompt, mcp`},
+		{[]string{"skill", "render", "prompt", "--server", "ftp://x"}, "the scheme is not http or https"},
+		{[]string{"skill", "render", "mcp", "--server", "https://user:s3cret@x"}, "carries credentials"},
+		{[]string{"skill", "render", "prompt", "--server", "http://x/\n"}, `"http://x/\n"`},
+		{[]string{"skill", "render", "prompt", "--bogus"}, "invalid arguments"},
+	} {
+		r := runCLI(t, "", tc.args...)
+		if r.code != 2 || r.stdout != "" || !strings.Contains(r.stderr, tc.want) || strings.Count(r.stderr, "agentfeedback skill:") != 1 {
+			t.Errorf("%v: code %d, stdout %q, stderr %q", tc.args, r.code, r.stdout, r.stderr)
+		}
+	}
+	if r := runCLI(t, "", "skill", "render", "mcp", "--server", "https://user:s3cret@x"); strings.Contains(r.stderr, "s3cret") {
+		t.Errorf("credentials shown: %q", r.stderr)
+	}
+	if r := runCLI(t, "", "skill", "render", "skill-md", "--server", "ftp://ignored"); r.code != 0 || r.stdout != string(checkedIn) {
+		t.Errorf("skill-md with an unused --server: %+v", r.code)
+	}
+	for _, args := range [][]string{{"skill", "-h"}, {"skill", "render", "-h"}} {
+		if r := runCLI(t, "", args...); r.code != 0 || !strings.Contains(r.stderr, "skill render <form>") {
+			t.Errorf("%v: %+v", args, r)
 		}
 	}
 }

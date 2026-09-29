@@ -6,9 +6,12 @@ Source releases are annotated, immutable `vMAJOR.MINOR.PATCH` tags: patch for
 compatible fixes, docs and dependency updates; minor for compatible features;
 major for breaking API or operational contracts. Every delivered change belongs
 to a release. The two skills carry their own `version` in their `SKILL.md`;
-bump one only when its command contract changes. For `agentfeedback`, bump
-`AF_CLIENT_VERSION` in `scripts/_common.sh` and its pin in
-`tests/skill/run-tests.sh` with it: that value is what payloads report.
+bump one only when its command contract changes. The `agentfeedback` skill's
+`SKILL.md` is generated: its version is in `internal/skillgen/source/skill.json`,
+and `just skills` renders it. The bash client in
+`skills/agentfeedback/scripts/` carries its own `AF_CLIENT_VERSION` in
+`_common.sh`, pinned in `tests/skill/run-tests.sh`; bump both when the scripts'
+contract changes: that value is what their payloads report.
 
 Maintainers need Git, Python 3, the tools `just ci` needs
 ([develop.md](develop.md)), Docker with buildx logged in to `ghcr.io`, and an

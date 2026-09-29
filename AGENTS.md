@@ -11,9 +11,10 @@ Design records live in a private location; if `.kitchen/` is present in this
 checkout, read `.kitchen/AGENTS.md` first.
 
 This file is for agents **changing this repo**. If you only want to **use the
-running service**, you need one document: the skill's
-[`SKILL.md`](skills/agentfeedback/SKILL.md), or [`docs/api.md`](docs/api.md)
-for raw HTTP.
+running service**, you need one document: the bash client's
+[`scripts/README.md`](skills/agentfeedback/scripts/README.md), or
+[`docs/api.md`](docs/api.md) for raw HTTP. The skill's `SKILL.md` is
+generated and teaches the binary of the next major release.
 
 ## Route by task
 

@@ -221,5 +221,31 @@ func errSchemaVersion(kind, version string, known []string) error {
 		"run agentfeedback schema to list them")
 }
 
+// skill errors.
+
+func errSkillForm(form string, known []string) error {
+	return usageErr(fmt.Sprintf("no skill form %q; the forms are %s", form, strings.Join(known, ", ")),
+		"run agentfeedback skill -h to list them")
+}
+
+func errSkillVerb(verb string) error {
+	return usageErr(fmt.Sprintf("unknown skill subcommand %q; the only one is render", verb),
+		"use agentfeedback "+skillSynopsis)
+}
+
+// errSkillServer never shows credentials: a URL that carries them is refused
+// for that reason, and the refusal must not print them.
+func errSkillServer(raw, reason string) error {
+	shown := raw
+	if u, err := url.Parse(raw); err == nil && u.User != nil {
+		shown = u.Redacted()
+	} else if err != nil && strings.Contains(raw, "@") {
+		shown = "(not shown)"
+	}
+
+	return usageErr(fmt.Sprintf("--server %q is not a usable base URL: %s", shown, reason),
+		"pass an http or https URL without credentials, query or fragment")
+}
+
 // oneLine keeps a multi-line library message on one line of output.
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }

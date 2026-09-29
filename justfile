@@ -29,6 +29,18 @@ test:
 fuzz:
     go test -run='^$' -fuzz='^FuzzDecode$' -fuzztime=30s ./pkg/envelope
 
+# The checked-in skill renders: `just skills` writes them, `just ci` checks them.
+skill_renders := "skills/agentfeedback/SKILL.md"
+
+# Regenerate every checked-in skill render from internal/skillgen/source. Never edit a render by hand.
+skills: build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmp=$(mktemp)
+    trap 'rm -f "$tmp"' EXIT
+    ./bin/agentfeedback skill render skill-md > "$tmp"
+    cp "$tmp" skills/agentfeedback/SKILL.md
+
 # Run locally against a database in ./local (created on demand).
 run-local: build
     mkdir -p local
@@ -57,6 +69,16 @@ ci:
     if [ "$before" != "$after" ]; then
         echo "just ci: just check rewrote files; review them and commit them" >&2
         git status --short >&2
+        exit 1
+    fi
+    if ! git diff --quiet -- {{skill_renders}}; then
+        echo "just ci: a generated skill render has uncommitted edits; renders are never edited by hand: move the change into internal/skillgen/source" >&2
+        git diff --stat -- {{skill_renders}} >&2
+        exit 1
+    fi
+    just skills
+    if ! git diff --exit-code --stat -- {{skill_renders}}; then
+        echo "just ci: a checked-in skill render differs from its source; edit internal/skillgen/source, run just skills and commit both" >&2
         exit 1
     fi
     go test -race -count=1 ./...
