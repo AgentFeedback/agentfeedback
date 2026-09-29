@@ -35,7 +35,7 @@ run-local: build
     DATABASE_PATH=${DATABASE_PATH:-local/agentfeedback.db} \
     HTTP_LISTEN_ADDR=${HTTP_LISTEN_ADDR:-127.0.0.1:8090} \
     API_KEY=${API_KEY:-local-dev-key} \
-    ./bin/agentfeedback
+    ./bin/agentfeedback serve
 
 # Validate the contract files: schemas, OpenAPI document, examples, conformance fixtures. Needs uv and npx.
 contract:
@@ -71,7 +71,12 @@ ci:
 
 # Build the Docker image tagged agentfeedback.
 docker-build:
-    docker build -t agentfeedback .
+    #!/usr/bin/env bash
+    set -euo pipefail
+    docker build \
+        --build-arg VERSION="$(git describe --tags --match 'v[0-9]*' --dirty --always)" \
+        --build-arg COMMIT="$(git rev-parse HEAD)" \
+        -t agentfeedback .
 
 # Build the multi-arch image and push it to GHCR under every tag given. Release step only; needs `docker login ghcr.io`.
 image-push +tags:
@@ -79,7 +84,10 @@ image-push +tags:
     set -euo pipefail
     args=()
     for t in {{tags}}; do args+=(-t "ghcr.io/agentfeedback/agentfeedback:$t"); done
-    docker buildx build --platform linux/amd64,linux/arm64 --push "${args[@]}" .
+    docker buildx build --platform linux/amd64,linux/arm64 \
+        --build-arg VERSION="$(git describe --tags --match 'v[0-9]*' --dirty --always)" \
+        --build-arg COMMIT="$(git rev-parse HEAD)" \
+        --push "${args[@]}" .
 
 # Remove build artifacts.
 clean:

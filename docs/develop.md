@@ -6,7 +6,7 @@ How to change the service and the skills, verify, and release. Read
 ## Layout
 
 ```
-cmd/agentfeedback/              main: `serve` (default), `import <jsonl>`, `backup <dest.db>`
+cmd/agentfeedback/              main: bare invocation prints help; server `serve`, `import <jsonl>`, `backup <dest.db>`; client `doctor`, `doctor --init`, `version`, `schema`, settings resolved flag > AGENT_FEEDBACK_* env > config.toml (API key: env > config only)
 internal/api/                   v1 HTTP transport over internal/core: mux, middleware, query grammar, Problem mapping, bundled openapi.json; conformance test against docs/openapi.yaml
 internal/v3/api/                HTTP of the running v3 service, moved here unchanged; `serve` uses it until the v1 transport is wired, then it goes
 internal/core/                  v1 service, no net/http: create with identity and dedupe, get, list, marks, redaction, stats, export and import format 2, meta; typed problems

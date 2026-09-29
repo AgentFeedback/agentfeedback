@@ -7,6 +7,7 @@ toolchain go1.27.1
 require (
 	github.com/getkin/kin-openapi v0.149.0
 	github.com/google/uuid v1.6.0
+	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/prometheus/client_golang v1.24.1
 	go.yaml.in/yaml/v3 v3.0.5
 	modernc.org/sqlite v1.59.0

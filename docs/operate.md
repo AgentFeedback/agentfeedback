@@ -33,7 +33,7 @@ bash ../../skills/agentfeedback/scripts/process.sh list
 Tear down with `docker compose down -v` (deletes the database volume; `.env`
 stays).
 
-Without Docker: `go build -o bin/agentfeedback ./cmd/agentfeedback && API_KEY=dev DATABASE_PATH=/tmp/agentfeedback.db HTTP_LISTEN_ADDR=127.0.0.1:8090 bin/agentfeedback`.
+Without Docker: `go build -o bin/agentfeedback ./cmd/agentfeedback && API_KEY=dev DATABASE_PATH=/tmp/agentfeedback.db HTTP_LISTEN_ADDR=127.0.0.1:8090 bin/agentfeedback serve`.
 
 ## Deploy to a host
 

@@ -1,15 +1,20 @@
-// Command agentfeedback serves the AgentFeedback API and provides the offline
-// maintenance subcommands (import, backup) that operate on the same database.
+// Command agentfeedback is the AgentFeedback server and client: serve runs the
+// API, import and backup maintain its database, and doctor, version and schema
+// are client commands. A bare invocation prints help.
 package main
 
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -22,47 +27,177 @@ import (
 // defaultServiceVersion is overridden by SERVICE_VERSION.
 const defaultServiceVersion = "v3.0.0"
 
-const usage = `usage:
-  agentfeedback [serve]              serve the HTTP API (default)
-  agentfeedback import <file.jsonl>  import an export stream into the database
-  agentfeedback backup <dest.db>     write a consistent copy of the database
+// command is one entry of the router: the name typed after agentfeedback, the
+// line help shows, and the handler that receives the remaining arguments.
+type command struct {
+	name    string
+	summary string
+	run     func(args []string, stdin io.Reader, stdout, stderr io.Writer) error
+}
 
-environment: API_KEY (serve only), DATABASE_PATH, HTTP_LISTEN_ADDR,
+// commands is the command table in help order. Nothing listens unless serve
+// is named: a bare invocation prints help.
+var commands = []command{
+	{"serve", "serve the HTTP API", serveCommand},
+	{"import", "import <file.jsonl>: import an export stream into the database", func(a []string, _ io.Reader, _, _ io.Writer) error { return runImport(a) }},
+	{"backup", "backup <dest.db>: write a consistent copy of the database", func(a []string, _ io.Reader, _, _ io.Writer) error { return runBackup(a) }},
+	{"doctor", "check the client configuration and the server connection", runDoctor},
+	{"version", "print the client version", runVersion},
+	{"schema", "schema [<kind> [<version>]]: list the schemas or print one", runSchema},
+	{"help", "print this help", nil},
+}
+
+const helpFooter = `
+Add --json to help, doctor, version or schema for JSON output.
+First-time setup: printf '%%s' "$KEY" | agentfeedback doctor --init --url URL --key-from-stdin
+
+client environment (flag > environment > config file):
+  AGENT_FEEDBACK_URL       server base URL (doctor --url overrides it)
+  AGENT_FEEDBACK_API_KEY   API key (environment or config file only, never a flag)
+  AGENT_FEEDBACK_MACHINE   machine name
+  AGENT_FEEDBACK_MODEL     model id
+  AGENT_FEEDBACK_HARNESS   harness name
+client config file: %s
+  flat keys: url, api_key, machine, model, harness
+
+server environment: API_KEY (serve only), DATABASE_PATH, HTTP_LISTEN_ADDR,
 GRACEFUL_SHUTDOWN_TIMEOUT, SERVICE_VERSION, LOG_LEVEL
 `
 
 func main() {
-	args := os.Args[1:]
-	command := "serve"
-	if len(args) > 0 && !isFlag(args[0]) {
-		command = args[0]
-		args = args[1:]
-	}
-
-	var err error
-	switch command {
-	case "serve":
-		err = runServe()
-	case "import":
-		err = runImport(args)
-	case "backup":
-		err = runBackup(args)
-	case "help", "-h", "--help":
-		fmt.Print(usage)
-
-		return
-	default:
-		fmt.Fprintf(os.Stderr, "unknown command %q\n\n%s", command, usage)
-		os.Exit(2)
-	}
-
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "agentfeedback %s: %v\n", command, err)
-		os.Exit(1)
-	}
+	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
-func isFlag(s string) bool { return len(s) > 0 && s[0] == '-' }
+// run routes one invocation and returns the exit status: 0 on success, 2 for
+// a wrong command line, 1 for any other failure.
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		printHelp(stdout)
+
+		return 0
+	}
+	name := args[0]
+	if name == "--json" && len(args) == 1 {
+		name = "help"
+	}
+	switch name {
+	case "help", "-h", "--help":
+		if slices.Contains(args, "--json") {
+			if err := writeJSON(stdout, helpJSON()); err != nil {
+				return 1
+			}
+
+			return 0
+		}
+		printHelp(stdout)
+
+		return 0
+	}
+
+	if strings.HasPrefix(name, "-") {
+		fmt.Fprintf(stderr, "agentfeedback: %v\n", errLeadingFlag(name))
+
+		return 2
+	}
+
+	var cmd *command
+	for i := range commands {
+		if commands[i].name == name && commands[i].run != nil {
+			cmd = &commands[i]
+		}
+	}
+	if cmd == nil {
+		fmt.Fprintf(stderr, "agentfeedback: %v\n\n", errUnknownCommand(name))
+		printHelp(stderr)
+
+		return 2
+	}
+
+	err := cmd.run(args[1:], stdin, stdout, stderr)
+	switch {
+	case err == nil:
+		return 0
+	case errors.Is(err, flag.ErrHelp):
+		return 0
+	case errors.Is(err, errReported):
+		return exitCode(err)
+	}
+	fmt.Fprintf(stderr, "agentfeedback %s: %v\n", name, err)
+
+	return exitCode(err)
+}
+
+// errReported marks a failure the command already printed in its own format
+// (doctor's report, doctor --init's JSON outcome); run adds nothing.
+var errReported = errors.New("reported")
+
+// reportedError wraps a failure already printed so run keeps its exit status.
+type reportedError struct{ err error }
+
+func (e *reportedError) Error() string   { return e.err.Error() }
+func (e *reportedError) Unwrap() []error { return []error{e.err, errReported} }
+
+func printHelp(w io.Writer) {
+	fmt.Fprint(w, "usage: agentfeedback <command> [arguments]\n\ncommands:\n")
+	for _, c := range commands {
+		fmt.Fprintf(w, "  %-8s %s\n", c.name, c.summary)
+	}
+	path, err := configPath(os.Getenv)
+	if err != nil {
+		path = "~/.config/agentfeedback/config.toml"
+	}
+	fmt.Fprintf(w, helpFooter, path)
+}
+
+type helpCommand struct {
+	Name    string `json:"name"`
+	Summary string `json:"summary"`
+}
+
+func helpJSON() map[string][]helpCommand {
+	out := make([]helpCommand, 0, len(commands))
+	for _, c := range commands {
+		out = append(out, helpCommand{Name: c.name, Summary: c.summary})
+	}
+
+	return map[string][]helpCommand{"commands": out}
+}
+
+// newFlagSet returns the flag set every command parses with: errors are
+// returned, not fatal, and the flag package prints nothing itself, so run
+// reports each error once.
+func newFlagSet(name string) *flag.FlagSet {
+	fs := flag.NewFlagSet("agentfeedback "+name, flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+
+	return fs
+}
+
+// parseFlags parses args and, on -h, prints the command's usage to stderr.
+func parseFlags(fs *flag.FlagSet, args []string, stderr io.Writer) error {
+	err := fs.Parse(args)
+	if errors.Is(err, flag.ErrHelp) {
+		fs.SetOutput(stderr)
+		fs.Usage()
+		fs.SetOutput(io.Discard)
+	}
+
+	return err
+}
+
+// serveCommand takes no flags or arguments; checking them here means a
+// mistyped command line never starts a listener.
+func serveCommand(args []string, _ io.Reader, _, stderr io.Writer) error {
+	fs := newFlagSet("serve")
+	if err := parseFlags(fs, args, stderr); err != nil {
+		return errFlags("serve", err)
+	}
+	if fs.NArg() != 0 {
+		return errArgs("serve", "serve (configured by the server environment variables)")
+	}
+
+	return runServe()
+}
 
 func setupLogger(level string) {
 	lvl := slog.LevelInfo
@@ -147,7 +282,7 @@ func runServe() error {
 
 func runBackup(args []string) error {
 	if len(args) != 1 {
-		return errors.New("usage: agentfeedback backup <dest.db>")
+		return errArgs("backup", "backup <dest.db>")
 	}
 	dest := args[0]
 
@@ -160,9 +295,9 @@ func runBackup(args []string) error {
 	// Refuse rather than overwrite: a backup command that clobbers an existing
 	// backup is a data-loss command.
 	if _, err := os.Stat(dest); err == nil {
-		return fmt.Errorf("destination %s already exists", dest)
+		return errBackupExists(dest)
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("check destination %s: %w", dest, err)
+		return errBackupStat(dest, err)
 	}
 
 	ctx := context.Background()

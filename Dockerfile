@@ -5,6 +5,10 @@ FROM --platform=$BUILDPLATFORM golang:1.27.1-bookworm AS build
 
 ARG TARGETOS
 ARG TARGETARCH
+# VERSION and COMMIT come from `just docker-build` and `just image-push`
+# (git describe and git rev-parse); `agentfeedback version` reports them.
+ARG VERSION
+ARG COMMIT
 
 ENV CGO_ENABLED=0
 
@@ -14,7 +18,7 @@ RUN go mod download
 COPY ./ ./
 
 RUN GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
-    go build -trimpath -ldflags="-s -w" -o /opt/agentfeedback ./cmd/agentfeedback
+    go build -trimpath -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT}" -o /opt/agentfeedback ./cmd/agentfeedback
 
 # Alpine supplies the runtime curl used by the Compose readiness healthcheck,
 # CA roots, timezone data, and a non-root service account.
@@ -37,3 +41,4 @@ ENV DATABASE_PATH=/data/agentfeedback.db
 USER agentfeedback
 EXPOSE 8080
 ENTRYPOINT ["/opt/agentfeedback"]
+CMD ["serve"]

@@ -27,16 +27,25 @@ cleanup() {
 }
 trap 'cleanup $?' EXIT
 
+# Another listener on the address would answer the suite instead of the fresh
+# server; fail with one clear line rather than dozens of failed checks.
+if (exec 3<>"/dev/tcp/${ADDR%:*}/${ADDR##*:}") 2>/dev/null; then
+  echo "gate-e2e: $ADDR is already in use; stop whatever listens there or set E2E_ADDR" >&2
+  exit 1
+fi
+
 API_KEY="$KEY" DATABASE_PATH="$workdir/agentfeedback.db" HTTP_LISTEN_ADDR="$ADDR" \
-  "$BIN" >"$workdir/server.log" 2>&1 &
+  "$BIN" serve >"$workdir/server.log" 2>&1 &
 server_pid=$!
 
 for _ in $(seq 1 30); do
   if curl --fail --silent --show-error "http://$ADDR/ready" >/dev/null 2>&1; then
     break
   fi
+  kill -0 "$server_pid" 2>/dev/null || break
   sleep 1
 done
+kill -0 "$server_pid" 2>/dev/null || { echo "gate-e2e: the server exited before it was ready" >&2; exit 1; }
 curl --fail --silent --show-error "http://$ADDR/ready" >/dev/null
 
 bash "$ROOT/scripts/e2e.sh" "$KEY" "http://$ADDR"

@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"hash"
 	"os"
@@ -128,18 +127,18 @@ type importStats struct {
 // including the final count and digest verification — rolls the transaction
 // back, so a rejected stream leaves the database untouched.
 func runImport(args []string) error {
-	fs := flag.NewFlagSet("import", flag.ContinueOnError)
+	fs := newFlagSet("import")
 	allowNonEmpty := fs.Bool("allow-nonempty", false, "import into a database that already holds rows")
 	allowPartial := fs.Bool("allow-partial", false, "import a filtered (partial) export")
 	trustHashes := fs.Bool("trust-hashes", false, "keep each record's declared payload_hash instead of failing when it disagrees with the recomputed one")
 	reserveThrough := fs.Int64("reserve-ids-through", 0, "advance the id sequence at least this far after importing (it always passes the highest id in the stream)")
 	families := &familyFilter{}
 	fs.Var(families, "family", "import only these families (friction, review, event; repeatable or comma-separated)")
-	if err := fs.Parse(args); err != nil {
-		return err
+	if err := parseFlags(fs, args, os.Stderr); err != nil {
+		return errFlags("import", err)
 	}
 	if fs.NArg() != 1 {
-		return errors.New("usage: agentfeedback import [--allow-nonempty] [--allow-partial] [--trust-hashes] " +
+		return errArgs("import", "import [--allow-nonempty] [--allow-partial] [--trust-hashes] "+
 			"[--family friction|review|event] [--reserve-ids-through N] <file.jsonl>")
 	}
 	path := fs.Arg(0)

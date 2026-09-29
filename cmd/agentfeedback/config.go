@@ -31,10 +31,10 @@ func envDurationOr(key string, fallback time.Duration) (time.Duration, error) {
 	}
 	d, err := time.ParseDuration(v)
 	if err != nil {
-		return 0, fmt.Errorf("%s must be a duration such as 30s: %w", key, err)
+		return 0, errDuration(key, v, err)
 	}
 	if d <= 0 {
-		return 0, fmt.Errorf("%s must be positive, got %s", key, v)
+		return 0, errDuration(key, v, nil)
 	}
 
 	return d, nil
@@ -58,12 +58,12 @@ func loadConfig(requireAPIKey bool) (config, error) {
 	cfg.ShutdownTimeout = timeout
 
 	if requireAPIKey && cfg.APIKey == "" {
-		return config{}, fmt.Errorf("API_KEY is required")
+		return config{}, errAPIKeyUnset()
 	}
 	switch cfg.LogLevel {
 	case "debug", "info":
 	default:
-		return config{}, fmt.Errorf("LOG_LEVEL must be debug or info, got %q", cfg.LogLevel)
+		return config{}, errLogLevel(cfg.LogLevel)
 	}
 	if err := checkWritableDir(filepath.Dir(cfg.DatabasePath)); err != nil {
 		return config{}, err
@@ -77,15 +77,15 @@ func loadConfig(requireAPIKey bool) (config, error) {
 func checkWritableDir(dir string) error {
 	info, err := os.Stat(dir)
 	if err != nil {
-		return fmt.Errorf("DATABASE_PATH directory %s is not usable: %w", dir, err)
+		return errDatabaseDir(dir, fmt.Sprintf("is not usable: %v", err))
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("DATABASE_PATH directory %s is not a directory", dir)
+		return errDatabaseDir(dir, "is not a directory")
 	}
 
 	probe, err := os.CreateTemp(dir, ".writable-*")
 	if err != nil {
-		return fmt.Errorf("DATABASE_PATH directory %s is not writable: %w", dir, err)
+		return errDatabaseDir(dir, fmt.Sprintf("is not writable: %v", err))
 	}
 	name := probe.Name()
 	_ = probe.Close()
