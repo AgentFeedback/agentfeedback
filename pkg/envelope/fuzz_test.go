@@ -79,15 +79,20 @@ func FuzzDecode(f *testing.F) {
 		if !json.Valid(stored) {
 			t.Fatalf("stored envelope is not JSON: %s", stored)
 		}
-		// Canonical form is a fixed point of parse and write. Not of Decode:
-		// a stored envelope is not always an admissible request (nothing is
-		// re-trimmed after a cut, so a truncated member may end in a space).
-		again, err := parse(stored, newDetails())
-		if err != nil {
-			t.Fatalf("stored envelope does not parse: %v", err)
+		// The stored envelope is a fixed point of the write path: decoded
+		// again as the import path does (kind left out when inferred, the
+		// depth headroom inference can add; the byte cap is import's
+		// business, so none here), it stores the same bytes.
+		tree := env.Tree()
+		if env.Kind == "unknown" {
+			delete(tree, "kind")
 		}
-		if !bytes.Equal(canonjson.Marshal(again), stored) {
-			t.Fatalf("stored envelope is not a fixed point:\n %s\n %s", stored, canonjson.Marshal(again))
+		again, _, err := DecodeWithLimits(canonjson.Marshal(tree), len(stored)+len(`,"kind":"unknown"`), MaxDepth+StoredDepthHeadroom)
+		if err != nil {
+			t.Fatalf("stored envelope does not decode: %v\n %s", err, stored)
+		}
+		if got := canonjson.Marshal(again.Tree()); !bytes.Equal(got, stored) {
+			t.Fatalf("stored envelope is not a fixed point of Decode:\n %s\n %s", stored, got)
 		}
 	})
 }

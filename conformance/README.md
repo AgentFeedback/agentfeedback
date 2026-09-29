@@ -106,9 +106,10 @@ After inference, each string member goes through these steps once, in this
 order: (1) trim, (2) in `summary`, newlines to spaces, (3) token
 normalisation for `kind` and `harness` (trim, lower-case, runs of whitespace
 to one `-`), (4) truncation at the last complete code point at or before the
-byte limit. Nothing is re-trimmed after a cut, so a token cut at its limit
-may end in `-`. A member that is empty after step (3) is omitted silently
-(`missing_recommended` still applies to `summary`, `machine` and `model`;
+byte limit, (5) a member that was trimmed in step 1 is trimmed again after a
+cut. Tokens are not re-trimmed (no whitespace survives step 3), so a token
+cut at its limit may end in `-`. A member that is empty after step (3) is
+omitted silently (`missing_recommended` still applies to `summary`, `machine` and `model`;
 an empty `key` means keyless).
 
 `occurred_at` is an RFC 3339 section 5.6 date-time with ASCII digits, `T`

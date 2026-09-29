@@ -15,6 +15,24 @@ const BodyLimit = 10485760
 // object being level 1. conformance/manifest.json states the same number.
 const MaxDepth = 512
 
+// StoredDepthHeadroom is how many levels deeper than its body a stored
+// envelope can nest, so a stored envelope accepted at MaxDepth re-decodes
+// within MaxDepth+StoredDepthHeadroom. Derivation from the inference table,
+// the body object being level 1 and a top-level member's container level 2:
+//   - an unknown top-level member moved to payload.<name>: level 3, +1;
+//     under payload.moved.<name> after a collision: level 4, +2;
+//   - a non-object payload wrapped as payload.value: +1;
+//   - a non-object payload.moved wrapped as payload.moved.value: its value
+//     came from a top-level member (level 2) and lands at level 4, +2;
+//   - a non-object context moved to payload.context_raw (+1) or
+//     payload.moved.context_raw (+2);
+//   - context values, occurred_at_raw and coerced members are strings, and
+//     payload.context_overflow holds only strings: no container moves.
+//
+// No rule places a value below payload.moved.<name> or payload.moved.value,
+// and payload.moved is the only nested destination, so +2 is the maximum.
+const StoredDepthHeadroom = 2
+
 // Envelope is the stored envelope: every member the server keeps, server
 // fields excluded. An empty string means the member is absent; the contract
 // never stores an empty string (a member empty after normalisation is

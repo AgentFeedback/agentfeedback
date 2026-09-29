@@ -27,10 +27,11 @@ var plainInteger = regexp.MustCompile(`^[1-9][0-9]*$`)
 // no duplicate or unknown members, processed a boolean (default true, null
 // is 400), verdict a token of at most VerdictBytes, resolution trimmed and
 // non-blank of at most ResolutionBytes, ref and processed_by trimmed of at
-// most RefBytes and ProcessedByBytes, each of the four non-blank and allowed
-// only with processed=true. Over a limit is 400, never a truncation. ids is
-// 1 to ProcessedIDsMax positive integers, duplicates collapsed, returned
-// ascending.
+// most RefBytes and ProcessedByBytes, the four allowed only with
+// processed=true. A blank resolution is 400; a verdict, ref or processed_by
+// blank after normalisation clears that field (stored as NULL). Over a
+// limit is 400, never a truncation. ids is 1 to ProcessedIDsMax positive
+// integers, duplicates collapsed, returned ascending.
 func parseMark(body []byte, withIDs bool) (mark, []int64, error) {
 	if len(body) > envelope.BodyLimit {
 		return mark{}, nil, &Problem{Status: 413, Code: CodeRequestTooLarge,
@@ -73,8 +74,8 @@ func parseMark(body []byte, withIDs bool) (mark, []int64, error) {
 			default:
 				v, limit, field = schema.Trim(v), ProcessedByBytes, &m.fields.ProcessedBy
 			}
-			if v == "" {
-				return mark{}, nil, invalid("out_of_range", ptr, "%s must not be blank; omit it to keep the stored value", mem.name)
+			if v == "" && mem.name == "resolution" {
+				return mark{}, nil, invalid("out_of_range", ptr, "resolution must not be blank; omit it to keep the stored value")
 			}
 			if len(v) > limit {
 				return mark{}, nil, invalid("too_long", ptr, "%s must be at most %d bytes after trimming, got %d", mem.name, limit, len(v))

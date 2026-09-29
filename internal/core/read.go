@@ -270,13 +270,37 @@ type Bucket struct {
 // Stats is the stats response. Groups is present only when By was given,
 // Series only when Bucket was; Recurring always.
 type Stats struct {
-	Total     int64        `json:"total"`
-	Open      int64        `json:"open"`
-	Processed int64        `json:"processed"`
-	Redacted  int64        `json:"redacted"`
-	Groups    []Group      `json:"groups,omitempty"`
-	Recurring []Recurrence `json:"recurring"`
-	Series    []Bucket     `json:"series,omitempty"`
+	Total     int64   `json:"total"`
+	Open      int64   `json:"open"`
+	Processed int64   `json:"processed"`
+	Redacted  int64   `json:"redacted"`
+	Groups    []Group // nil when not requested; non-nil, maybe empty, when requested
+	Recurring []Recurrence
+	Series    []Bucket // nil when not requested; non-nil, maybe empty, when requested
+}
+
+// MarshalJSON writes the Stats body: groups and series are omitted when nil
+// (not requested) and written as [] when requested and empty.
+func (s Stats) MarshalJSON() ([]byte, error) {
+	out := struct {
+		Total     int64        `json:"total"`
+		Open      int64        `json:"open"`
+		Processed int64        `json:"processed"`
+		Redacted  int64        `json:"redacted"`
+		Groups    *[]Group     `json:"groups,omitempty"`
+		Recurring []Recurrence `json:"recurring"`
+		Series    *[]Bucket    `json:"series,omitempty"`
+	}{Total: s.Total, Open: s.Open, Processed: s.Processed, Redacted: s.Redacted, Recurring: s.Recurring}
+	if out.Recurring == nil {
+		out.Recurring = []Recurrence{}
+	}
+	if s.Groups != nil {
+		out.Groups = &s.Groups
+	}
+	if s.Series != nil {
+		out.Series = &s.Series
+	}
+	return Marshal(out)
 }
 
 // Stats validates p and runs the totals, groups, recurring hashes and series
@@ -321,7 +345,7 @@ func (s *Service) Stats(ctx context.Context, p StatsParams) (Stats, error) {
 			if err != nil {
 				return err
 			}
-			out.Groups = make([]Group, len(groups))
+			out.Groups = make([]Group, len(groups)) // present when requested, even empty
 			for i, g := range groups {
 				out.Groups[i] = Group{Keys: g.Keys, Total: g.Total, Open: g.Open, Processed: g.Processed}
 			}

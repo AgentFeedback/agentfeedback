@@ -116,6 +116,33 @@ func TestImportFilters(t *testing.T) {
 	}
 }
 
+var uidRe = regexp.MustCompile(`"uid":"[^"]*"`)
+
+// TestRoundTripReproducers: bodies whose stored envelope once failed to
+// re-import (a trimmed member cut before a space; a member moved under
+// payload at MaxDepth) export, import and export again byte-equal.
+func TestRoundTripReproducers(t *testing.T) {
+	t.Parallel()
+	for name, body := range map[string]string{
+		"trim after truncate": `{"kind":"friction","machine":"` + strings.Repeat("a", 199) + ` b","payload":{}}`,
+		"moved at max depth":  `{"x":` + strings.Repeat("[", 511) + "0" + strings.Repeat("]", 511) + `}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			src, _, _ := newTestService(t)
+			mustCreate(t, src, body)
+			_, want, _, export := exportLines(t, src, ExportParams{})
+			dst, _, _ := newTestService(t)
+			if _, err := dst.Import(context.Background(), export); err != nil {
+				t.Fatal(err)
+			}
+			_, got, _, _ := exportLines(t, dst, ExportParams{})
+			if !slices.Equal(got, want) {
+				t.Errorf("record lines differ\n got %.300s\nwant %.300s", got, want)
+			}
+		})
+	}
+}
+
 func TestImportRejects(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -148,7 +175,10 @@ func TestImportRejects(t *testing.T) {
 		{"unknown member", "line 2: member \"extra\"", with(strings.Replace(lines[1], `{"id"`, `{"extra":1,"id"`, 1))},
 		{"duplicate member", "line 2: member \"id\" appears", with(strings.Replace(lines[1], `{"id":2`, `{"id":2,"id":2`, 1))},
 		{"missing uid", "line 2: uid is required", with(regexp.MustCompile(`"uid":"[^"]*",`).ReplaceAllString(lines[1], ""))},
-		{"bad uid", "line 2: uid must be a UUID", with(strings.Replace(lines[1], `"uid":"`, `"uid":"x`, 1))},
+		{"bad uid", "line 2: uid must be an RFC 9562 UUID", with(strings.Replace(lines[1], `"uid":"`, `"uid":"x`, 1))},
+		{"uid version 0", "line 2: uid must be an RFC 9562 UUID", with(uidRe.ReplaceAllString(lines[1], `"uid":"01925f00-0000-0000-8000-000000000000"`))},
+		{"uid version 9", "line 2: uid must be an RFC 9562 UUID", with(uidRe.ReplaceAllString(lines[1], `"uid":"01925f00-0000-9000-8000-000000000000"`))},
+		{"uid variant", "line 2: uid must be an RFC 9562 UUID", with(uidRe.ReplaceAllString(lines[1], `"uid":"01925f00-0000-7000-c000-000000000000"`))},
 		{"bad created_at", "line 2: created_at must be an RFC 3339", with(strings.Replace(lines[1], `"created_at":"2026`, `"created_at":"x2026`, 1))},
 		{"verdict without processed_at", "line 2: verdict is present", with(strings.Replace(lines[1], `"content_hash"`, `"verdict":"v","content_hash"`, 1))},
 		{"tombstone with summary", "line 2: a redacted record has no summary", with(strings.Replace(tombstone, `"content_hash"`, `"summary":"s","content_hash"`, 1))},

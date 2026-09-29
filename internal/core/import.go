@@ -61,11 +61,18 @@ var recordMembers = map[string]bool{
 	"verdict": false, "resolution": false, "ref": false, "processed_by": false, "redacted_at": false,
 }
 
+// requiredRecordMembers are recordMembers' required members in the
+// Submission schema's order, so a missing-member error is deterministic.
+var requiredRecordMembers = []string{"id", "uid", "kind", "schema_version", "payload", "content_hash", "created_at"}
+
 // envelopeMembers are the record members rebuilt into a body for the decoder.
 var envelopeMembers = []string{"kind", "schema_version", "key", "summary", "machine", "model", "harness",
 	"project", "occurred_at", "context", "payload"}
 
-var uuidForm = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+// uuidForm is an RFC 9562 UUID in 8-4-4-4-12 hex form: version 1 to 8 in
+// the third group's first digit, the RFC variant (8, 9, a or b) in the
+// fourth group's first digit.
+var uuidForm = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
 
 // Import reads export format 2 and stores its records. The whole body is
 // verified before the write transaction opens (header export_format 2; the
@@ -232,8 +239,8 @@ func verifyRecord(line int, raw []byte) (importRecord, error) {
 		}
 		byName[m.name] = m.raw
 	}
-	for name, required := range recordMembers {
-		if _, ok := byName[name]; required && !ok {
+	for _, name := range requiredRecordMembers {
+		if _, ok := byName[name]; !ok {
 			return importRecord{}, lineProblem(line, "required", "/"+name, "%s is required", name)
 		}
 	}
@@ -269,7 +276,7 @@ func verifyRecord(line int, raw []byte) (importRecord, error) {
 		return importRecord{}, err
 	}
 	if !uuidForm.MatchString(uid) {
-		return importRecord{}, lineProblem(line, "invalid_format", "/uid", "uid must be a UUID in 8-4-4-4-12 hex form, got %s", short(uid))
+		return importRecord{}, lineProblem(line, "invalid_format", "/uid", "uid must be an RFC 9562 UUID in 8-4-4-4-12 hex form (version 1-8, variant 8, 9, a or b), got %s", short(uid))
 	}
 	hash, _, err := str("content_hash")
 	if err != nil {
@@ -335,7 +342,7 @@ func verifyRecord(line int, raw []byte) (importRecord, error) {
 		b.Write(v)
 	}
 	b.WriteByte('}')
-	env, warnings, err := envelope.DecodeWithLimit([]byte(b.String()), ImportLimit)
+	env, warnings, err := envelope.DecodeWithLimits([]byte(b.String()), ImportLimit, ImportDepth)
 	if err != nil {
 		var r *envelope.Rejection
 		if errors.As(err, &r) {

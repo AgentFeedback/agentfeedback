@@ -120,3 +120,52 @@ func TestMarkBatchClassification(t *testing.T) {
 		t.Errorf("batch JSON %s %v", out, err)
 	}
 }
+
+func TestMarkBlankClears(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s, _, _ := newTestService(t)
+	id := mustCreate(t, s, `{"kind":"k","summary":"x"}`).Record.ID
+	if _, err := s.Mark(ctx, id, []byte(`{"verdict":"fixed","ref":"r","processed_by":"me"}`)); err != nil {
+		t.Fatal(err)
+	}
+	rec, err := s.Mark(ctx, id, []byte(`{"verdict":"  ","ref":"","processed_by":" "}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.ProcessedAt == nil || rec.Verdict != "" || rec.Ref != "" || rec.ProcessedBy != "" {
+		t.Fatalf("blank fields did not clear: %s", rec.AppendJSON(nil))
+	}
+	res, err := s.MarkBatch(ctx, []byte(`{"ids":[1],"verdict":"","ref":" "}`))
+	if err != nil || !slices.Equal(res.Unchanged, []int64{1}) {
+		t.Fatalf("a blank against a cleared field is not unchanged: %+v %v", res, err)
+	}
+	if _, err := s.Mark(ctx, id, []byte(`{"processed":false,"verdict":""}`)); asProblem(t, err).Status != 400 {
+		t.Errorf("blank verdict with processed=false: %v", err)
+	}
+}
+
+func TestRecordMemberOrder(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s, _, _ := newTestService(t)
+	id := mustCreate(t, s, `{"kind":"k","summary":"x"}`).Record.ID
+	if _, err := s.Mark(ctx, id, []byte(`{"verdict":"fixed","resolution":"r","ref":"x","processed_by":"me"}`)); err != nil {
+		t.Fatal(err)
+	}
+	rec, err := s.Redact(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := string(rec.AppendJSON(nil))
+	order := []string{`"id"`, `"uid"`, `"kind"`, `"schema_version"`, `"payload"`, `"content_hash"`, `"created_at"`,
+		`"processed_at"`, `"redacted_at"`, `"verdict"`, `"resolution"`, `"ref"`, `"processed_by"`}
+	last := -1
+	for _, m := range order {
+		i := bytes.Index([]byte(out), []byte(m+":"))
+		if i <= last {
+			t.Fatalf("%s out of order in %s", m, out)
+		}
+		last = i
+	}
+}

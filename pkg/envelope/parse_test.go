@@ -15,7 +15,7 @@ import (
 func parseString(t *testing.T, body string) (any, []schema.Detail, error) {
 	t.Helper()
 	det := newDetails()
-	v, err := parse([]byte(body), det)
+	v, err := parse([]byte(body), det, MaxDepth)
 	return v, det.flatten(), err
 }
 

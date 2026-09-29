@@ -23,6 +23,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/agentfeedback/agentfeedback/internal/store"
+	"github.com/agentfeedback/agentfeedback/pkg/envelope"
 )
 
 // DedupeWindow is how far back a keyless create looks for an unprocessed
@@ -32,9 +33,12 @@ const DedupeWindow = 24 * time.Hour
 // Limits core enforces itself; the body, context and member limits live in
 // pkg/envelope and the compiled envelope schema.
 const (
-	ImportLimit        = 33554432 // largest import body (32 MiB); one byte more is 413
-	ListMax            = 500      // list limit without payloads
-	ListMaxWithPayload = 100      // list limit with include=payload
+	ImportLimit = 33554432 // largest import body (32 MiB); one byte more is 413
+	// ImportDepth is the nesting a re-decoded stored envelope may reach:
+	// what create accepts plus what inference can add.
+	ImportDepth        = envelope.MaxDepth + envelope.StoredDepthHeadroom
+	ListMax            = 500 // list limit without payloads
+	ListMaxWithPayload = 100 // list limit with include=payload
 	ListDefault        = 50
 	ProcessedIDsMax    = 500 // ids in one batch mark
 	ExportMax          = 500 // export limit when one is given

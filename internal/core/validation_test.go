@@ -153,6 +153,27 @@ func TestMeta(t *testing.T) {
 	}
 }
 
+func TestStatsRequestedEmpty(t *testing.T) {
+	t.Parallel()
+	s, _, _ := newTestService(t)
+	st, err := s.Stats(context.Background(), StatsParams{By: []string{"kind"}, Bucket: "day"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _ := Marshal(st)
+	if string(out) != `{"total":0,"open":0,"processed":0,"redacted":0,"groups":[],"recurring":[],"series":[]}` {
+		t.Errorf("requested stats on an empty database: %s", out)
+	}
+	st, err = s.Stats(context.Background(), StatsParams{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _ = Marshal(st)
+	if string(out) != `{"total":0,"open":0,"processed":0,"redacted":0,"recurring":[]}` {
+		t.Errorf("unrequested groups or series: %s", out)
+	}
+}
+
 func TestListPaging(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

@@ -18,10 +18,11 @@ import (
 const replacedMessage = "invalid UTF-8 or a lone surrogate escape replaced by U+FFFD"
 
 type parser struct {
-	data  []byte
-	pos   int
-	depth int
-	det   *details
+	data     []byte
+	pos      int
+	depth    int
+	maxDepth int
+	det      *details
 }
 
 // frame is one container level of the parse: the path token under its
@@ -41,9 +42,9 @@ func (f *frame) get() *node {
 }
 
 // parse returns the body's value and records warnings into det. The error is
-// a syntax error, never a warning.
-func parse(data []byte, det *details) (any, error) {
-	p := &parser{data: data, det: det}
+// a syntax error or nesting deeper than maxDepth, never a warning.
+func parse(data []byte, det *details, maxDepth int) (any, error) {
+	p := &parser{data: data, det: det, maxDepth: maxDepth}
 	root := &frame{node: det.root}
 	p.skipWS()
 	v, err := p.value(root)
@@ -77,8 +78,8 @@ func (p *parser) peek() (byte, error) {
 
 func (p *parser) enter() error {
 	p.depth++
-	if p.depth > MaxDepth {
-		return fmt.Errorf("nested deeper than %d levels", MaxDepth)
+	if p.depth > p.maxDepth {
+		return fmt.Errorf("nested deeper than %d levels", p.maxDepth)
 	}
 	return nil
 }

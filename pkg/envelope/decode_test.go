@@ -187,13 +187,22 @@ func TestTreeOmitsAbsentMembers(t *testing.T) {
 	}
 }
 
-func TestDecodeWithLimit(t *testing.T) {
+func TestDecodeWithLimits(t *testing.T) {
 	t.Parallel()
+	deep := []byte(`{"a":[[0]]}`) // depth 3
+	if _, _, err := DecodeWithLimits(deep, BodyLimit, 3); err != nil {
+		t.Fatalf("at the depth limit: %v", err)
+	}
+	_, _, err := DecodeWithLimits(deep, BodyLimit, 2)
+	var d *Rejection
+	if !errors.As(err, &d) || d.Status != 400 || !strings.Contains(d.Message, "deeper than 2 levels") {
+		t.Fatalf("over the depth limit: %v", err)
+	}
 	body := []byte(`{"kind":"friction"}`)
-	if _, _, err := DecodeWithLimit(body, len(body)); err != nil {
+	if _, _, err := DecodeWithLimits(body, len(body), MaxDepth); err != nil {
 		t.Fatalf("at the limit: %v", err)
 	}
-	_, _, err := DecodeWithLimit(body, len(body)-1)
+	_, _, err = DecodeWithLimits(body, len(body)-1, MaxDepth)
 	var r *Rejection
 	if !errors.As(err, &r) || r.Status != 413 || r.Code != "request_too_large" {
 		t.Fatalf("over the limit: %v", err)

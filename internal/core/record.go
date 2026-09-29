@@ -12,7 +12,11 @@ import (
 )
 
 // Record is one stored submission as the contract serialises it. Its JSON
-// form lists the members in the Submission schema's order, omits unset
+// form lists the members in the order of docs/openapi.yaml's Submission
+// properties (id, uid, kind, schema_version, key, summary, machine, model,
+// harness, project, occurred_at, context, payload, content_hash,
+// created_at, processed_at, redacted_at, verdict, resolution, ref,
+// processed_by), omits unset
 // optionals (never null), writes timestamps as RFC 3339 UTC with six
 // fractional digits, writes payload and context as the stored bytes
 // unchanged, and never HTML-escapes. A list row fetched without its payload
@@ -45,11 +49,11 @@ func (r Record) AppendJSON(dst []byte) []byte {
 	w.str("content_hash", s.ContentHash)
 	w.time("created_at", s.CreatedAt)
 	w.optTime("processed_at", s.ProcessedAt)
+	w.optTime("redacted_at", s.RedactedAt)
 	w.optStr("verdict", s.Verdict)
 	w.optStr("resolution", s.Resolution)
 	w.optStr("ref", s.Ref)
 	w.optStr("processed_by", s.ProcessedBy)
-	w.optTime("redacted_at", s.RedactedAt)
 	return append(w.dst, '}')
 }
 

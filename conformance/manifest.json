@@ -67,6 +67,7 @@
     "schema-version-large",
     "schema-version-long-spelling",
     "schema-version-max",
+    "trim-after-truncate",
     "unknown-schema-version"
   ],
   "hash": [
