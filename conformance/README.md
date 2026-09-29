@@ -21,7 +21,7 @@ just contract                                             # the full contract ga
 | `hash/<slug>/` | canonical-JSON and `content_hash` vectors, one per rule of the identity section below |
 | `warnings.json` | the closed list of warning codes, one example each, and the keyword-to-code mapping for kind schemas |
 | `manifest.json` | every fixture directory by name, and the nesting limit; the contract check refuses a tree that differs from it |
-| `reference/` | a standard-library Python implementation of the write path (decode, normalise, guide, canonical JSON, hash) that every fixture is checked against in CI |
+| `reference/` | a standard-library Python implementation of the write path (decode, normalise, guide, canonical JSON, hash) that every fixture is checked against by `just contract` |
 
 ## Fixture files
 

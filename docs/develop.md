@@ -28,16 +28,19 @@ conformance/                    the executable contract: decode fixtures, hash v
 ```
 
 Go toolchain and module versions are pinned in `go.mod`. Tools: `just`,
-`shellcheck`, `python3`, `uv` and `npx` (contract gate), Docker (only for the
-compose stack and image).
+`shellcheck`, `python3`, `uv` and `npx` (contract gate), Docker with buildx
+(compose stack, image, `just image-push`).
 
 ## Commands
 
 ```bash
+just ci             # every gate of "Verification before you are done", in order; there is no hosted CI, this is the merge gate
 just check          # gofmt, go vet, go mod tidy, build — the pre-commit gate
 just test           # go test -race -count=1 ./...  (SQLite on temp files; no services needed)
 just fuzz           # go test -fuzz=FuzzDecode -fuzztime=30s ./pkg/envelope: the decoder on top of its seed corpus (every fixture body)
+just e2e            # live contract suite against a fresh server on a temporary database (scripts/gate-e2e.sh, port 18080)
 just run-local      # serve on 127.0.0.1:8090 with a database in ./local/
+just image-push <tag>...                      # multi-arch image to ghcr.io/agentfeedback/agentfeedback; release step only
 bash scripts/e2e.sh <API_KEY> [BASE_URL]      # live contract suite against a running service
 bash tests/skill/run-tests.sh                 # hermetic client tests (mock server, needs python3)
 just contract                                 # contract gate: the two commands below
@@ -126,8 +129,11 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
 7. Contract files touched (`schemas/`, `docs/openapi.yaml`, `conformance/`):
    `just contract` green.
 
-CI runs the same gates and, on `main`, publishes the image as
-`ghcr.io/agentfeedback/agentfeedback:<sha>` and `:latest`.
+`just ci` runs all of the above in order and fails if `just check` rewrote a
+file. There is no hosted CI: `just ci` green on the tree that is merged is the
+merge gate, and the image is built and published by the release step
+([releases.md](releases.md)). A change that adds a gate adds it to the `ci`
+recipe in the `justfile` and to the list above, in the same commit.
 
 ## Release
 

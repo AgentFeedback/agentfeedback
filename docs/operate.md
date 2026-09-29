@@ -38,8 +38,9 @@ Without Docker: `go build -o bin/agentfeedback ./cmd/agentfeedback && API_KEY=de
 ## Deploy to a host
 
 Prerequisites on the host: Docker with Compose, `curl`, `openssl`, SSH access. The
-image is published by CI to `ghcr.io/agentfeedback/agentfeedback` tagged `latest` and
-with the commit SHA. The package must be publicly pullable (GitHub package
+image is published at release time ([releases.md](releases.md)) to
+`ghcr.io/agentfeedback/agentfeedback` tagged with the version, the commit SHA
+and `latest`. The package must be publicly pullable (GitHub package
 settings) or the host must be logged in to GHCR.
 
 ```bash
@@ -56,8 +57,8 @@ DEPLOY_REMOTE=user@host bash scripts/deploy.sh <commit-sha>
    `.env` so the pinned image survives later `docker compose up` calls;
 4. runs `docker compose pull && docker compose up -d --wait` and checks `/ready`.
 
-Always deploy a commit SHA, never `latest`: an old CI run finishing late can
-move `latest` backwards. `DEPLOY_REMOTE`, `DEPLOY_IMAGE` and `DEPLOY_DIR`
+Always deploy a commit SHA or a version tag, never `latest`, so the host pins
+what it runs. `DEPLOY_REMOTE`, `DEPLOY_IMAGE` and `DEPLOY_DIR`
 (remote directory, default `~/agentfeedback`, which the sections below
 assume) can live in the gitignored `.private/deploy.env`.
 

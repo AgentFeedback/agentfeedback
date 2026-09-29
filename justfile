@@ -38,9 +38,44 @@ contract:
     uv run --locked --script scripts/contract-check.py
     npx --yes @redocly/cli@2.54.2 lint docs/openapi.yaml
 
+# Live HTTP contract suite against a fresh server on a temporary database (port 18080).
+e2e: build
+    bash scripts/gate-e2e.sh
+
+# Every gate in order. There is no hosted CI: this is the merge gate, run on the tree that merges.
+ci:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    snapshot() { { git diff HEAD --; git ls-files --others --exclude-standard -z | xargs -0 -r sha256sum; } | sha256sum; }
+    before=$(snapshot)
+    just check
+    after=$(snapshot)
+    if [ "$before" != "$after" ]; then
+        echo "just ci: just check rewrote files; review them and commit them" >&2
+        git status --short >&2
+        exit 1
+    fi
+    go test -race -count=1 ./...
+    just fuzz
+    just e2e
+    (cd skills/agentfeedback/scripts && shellcheck -x ./*.sh)
+    if ls skills/agentfeedback-triage/scripts/*.sh >/dev/null 2>&1; then
+        (cd skills/agentfeedback-triage/scripts && shellcheck -x ./*.sh)
+    fi
+    bash tests/skill/run-tests.sh
+    just contract
+
 # Build the Docker image tagged agentfeedback.
 docker-build:
     docker build -t agentfeedback .
+
+# Build the multi-arch image and push it to GHCR under every tag given. Release step only; needs `docker login ghcr.io`.
+image-push +tags:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    args=()
+    for t in {{tags}}; do args+=(-t "ghcr.io/agentfeedback/agentfeedback:$t"); done
+    docker buildx build --platform linux/amd64,linux/arm64 --push "${args[@]}" .
 
 # Remove build artifacts.
 clean:

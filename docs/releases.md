@@ -10,15 +10,15 @@ bump one only when its command contract changes. For `agentfeedback`, bump
 `AF_CLIENT_VERSION` in `scripts/_common.sh` and its pin in
 `tests/skill/run-tests.sh` with it: that value is what payloads report.
 
-Maintainers need Git, Python 3 and an authenticated GitHub CLI (`gh`) with
-write access to the repository and its tags.
+Maintainers need Git, Python 3, the tools `just ci` needs
+([develop.md](develop.md)), Docker with buildx logged in to `ghcr.io`, and an
+authenticated GitHub CLI (`gh`) with write access to the repository and its
+tags. There is no hosted CI: every check runs on the releasing machine.
 
 1. Update the stable version link in `README.md`, the `SERVICE_VERSION`
    default in `cmd/agentfeedback/main.go` and in the root `.env.example`, and add
    notes to this file.
-2. Run the gates in [develop.md](develop.md#verification-before-you-are-done),
-   commit, push `main`, and let CI finish on that exact commit (it publishes
-   the image).
+2. Run `just ci`, commit, push `main`.
 3. Write the release notes to a file outside the checkout or under the
    gitignored `.private/`.
 4. Run the release tool, first in preflight, then for real:
@@ -28,18 +28,21 @@ write access to the repository and its tags.
    python3 scripts/release.py vX.Y.Z 'Release name' /path/to/notes.md
    ```
 
-   It checks a clean `main` against `origin`, refuses an existing tag, waits
-   for green push CI on the commit, pushes the annotated tag with an absence
-   lease, and creates and verifies a stable release. Images are tagged with
-   the commit SHA and `latest`, not the release version: deploy the SHA.
+   It checks a clean `main` against `origin`, refuses an existing tag, runs
+   `just ci` on the checkout, pushes the annotated tag with an absence lease,
+   creates and verifies a stable release, then builds and pushes the image
+   with `just image-push X.Y.Z <sha> latest`. Deploy the SHA or the version
+   tag, never `latest`.
 
 ### Recovery
 
 If publication fails after tagging, inspect the local tag, the remote tag, the
-CI run and the GitHub release before doing anything. Never force-move a
-published tag. Local tag only: push it with an absence lease. Remote tag
-without a release: `gh release create <tag> --verify-tag --latest --title '<name>' --notes-file <file>`.
-Release exists: inspect it rather than creating another.
+GitHub release and the image tags on GHCR before doing anything. Never
+force-move a published tag. Local tag only: push it with an absence lease.
+Remote tag without a release:
+`gh release create <tag> --verify-tag --latest --title '<name>' --notes-file <file>`.
+Release exists: inspect it rather than creating another. Release without an
+image: `just image-push X.Y.Z <sha> latest` from the tagged commit.
 
 The notes file from step 3 is uncommitted, so it does not exist on another
 machine: recovering there means rebuilding it from this file's section for
