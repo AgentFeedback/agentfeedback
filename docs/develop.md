@@ -118,7 +118,7 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
 ## Verification before you are done
 
 1. `just check` clean.
-2. `go test -race -count=1 ./...` green.
+2. `just test` (`go test -race -count=1 ./...`) green.
 3. Decoder touched (`pkg/envelope/`): `just fuzz` green; a crash it finds is
    committed under `pkg/envelope/testdata/fuzz/FuzzDecode/` as a regression
    seed beside the fix.

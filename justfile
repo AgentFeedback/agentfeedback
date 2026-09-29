@@ -1,3 +1,7 @@
+# The repository does not vendor: every recipe ignores a stray vendor/
+# (-mod=readonly, appended so a GOFLAGS from the environment is kept).
+export GOFLAGS := trim(env("GOFLAGS", "") + " -mod=readonly")
+
 # Build the service binary to bin/agentfeedback.
 build:
     go build -o bin/agentfeedback ./cmd/agentfeedback
