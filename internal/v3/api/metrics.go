@@ -2,25 +2,22 @@ package api
 
 import (
 	"context"
-	"errors"
-	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/agentfeedback/agentfeedback/internal/core"
-	"github.com/agentfeedback/agentfeedback/internal/store"
+	"github.com/agentfeedback/agentfeedback/internal/v3/core"
 )
 
-// Outcomes recorded on submissions_created_total. core does not tell a
-// keyed replay from a keyless duplicate on 200, so both are "existing".
+// Outcomes recorded on submissions_created_total.
 const (
-	outcomeCreated  = "created"
-	outcomeExisting = "existing"
-	outcomeMismatch = "mismatch"
-	outcomeRejected = "rejected"
+	outcomeCreated   = "created"
+	outcomeReplayed  = "replayed"
+	outcomeDuplicate = "duplicate"
+	outcomeMismatch  = "mismatch"
+	outcomeRejected  = "rejected"
 )
 
 type metrics struct {
@@ -32,7 +29,7 @@ type metrics struct {
 // newMetrics registers every metric on registry. Labels are bounded: route is
 // the matched ServeMux pattern, method is allow-listed, code is a status code —
 // never raw client input.
-func newMetrics(registry *prometheus.Registry, svc *core.Service, db *store.DB) *metrics {
+func newMetrics(registry *prometheus.Registry, svc *core.Service) *metrics {
 	m := &metrics{
 		requests: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "http_requests_total",
@@ -45,13 +42,15 @@ func newMetrics(registry *prometheus.Registry, svc *core.Service, db *store.DB) 
 		}, []string{"route", "method", "code"}),
 		submission: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "submissions_created_total",
-			Help: "Create attempts by outcome: created (201), existing (200), mismatch (409), rejected (other 4xx).",
-		}, []string{"outcome"}),
+			Help: "Submission write attempts by family and outcome.",
+		}, []string{"family", "outcome"}),
 	}
+
 	registry.MustRegister(m.requests, m.duration, m.submission)
-	if svc != nil && db != nil {
-		registry.MustRegister(&stateCollector{svc: svc, db: db})
+	if svc != nil {
+		registry.MustRegister(&stateCollector{svc: svc})
 	}
+
 	return m
 }
 
@@ -64,6 +63,7 @@ func normalizeMethod(method string) string {
 	if _, ok := allowedMethods[method]; ok {
 		return method
 	}
+
 	return "OTHER"
 }
 
@@ -77,29 +77,14 @@ func (m *metrics) observeRequest(route, method string, status int, d time.Durati
 	m.duration.With(labels).Observe(d.Seconds())
 }
 
-func (m *metrics) observeSubmission(outcome string) {
-	m.submission.WithLabelValues(outcome).Inc()
-}
-
-// observeCreateError records a failed create: 409 is mismatch, any other
-// 4xx rejected; server errors are not an outcome of the submission.
-func (m *metrics) observeCreateError(err error) {
-	var p *core.Problem
-	if !errors.As(err, &p) || p.Status >= 500 {
-		return
-	}
-	if p.Status == http.StatusConflict {
-		m.observeSubmission(outcomeMismatch)
-		return
-	}
-	m.observeSubmission(outcomeRejected)
+func (m *metrics) observeSubmission(family, outcome string) {
+	m.submission.WithLabelValues(family, outcome).Inc()
 }
 
 // stateCollector reports database state at scrape time, so the numbers are
 // never a stale cache.
 type stateCollector struct {
 	svc *core.Service
-	db  *store.DB
 }
 
 var (
@@ -123,12 +108,10 @@ func (c *stateCollector) Describe(ch chan<- *prometheus.Desc) {
 func (c *stateCollector) Collect(ch chan<- prometheus.Metric) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	top := 0
-	if st, err := c.svc.Stats(ctx, core.StatsParams{Top: &top}); err == nil {
-		ch <- prometheus.MustNewConstMetric(unprocessedDesc, prometheus.GaugeValue, float64(st.Open))
-	} else {
-		slog.Warn("metrics: unprocessed count unavailable; gauge omitted from this scrape", "error", err)
+
+	if n, err := c.svc.CountUnprocessed(ctx); err == nil {
+		ch <- prometheus.MustNewConstMetric(unprocessedDesc, prometheus.GaugeValue, float64(n))
 	}
-	ch <- prometheus.MustNewConstMetric(dbBytesDesc, prometheus.GaugeValue, float64(c.db.FileBytes()))
-	ch <- prometheus.MustNewConstMetric(busyDesc, prometheus.CounterValue, float64(c.db.BusyWrites()))
+	ch <- prometheus.MustNewConstMetric(dbBytesDesc, prometheus.GaugeValue, float64(c.svc.DB().FileBytes()))
+	ch <- prometheus.MustNewConstMetric(busyDesc, prometheus.CounterValue, float64(c.svc.DB().BusyWrites()))
 }

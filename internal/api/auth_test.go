@@ -2,46 +2,90 @@ package api
 
 import (
 	"net/http"
-	"net/http/httptest"
 	"testing"
 )
 
-func TestRequireAPIKey(t *testing.T) {
-	t.Parallel()
-
-	const apiKey = "s3cr3t"
-
-	okHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
-
-	tests := []struct {
-		name       string
-		headers    map[string]string
-		wantStatus int
+func TestAuth_Accepted(t *testing.T) {
+	e := newEnv(t)
+	cases := []struct {
+		name    string
+		headers [][2]string
 	}{
-		{name: "no key", headers: map[string]string{}, wantStatus: http.StatusUnauthorized},
-		{name: "wrong key via bearer", headers: map[string]string{"Authorization": "Bearer wrong"}, wantStatus: http.StatusUnauthorized},
-		{name: "wrong key via x-api-key", headers: map[string]string{"X-Api-Key": "wrong"}, wantStatus: http.StatusUnauthorized},
-		{name: "bearer ok", headers: map[string]string{"Authorization": "Bearer " + apiKey}, wantStatus: http.StatusOK},
-		{name: "x-api-key ok", headers: map[string]string{"X-Api-Key": apiKey}, wantStatus: http.StatusOK},
+		{"Bearer", [][2]string{{"Authorization", "Bearer " + testKey}}},
+		{"bearer lower case", [][2]string{{"Authorization", "bearer " + testKey}}},
+		{"BEARER upper case", [][2]string{{"Authorization", "BEARER " + testKey}}},
+		{"X-Api-Key", [][2]string{{"X-Api-Key", testKey}}},
+		{"wrong bearer, right X-Api-Key", [][2]string{{"Authorization", "Bearer nope"}, {"X-Api-Key", testKey}}},
+		{"right X-Api-Key, wrong bearer", [][2]string{{"X-Api-Key", testKey}, {"Authorization", "Bearer nope"}}},
+		{"right bearer, wrong X-Api-Key", [][2]string{{"Authorization", "Bearer " + testKey}, {"X-Api-Key", "nope"}}},
+		{"wrong X-Api-Key, right bearer", [][2]string{{"X-Api-Key", "nope"}, {"Authorization", "Bearer " + testKey}}},
 	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			req := httptest.NewRequest(http.MethodGet, "/api/v1/submissions", nil)
-			for k, v := range tc.headers {
-				req.Header.Set(k, v)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			req := e.request(t, http.MethodGet, "/api/v1/meta", nil, false)
+			for _, h := range c.headers {
+				req.Header.Set(h[0], h[1])
 			}
-			rec := httptest.NewRecorder()
-
-			requireAPIKey(apiKey)(okHandler).ServeHTTP(rec, req)
-
-			if rec.Code != tc.wantStatus {
-				t.Fatalf("expected status %d, got %d (body: %s)", tc.wantStatus, rec.Code, rec.Body.String())
+			r := send(t, req)
+			if r.status != http.StatusOK {
+				t.Fatalf("status = %d: %s", r.status, r.body)
+			}
+			if cc := r.header.Get("Cache-Control"); cc != "no-store" {
+				t.Errorf("Cache-Control = %q", cc)
 			}
 		})
+	}
+}
+
+func TestAuth_Rejected(t *testing.T) {
+	e := newEnv(t)
+	cases := []struct {
+		name    string
+		headers [][2]string
+	}{
+		{"none", nil},
+		{"wrong bearer", [][2]string{{"Authorization", "Bearer nope"}}},
+		{"wrong X-Api-Key", [][2]string{{"X-Api-Key", "nope"}}},
+		{"basic scheme", [][2]string{{"Authorization", "Basic " + testKey}}},
+		{"bare key", [][2]string{{"Authorization", testKey}}},
+		{"both wrong", [][2]string{{"Authorization", "Bearer a"}, {"X-Api-Key", "b"}}},
+		{"empty bearer", [][2]string{{"Authorization", "Bearer "}}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			for _, path := range []string{"/api/v1/meta", "/api/v1/nope/xyz", "/api/v1/submissions/1"} {
+				req := e.request(t, http.MethodGet, path, nil, false)
+				for _, h := range c.headers {
+					req.Header.Set(h[0], h[1])
+				}
+				r := send(t, req)
+				assertError(t, r, http.StatusUnauthorized, "unauthorized")
+				if got := r.header.Values("WWW-Authenticate"); len(got) != 1 || got[0] != "Bearer" {
+					t.Errorf("%s: WWW-Authenticate = %q, want exactly Bearer", path, got)
+				}
+			}
+		})
+	}
+}
+
+func TestAuth_EmptyConfiguredKeyAuthorisesNothing(t *testing.T) {
+	req, _ := http.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer ")
+	req.Header.Set("X-Api-Key", "")
+	if authorised(req, "") {
+		t.Fatal("empty configured key authorised a request")
+	}
+}
+
+func TestAuth_PublicRoutesNeedNoKey(t *testing.T) {
+	e := newEnv(t)
+	for _, path := range []string{"/api/v1/openapi.json", "/api/v1/schemas", "/api/v1/schemas/envelope/1", "/health", "/ready", "/metrics"} {
+		r := e.do(t, http.MethodGet, path, "", false)
+		if r.status != http.StatusOK {
+			t.Errorf("GET %s = %d: %s", path, r.status, r.body)
+		}
+		if cc := r.header.Get("Cache-Control"); cc != "" {
+			t.Errorf("GET %s: Cache-Control = %q on a public 2xx", path, cc)
+		}
 	}
 }

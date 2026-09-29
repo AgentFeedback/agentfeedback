@@ -3,6 +3,8 @@
 .private/
 bin/
 docs/
+!docs/embed.go
+!docs/openapi.yaml
 infra/
 scripts/
 skills/

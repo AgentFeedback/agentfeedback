@@ -1,89 +1,147 @@
 package api
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
+	"path/filepath"
+	"sync/atomic"
 	"testing"
+
+	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/agentfeedback/agentfeedback/internal/core"
+	"github.com/agentfeedback/agentfeedback/internal/store"
 )
 
-func TestDecodeRequestBodyRejectsTrailingJSONValues(t *testing.T) {
-	t.Parallel()
+const testKey = "test-key"
 
-	tests := []struct {
-		name string
-		body string
-		dst  any
-	}{
-		{
-			name: "review",
-			body: `{"skill":"review-panel","machine_name":"machine","coordinator_model":"model","run_id":"run","reviewers":[]} {}`,
-			dst:  &CreateReviewRequest{},
-		},
-		{
-			name: "friction",
-			body: `{"machine_name":"machine","coordinator_model":"model","category":"tooling","summary":"summary"} null`,
-			dst:  &CreateFrictionRequest{},
-		},
-		{
-			name: "event",
-			body: `{"kind":"deploy","key":"k","machine_name":"m","coordinator_model":"c","payload":{}} 1`,
-			dst:  &CreateEventRequest{},
-		},
-		{
-			name: "processed",
-			body: `{"ids":[1]} []`,
-			dst:  &SetProcessedRequest{},
-		},
+// testEnv is a server over a fresh temporary database.
+type testEnv struct {
+	srv *httptest.Server
+	db  *store.DB
+	svc *core.Service
+	// down is the server's ShuttingDown flag.
+	down *atomic.Bool
+}
+
+func newEnv(t *testing.T) *testEnv {
+	t.Helper()
+	db, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "api.db"))
+	if err != nil {
+		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = db.Close() })
+	svc := core.New(db, core.Config{Version: "4.0.0", Features: Features})
+	down := &atomic.Bool{}
+	srv := httptest.NewServer(New(Config{Service: svc, DB: db, APIKey: testKey, ShuttingDown: down, Registry: prometheus.NewRegistry()}).Handler())
+	t.Cleanup(srv.Close)
+	return &testEnv{srv: srv, db: db, svc: svc, down: down}
+}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
+// response is a finished response with its body read.
+type response struct {
+	status int
+	header http.Header
+	body   []byte
+}
 
-			rec := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(tc.body))
+func (r response) json(t *testing.T) map[string]any {
+	t.Helper()
+	var v map[string]any
+	if err := json.Unmarshal(r.body, &v); err != nil {
+		t.Fatalf("body is not a JSON object: %v: %s", err, r.body)
+	}
+	return v
+}
 
-			if decodeRequestBody(rec, req, tc.dst) {
-				t.Fatal("expected a trailing JSON value to be rejected")
-			}
-			if rec.Code != http.StatusBadRequest {
-				t.Fatalf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
-			}
-		})
+// request builds a request against e; auth adds the test key as a bearer
+// token.
+func (e *testEnv) request(t *testing.T, method, path string, body []byte, auth bool) *http.Request {
+	t.Helper()
+	var rd io.Reader
+	if body != nil {
+		rd = bytes.NewReader(body)
+	}
+	req, err := http.NewRequest(method, e.srv.URL+path, rd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if auth {
+		req.Header.Set("Authorization", "Bearer "+testKey)
+	}
+	return req
+}
+
+func send(t *testing.T, req *http.Request) response {
+	t.Helper()
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("%s %s: %v", req.Method, req.URL, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return response{status: resp.StatusCode, header: resp.Header, body: b}
+}
+
+func (e *testEnv) do(t *testing.T, method, path, body string, auth bool) response {
+	t.Helper()
+	var b []byte
+	if body != "" {
+		b = []byte(body)
+	}
+	return send(t, e.request(t, method, path, b, auth))
+}
+
+// assertError checks the Error body shape, the code, request_id against
+// X-Request-Id and Cache-Control: no-store.
+func assertError(t *testing.T, r response, status int, code string) map[string]any {
+	t.Helper()
+	if r.status != status {
+		t.Fatalf("status = %d, want %d: %s", r.status, status, r.body)
+	}
+	if ct := r.header.Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q", ct)
+	}
+	if cc := r.header.Get("Cache-Control"); cc != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store", cc)
+	}
+	v := r.json(t)
+	if v["error"] != code {
+		t.Errorf("error = %v, want %s: %s", v["error"], code, r.body)
+	}
+	if m, _ := v["message"].(string); m == "" {
+		t.Errorf("message empty: %s", r.body)
+	}
+	if id := r.header.Get("X-Request-Id"); id == "" || v["request_id"] != id {
+		t.Errorf("request_id = %v, X-Request-Id = %q", v["request_id"], id)
+	}
+	if d, ok := v["details"]; ok {
+		if arr, _ := d.([]any); len(arr) == 0 {
+			t.Errorf("details present but empty: %s", r.body)
+		}
+	}
+	return v
+}
+
+// assertDetail checks a 400 validation_error with one detail at pointer.
+func assertDetail(t *testing.T, r response, code, pointer string) {
+	t.Helper()
+	v := assertError(t, r, http.StatusBadRequest, core.CodeValidation)
+	details, _ := v["details"].([]any)
+	if len(details) != 1 {
+		t.Fatalf("details = %v, want one", v["details"])
+	}
+	d := details[0].(map[string]any)
+	if d["pointer"] != pointer || d["code"] != code {
+		t.Errorf("detail = %v, want code %s pointer %s", d, code, pointer)
 	}
 }
 
-func TestDecodeRequestBodyCountsTrailingWhitespace(t *testing.T) {
-	t.Parallel()
-
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(
-		http.MethodPost,
-		"/",
-		strings.NewReader(`{"ids":[1]}`+strings.Repeat(" ", maxRequestBytes)),
-	)
-
-	var body SetProcessedRequest
-	if decodeRequestBody(rec, req, &body) {
-		t.Fatal("expected a body over the limit only because of trailing whitespace to be rejected")
-	}
-	if rec.Code != http.StatusRequestEntityTooLarge {
-		t.Fatalf("expected status %d, got %d", http.StatusRequestEntityTooLarge, rec.Code)
-	}
-}
-
-func TestDecodeRequestBodyRejectsUnknownFields(t *testing.T) {
-	t.Parallel()
-
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"ids":[1],"unexpected":true}`))
-
-	var body SetProcessedRequest
-	if decodeRequestBody(rec, req, &body) {
-		t.Fatal("expected unknown JSON field to be rejected")
-	}
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
-	}
-}
+const frictionBody = `{"kind":"friction","summary":"the linter ignores its config file","machine":"workstation-a","model":"claude-fable-5-1","project":"example","payload":{"category":"tooling","details":"expected .lintrc to apply; it did not","fix_status":"none"}}`

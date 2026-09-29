@@ -7,7 +7,8 @@ How to change the service and the skills, verify, and release. Read
 
 ```
 cmd/agentfeedback/              main: `serve` (default), `import <jsonl>`, `backup <dest.db>`
-internal/api/                   HTTP of the running v3 service: mux, middleware (auth, recovery, request id, log, metrics, body limits), handlers, DTOs
+internal/api/                   v1 HTTP transport over internal/core: mux, middleware, query grammar, Problem mapping, bundled openapi.json; conformance test against docs/openapi.yaml
+internal/v3/api/                HTTP of the running v3 service, moved here unchanged; `serve` uses it until the v1 transport is wired, then it goes
 internal/core/                  v1 service, no net/http: create with identity and dedupe, get, list, marks, redaction, stats, export and import format 2, meta; typed problems
 internal/store/                 SQLite for the v1 API: open + pragmas + the application_id stamp, the single init migration, hand-written SQL, query plans pinned by a test
 internal/v3/core/               the v3 service's core, moved here unchanged; the running service uses it until the v1 HTTP layer lands, then it goes
@@ -22,7 +23,7 @@ scripts/                        e2e.sh (live contract suite), deploy.sh, release
 skills/agentfeedback/           submit/query/process client skill (copied as-is into a harness; no tests inside)
 skills/agentfeedback-triage/    processor skill (SKILL.md, digest.sh; optional cluster.py + reference/clustering.md)
 tests/skill/                    hermetic tests for both skills' scripts (mock server, isolated HOME)
-docs/                           api.md (contract of the running service), openapi.yaml (v1 contract of the next major release), operate.md, develop.md, security.md, releases.md
+docs/                           api.md (contract of the running service), openapi.yaml (v1 contract of the next major release; embed.go makes it a Go package for internal/api), operate.md, develop.md, security.md, releases.md
 schemas/                        JSON Schema 2020-12: the submission envelope and the kind schemas (friction, review); embed.go makes them a Go package for pkg/schema
 conformance/                    the executable contract: decode fixtures, hash vectors, the warning list, a Python reference implementation (README inside)
 ```

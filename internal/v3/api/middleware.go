@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"log/slog"
@@ -13,16 +12,6 @@ import (
 type ctxKey string
 
 const requestIDKey ctxKey = "request_id"
-
-func ctxWithRequestID(ctx context.Context, id string) context.Context {
-	return context.WithValue(ctx, requestIDKey, id)
-}
-
-// RequestIDFromContext returns the request id attached by the middleware.
-func RequestIDFromContext(ctx context.Context) string {
-	id, _ := ctx.Value(requestIDKey).(string)
-	return id
-}
 
 // responseRecorder captures the status code and byte count for logging and
 // metrics while staying transparent to handlers that need flushing (the
@@ -46,6 +35,7 @@ func (rr *responseRecorder) Write(b []byte) (int, error) {
 	}
 	n, err := rr.ResponseWriter.Write(b)
 	rr.written += int64(n)
+
 	return n, err
 }
 
@@ -53,54 +43,36 @@ func (rr *responseRecorder) Write(b []byte) (int, error) {
 func (rr *responseRecorder) Unwrap() http.ResponseWriter { return rr.ResponseWriter }
 
 // recoverPanic turns a panicking handler into a 500 JSON response instead of a
-// dropped connection. http.ErrAbortHandler is re-panicked: it is the
-// deliberate abort the server handles itself.
+// dropped connection.
 func recoverPanic(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if rec := recover(); rec != nil {
-				if rec == http.ErrAbortHandler {
-					panic(rec)
-				}
 				slog.ErrorContext(r.Context(), "panic serving request",
-					"error", rec, "path", r.URL.Path, "request_id", RequestIDFromContext(r.Context()),
-					"stack", string(debug.Stack()))
-				writeError(w, r, http.StatusInternalServerError, codeInternal, "internal error", nil)
+					"error", rec, "path", r.URL.Path, "stack", string(debug.Stack()))
+				writeError(w, http.StatusInternalServerError, "internal_error", "internal error")
 			}
 		}()
+
 		next.ServeHTTP(w, r)
 	})
 }
 
-// validRequestID reports whether a caller's X-Request-Id is echoed: 1 to 128
-// bytes of [A-Za-z0-9._-].
-func validRequestID(id string) bool {
-	if len(id) == 0 || len(id) > 128 {
-		return false
-	}
-	for i := 0; i < len(id); i++ {
-		c := id[i]
-		switch {
-		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '.', c == '_', c == '-':
-		default:
-			return false
-		}
-	}
-	return true
-}
-
-// requestID echoes a well-formed caller X-Request-Id or generates one, so a
-// client retry can be correlated with the server's log lines.
+// requestID echoes a caller-supplied X-Request-Id or generates one, so a client
+// retry can be correlated with the server's log lines.
 func requestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := r.Header.Get("X-Request-Id")
-		if !validRequestID(id) {
+		if id == "" {
 			var buf [16]byte
-			_, _ = rand.Read(buf[:])
-			id = hex.EncodeToString(buf[:])
+			if _, err := rand.Read(buf[:]); err == nil {
+				id = hex.EncodeToString(buf[:])
+			}
 		}
 		w.Header().Set("X-Request-Id", id)
-		next.ServeHTTP(w, r.WithContext(ctxWithRequestID(r.Context(), id)))
+
+		ctx := r.Context()
+		next.ServeHTTP(w, r.WithContext(ctxWithRequestID(ctx, id)))
 	})
 }
 
@@ -118,10 +90,9 @@ func (s *Server) observe(next http.Handler) http.Handler {
 		if status == 0 {
 			status = http.StatusOK
 		}
-		// ServeMux sets Pattern on the request it routes, so the innermost
-		// match wins. A miss under /api/v1/ keeps the outer pattern /api/v1/;
-		// any other miss has none and is labelled unmatched. Either way a
-		// scanner cannot create unbounded metric series.
+		// ServeMux sets Pattern on the request it routes; unmatched paths keep
+		// it empty and are collapsed into one label so a scanner cannot create
+		// unbounded metric series.
 		route := r.Pattern
 		if route == "" {
 			route = "unmatched"
@@ -132,6 +103,7 @@ func (s *Server) observe(next http.Handler) http.Handler {
 		case "/health", "/ready", "/metrics":
 			return
 		}
+
 		level := slog.LevelInfo
 		switch {
 		case status >= http.StatusInternalServerError:
