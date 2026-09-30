@@ -13,6 +13,11 @@ and `just skills` renders it. The bash client in
 `_common.sh`, pinned in `tests/skill/run-tests.sh`; bump both when the scripts'
 contract changes: that value is what their payloads report.
 
+Maintainers decide when to cut a release, by hand, when they judge `main`
+ready; landed changes never trigger one. An agent pushes a `v*` tag, creates a
+GitHub release or pushes an image (the steps below, recovery included) only
+when a maintainer asks for that version.
+
 Maintainers need Git, Python 3, the tools `just ci` needs
 ([develop.md](develop.md)), Docker with buildx logged in to `ghcr.io`, and an
 authenticated GitHub CLI (`gh`) with write access to the repository and its

@@ -31,4 +31,5 @@ generated and teaches the binary of the next major release.
 
 Read [`docs/develop.md`](docs/develop.md): the commands, the rules that are not
 visible in the code, and the verification gates live there and only there.
-Every delivered change lands in a `vMAJOR.MINOR.PATCH` release.
+Every delivered change lands in a `vMAJOR.MINOR.PATCH` release, which a
+maintainer cuts when they decide ([`docs/releases.md`](docs/releases.md)).

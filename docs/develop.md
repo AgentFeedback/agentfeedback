@@ -142,5 +142,5 @@ recipe in the `justfile` and to the list above, in the same commit.
 
 ## Release
 
-Every delivered change ships in a release; versioning rules and steps are in
-[releases.md](releases.md).
+Every delivered change ships in a release, which a maintainer cuts when they
+decide; versioning rules and steps are in [releases.md](releases.md).
