@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -14,6 +15,12 @@ type config struct {
 	ShutdownTimeout time.Duration
 	ServiceVersion  string
 	LogLevel        string
+}
+
+// defaultServiceVersion is the build version without a leading "v", the form
+// /api/v1/meta reports; SERVICE_VERSION overrides it.
+func defaultServiceVersion() string {
+	return strings.TrimPrefix(clientVersion().Version, "v")
 }
 
 func envOr(key, fallback string) string {
@@ -47,7 +54,7 @@ func loadConfig(requireAPIKey bool) (config, error) {
 		APIKey:         os.Getenv("API_KEY"),
 		DatabasePath:   envOr("DATABASE_PATH", "/data/agentfeedback.db"),
 		HTTPListenAddr: envOr("HTTP_LISTEN_ADDR", "0.0.0.0:8080"),
-		ServiceVersion: envOr("SERVICE_VERSION", defaultServiceVersion),
+		ServiceVersion: envOr("SERVICE_VERSION", defaultServiceVersion()),
 		LogLevel:       envOr("LOG_LEVEL", "info"),
 	}
 

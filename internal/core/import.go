@@ -144,6 +144,100 @@ func (s *Service) Import(ctx context.Context, body []byte) (ImportResult, error)
 	return res, nil
 }
 
+// errDryRun rolls back a dry-run restore's transaction.
+var errDryRun = errors.New("dry run")
+
+// Restore reads export format 2 and stores its records keeping their ids: the
+// server-host restore path, never the API's import route. The body is
+// verified exactly as Import verifies it, with nothing written on failure,
+// but has no body limit (the file can be a whole database). In one write
+// transaction, per record in file order: an existing uid is skipped, so a
+// re-run is a no-op; an id held by another uid is skipped and listed in
+// conflicts as id_taken; an existing (kind, key) under another uid is
+// skipped, and listed as key_mismatch when its hash differs; anything else is
+// inserted with its exported id. The id sequence is then advanced past the
+// highest id in the stream, skipped records included, so restored ids are
+// never handed out again. A dry run runs the same transaction and rolls it
+// back, so its counts are a real run's.
+func (s *Service) Restore(ctx context.Context, body []byte, dryRun bool) (ImportResult, error) {
+	recs, err := verifyImport(body)
+	if err != nil {
+		return ImportResult{}, err
+	}
+	res := ImportResult{Conflicts: []Conflict{}, Warnings: []ImportWarning{}}
+	err = s.write(ctx, func(q store.Querier) error {
+		var maxID int64
+		for _, r := range recs {
+			maxID = max(maxID, r.sub.ID)
+			_, err := store.GetByUID(ctx, q, r.sub.UID)
+			if err == nil {
+				res.Skipped++
+				continue
+			}
+			if !errors.Is(err, store.ErrNotFound) {
+				return err
+			}
+			_, err = store.GetByID(ctx, q, r.sub.ID)
+			if err == nil {
+				res.Skipped++
+				res.Conflicts = append(res.Conflicts, Conflict{Line: r.line, UID: r.sub.UID,
+					ExistingID: r.sub.ID, Reason: "id_taken"})
+				continue
+			}
+			if !errors.Is(err, store.ErrNotFound) {
+				return err
+			}
+			if r.sub.Key != "" {
+				existing, err := store.GetByKey(ctx, q, r.sub.Kind, r.sub.Key)
+				if err == nil {
+					res.Skipped++
+					if existing.ContentHash != r.sub.ContentHash {
+						res.Conflicts = append(res.Conflicts, Conflict{Line: r.line, UID: r.sub.UID,
+							ExistingID: existing.ID, Reason: "key_mismatch"})
+					}
+					continue
+				}
+				if !errors.Is(err, store.ErrNotFound) {
+					return err
+				}
+			}
+			if err := store.InsertWithID(ctx, q, r.sub); err != nil {
+				return err
+			}
+			res.Imported++
+			if res.FirstID == nil {
+				first := r.sub.ID
+				res.FirstID = &first
+			}
+			last := r.sub.ID
+			res.LastID = &last
+			for _, w := range r.warnings {
+				res.Warnings = append(res.Warnings, ImportWarning{Line: r.line, Code: w.Code, Pointer: w.Pointer, Message: w.Message})
+			}
+		}
+		if maxID > 0 {
+			if err := store.SetSequence(ctx, q, maxID); err != nil {
+				return err
+			}
+		}
+		if dryRun {
+			return errDryRun
+		}
+		return nil
+	})
+	if err != nil && !(dryRun && errors.Is(err, errDryRun)) {
+		return ImportResult{}, err
+	}
+	return res, nil
+}
+
+// VerifyExport verifies an export (format 2) exactly as Import and Restore
+// do, writing nothing; a rejection is the same *Problem they return.
+func VerifyExport(body []byte) error {
+	_, err := verifyImport(body)
+	return err
+}
+
 func lineProblem(line int, code, pointer, format string, args ...any) *Problem {
 	return invalid(code, pointer, "line %d: %s", line, fmt.Sprintf(format, args...))
 }
@@ -198,8 +292,11 @@ func verifyImport(body []byte) ([]importRecord, error) {
 	}
 	rawSum, _ := find(trailer, "sha256")
 	var sum string
-	if json.Unmarshal(rawSum, &sum) != nil || sum != hex.EncodeToString(digest.Sum(nil)) {
-		return nil, lineProblem(last, "invalid_value", "/sha256", "trailer sha256 %s does not match the record lines", short(string(rawSum)))
+	if err := json.Unmarshal(rawSum, &sum); err != nil {
+		return nil, lineProblem(last, "invalid_value", "/sha256", "trailer sha256 must be a string, got %s", short(string(rawSum)))
+	}
+	if sum != hex.EncodeToString(digest.Sum(nil)) {
+		return nil, lineProblem(last, "invalid_value", "/sha256", "trailer sha256 %s does not match the record lines", short(sum))
 	}
 
 	out := make([]importRecord, 0, len(records))
@@ -267,8 +364,10 @@ func verifyRecord(line int, raw []byte) (importRecord, error) {
 		return &micros, nil
 	}
 
-	if id := byName["id"]; !plainInteger.Match(id) {
-		return importRecord{}, lineProblem(line, "type_mismatch", "/id", "id must be a positive integer, got %s", short(string(id)))
+	rawID := byName["id"]
+	id, idErr := strconv.ParseInt(string(rawID), 10, 64)
+	if !plainInteger.Match(rawID) || idErr != nil {
+		return importRecord{}, lineProblem(line, "type_mismatch", "/id", "id must be a positive integer, got %s", short(string(rawID)))
 	}
 	var sub store.Submission
 	uid, _, err := str("uid")
@@ -360,6 +459,7 @@ func verifyRecord(line int, raw []byte) (importRecord, error) {
 	if err != nil {
 		return importRecord{}, err
 	}
+	sub.ID = id
 	sub.UID = strings.ToLower(uid)
 	sub.ContentHash = hash
 	sub.CreatedAt = *created

@@ -6,21 +6,17 @@ How to change the service and the skills, verify, and release. Read
 ## Layout
 
 ```
-cmd/agentfeedback/              main: bare invocation prints help; server `serve`, `import <jsonl>`, `backup <dest.db>`; client `doctor`, `doctor --init`, `version`, `schema`, settings resolved flag > AGENT_FEEDBACK_* env > config.toml (API key: env > config only)
+cmd/agentfeedback/              main: bare invocation prints help; server `serve` (internal/api), `import [--dry-run] <export.ndjson>` (restore keeping ids), `backup <dest.db>`; client `doctor`, `doctor --init`, `version`, `schema`, settings resolved flag > AGENT_FEEDBACK_* env > config.toml (API key: env > config only)
 internal/api/                   v1 HTTP transport over internal/core: mux, middleware, query grammar, Problem mapping, bundled openapi.json; conformance test against docs/openapi.yaml
-internal/v3/api/                HTTP of the running v3 service, moved here unchanged; `serve` uses it until the v1 transport is wired, then it goes
-internal/core/                  v1 service, no net/http: create with identity and dedupe, get, list, marks, redaction, stats, export and import format 2, meta; typed problems
+internal/core/                  v1 service, no net/http: create with identity and dedupe, get, list, marks, redaction, stats, export, import and restore of format 2, meta; typed problems
 internal/store/                 SQLite for the v1 API: open + pragmas + the application_id stamp, the single init migration, hand-written SQL, query plans pinned by a test
-internal/v3/core/               the v3 service's core, moved here unchanged; the running service uses it until the v1 HTTP layer lands, then it goes
-internal/v3/store/              the v3 service's store, moved here unchanged; same lifetime as internal/v3/core
 internal/skillgen/               skill generator: source/ (skill.json plus one Markdown fragment per teaching point) rendered into skill-md, agents-md, cursor, prompt and mcp; `skill render`
-internal/canonjson/             canonical JSON of the v3 event hash (frozen: hash forms never change); not the v1 writer
 pkg/schema/                     v1 schema engine: embedded schemas compiled at init, the x- keywords, guide validation, the text and date-time rules
 pkg/envelope/                   v1 decoder: token-stream parse (spellings, duplicates, UTF-8 repair), inference table, normalisation order, guide and recommended checks; the content_hash member set
 pkg/canonjson/                  v1 canonical JSON writer on the write path's JSON tree and its SHA-256; identity hashes and stored bytes are written with it
 pkg/client/                     v1 client transport: both auth headers, no redirects, the retry table, the spool (spool/, rejected/ beside it, retention), outcome lines and exit codes, the owner-only client.jsonl
 infra/agentfeedback/            compose stacks (local build, image-based deploy) and .env.example
-scripts/                        e2e.sh (live contract suite), deploy.sh, release.py,
+scripts/                        e2e.sh (live v1 contract suite: every openapi.yaml operation, fails on an uncovered one), gate-e2e.sh, deploy.sh, release.py,
                                 eval-cluster.py (live cluster.py calibration; discloses report text)
 skills/agentfeedback/           submission skill: SKILL.md generated from internal/skillgen/source; scripts/ is the bash client of the running service, documented in scripts/README.md (copied as-is into a harness; no tests inside)
 skills/agentfeedback-triage/    processor skill (SKILL.md, digest.sh; optional cluster.py + reference/clustering.md)
@@ -42,10 +38,10 @@ just check          # gofmt, go vet, go mod tidy, build — the pre-commit gate
 just test           # go test -race -count=1 ./...  (SQLite on temp files; no services needed)
 just fuzz           # go test -fuzz=FuzzDecode -fuzztime=30s ./pkg/envelope: the decoder on top of its seed corpus (every fixture body)
 just skills         # regenerate the checked-in skill renders (skills/agentfeedback/SKILL.md) from internal/skillgen/source
-just e2e            # live contract suite against a fresh server on a temporary database (scripts/gate-e2e.sh, port 18080)
+just e2e            # live contract suite against a fresh `serve` on a temporary database (scripts/gate-e2e.sh, port 18080, E2E_ADDR overrides)
 just run-local      # serve on 127.0.0.1:8090 with a database in ./local/
 just image-push <tag>...                      # multi-arch image to ghcr.io/agentfeedback/agentfeedback; release step only
-bash scripts/e2e.sh <API_KEY> [BASE_URL]      # live contract suite against a running service
+bash scripts/e2e.sh <API_KEY> [BASE_URL]      # live v1 contract suite against a running service; creates rows
 bash tests/skill/run-tests.sh                 # hermetic client tests (mock server, needs python3)
 just contract                                 # contract gate: the two commands below
 uv run --locked --script scripts/contract-check.py   # schemas valid 2020-12, every example validates, fixtures agree with conformance/reference
@@ -58,9 +54,11 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
 ## Rules that are not visible in the code
 
 - **An API change is a five-artifact change**, in one commit: `internal/`
-  code, [api.md](api.md), `scripts/e2e.sh`, the client scripts in
+  code, the contract files, `scripts/e2e.sh`, the client scripts in
   `skills/agentfeedback/scripts/`, and `tests/skill/`. Producers build their
-  calls from api.md without reading the code.
+  calls from the contract without reading the code. `scripts/e2e.sh` fails
+  on any `docs/openapi.yaml` operation it does not exercise, so a new route
+  needs its check in the same commit.
 - **Write-once payloads.** After insert only the processing fields
   (`processed_at`, `verdict`, `resolution`, `ref`, `processed_by`) change,
   and a redaction replaces the payload with its tombstone. Never add an
@@ -71,9 +69,9 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
   those files and the fixtures in the same commit, and `just contract` must
   stay green. Fixtures are written by hand from the contract and checked
   against `conformance/reference/`; a disagreement is settled by reading the
-  contract, never by regenerating a fixture from an implementation. Until the
-  v1 server packages land, the running service still implements
-  [api.md](api.md).
+  contract, never by regenerating a fixture from an implementation. `serve`
+  implements `docs/openapi.yaml`; [api.md](api.md) describes the v3 service
+  of the latest release until the docs are rewritten for v1.
 - **One implementation of the contract's text and schema rules.**
   `pkg/schema` owns trimming, token normalisation, byte truncation,
   date-time parsing, RFC 6901 escaping and the x- keywords, and it works on
@@ -81,13 +79,10 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
   `json.Number`, `bool`, `nil`; numbers keep their spelling). The decoder,
   the CLI and the HTTP layer call it and never re-implement a rule. Its tests
   read `conformance/` directly; a fixture change is a test change.
-- **Hash forms are frozen.** In the v1 API, `content_hash` is the SHA-256 of
-  the canonical JSON of the identity members; `conformance/hash/` pins it and
-  `pkg/envelope` and `internal/core` run every vector. In the v3 service,
-  frictions and reviews hash the exact Go structs from API 1.0 (field order
-  matters) and events hash `internal/canonjson`; a test pins a fixed vector
-  for each. Changing any of them turns every stored row into a replay
-  mismatch.
+- **Hash forms are frozen.** `content_hash` is the SHA-256 of the canonical
+  JSON of the identity members; `conformance/hash/` pins it and
+  `pkg/envelope` and `internal/core` run every vector. Changing it turns
+  every stored row into a replay mismatch.
 - **Migrations are forward-only and append-only.** New numbered file under
   `internal/store/migrations/`, applied in one transaction, version recorded
   in `schema_version`. A binary that meets a newer schema refuses to start,
@@ -131,8 +126,8 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
 4. Decoder touched (`pkg/envelope/`): `just fuzz` green; a crash it finds is
    committed under `pkg/envelope/testdata/fuzz/FuzzDecode/` as a regression
    seed beside the fix.
-5. API touched: build, serve on a temp database, `bash scripts/e2e.sh` all
-   green.
+5. API touched: `just e2e` green (builds, serves on a temp database, runs
+   `scripts/e2e.sh`, which also fails on an uncovered operation).
 6. Skill scripts touched: the shellcheck command above and `bash tests/skill/run-tests.sh`
    all green.
 7. Docs touched: every relative link resolves.

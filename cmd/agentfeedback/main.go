@@ -19,13 +19,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/agentfeedback/agentfeedback/internal/v3/api"
-	"github.com/agentfeedback/agentfeedback/internal/v3/core"
-	"github.com/agentfeedback/agentfeedback/internal/v3/store"
+	"github.com/agentfeedback/agentfeedback/internal/api"
+	"github.com/agentfeedback/agentfeedback/internal/core"
+	"github.com/agentfeedback/agentfeedback/internal/store"
 )
-
-// defaultServiceVersion is overridden by SERVICE_VERSION.
-const defaultServiceVersion = "v3.0.0"
 
 // command is one entry of the router: the name typed after agentfeedback, the
 // line help shows, and the handler that receives the remaining arguments.
@@ -39,8 +36,8 @@ type command struct {
 // is named: a bare invocation prints help.
 var commands = []command{
 	{"serve", "serve the HTTP API", serveCommand},
-	{"import", "import <file.jsonl>: import an export stream into the database", func(a []string, _ io.Reader, _, _ io.Writer) error { return runImport(a) }},
-	{"backup", "backup <dest.db>: write a consistent copy of the database", func(a []string, _ io.Reader, _, _ io.Writer) error { return runBackup(a) }},
+	{"import", "import [--dry-run] <export.ndjson>: restore an export (format 2) into the database, keeping ids", runImport},
+	{"backup", "backup <dest.db>: write a consistent copy of the database", runBackup},
 	{"doctor", "check the client configuration and the server connection", runDoctor},
 	{"version", "print the client version", runVersion},
 	{"schema", "schema [<kind> [<version>]]: list the schemas or print one", runSchema},
@@ -222,11 +219,12 @@ func runServe() error {
 	}
 	defer func() { _ = db.Close() }()
 
-	svc := core.New(db)
+	svc := core.New(db, core.Config{Version: cfg.ServiceVersion, Features: api.Features})
 
 	var shuttingDown atomic.Bool
 	srv := api.New(api.Config{
 		Service:      svc,
+		DB:           db,
 		APIKey:       cfg.APIKey,
 		ShuttingDown: &shuttingDown,
 	})
@@ -281,7 +279,7 @@ func runServe() error {
 	return nil
 }
 
-func runBackup(args []string) error {
+func runBackup(args []string, _ io.Reader, stdout, _ io.Writer) error {
 	if len(args) != 1 {
 		return errArgs("backup", "backup <dest.db>")
 	}
@@ -301,6 +299,13 @@ func runBackup(args []string) error {
 		return errBackupStat(dest, err)
 	}
 
+	// store.Open would create an empty database and back that up.
+	if _, err := os.Stat(cfg.DatabasePath); errors.Is(err, os.ErrNotExist) {
+		return errBackupNoSource(cfg.DatabasePath)
+	} else if err != nil {
+		return errPathUnreadable(cfg.DatabasePath, err)
+	}
+
 	ctx := context.Background()
 	db, err := store.Open(ctx, cfg.DatabasePath)
 	if err != nil {
@@ -311,7 +316,7 @@ func runBackup(args []string) error {
 	if err := db.VacuumInto(ctx, dest); err != nil {
 		return err
 	}
-	fmt.Printf("backed up %s to %s\n", cfg.DatabasePath, dest)
+	fmt.Fprintf(stdout, "backed up %s to %s\n", cfg.DatabasePath, dest)
 
 	return nil
 }

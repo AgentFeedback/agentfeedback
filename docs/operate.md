@@ -26,9 +26,13 @@ volume `agentfeedback-data` (`/data/agentfeedback.db` in the container). First r
 ```bash
 export AGENT_FEEDBACK_URL=http://127.0.0.1:8090
 export AGENT_FEEDBACK_API_KEY=$(sed -n 's/^API_KEY=//p' .env)
-bash ../../skills/agentfeedback/scripts/submit-friction.sh --category test --summary "local smoke test" --model manual
-bash ../../skills/agentfeedback/scripts/process.sh list
+curl -sS -H "Authorization: Bearer $AGENT_FEEDBACK_API_KEY" -H 'Content-Type: application/json' \
+  -d '{"kind":"friction","summary":"local smoke test","payload":{"category":"test"}}' \
+  "$AGENT_FEEDBACK_URL/api/v1/submissions"
+curl -sS -H "Authorization: Bearer $AGENT_FEEDBACK_API_KEY" "$AGENT_FEEDBACK_URL/api/v1/submissions?limit=5"
 ```
+
+The service answers the v1 contract, [openapi.yaml](openapi.yaml); `bash scripts/e2e.sh "$AGENT_FEEDBACK_API_KEY" "$AGENT_FEEDBACK_URL"` from the repository root runs the whole contract suite against it (it creates rows).
 
 Tear down with `docker compose down -v` (deletes the database volume; `.env`
 stays).
@@ -86,7 +90,7 @@ Compose-level variables (`infra/agentfeedback/.env`): `API_KEY`,
 
 Two complementary forms.
 
-**Physical backup** (fastest restore, byte-identical database):
+**Physical backup** (fastest restore, a complete database file):
 
 ```bash
 cd ~/agentfeedback
@@ -96,18 +100,24 @@ docker compose cp agentfeedback:/data/backup-<stamp>.db ./backups/
 docker compose exec agentfeedback rm /data/backup-<stamp>.db
 ```
 
-`agentfeedback backup` uses SQLite's `VACUUM INTO`, which is safe on a live
-database in WAL mode. Never copy `agentfeedback.db` from the volume while the
-service runs; the `-wal` file holds committed data the main file lacks.
+`agentfeedback backup <dest.db>` uses SQLite's `VACUUM INTO`, which is safe on
+a live database in WAL mode, so the service keeps running. It refuses an
+existing destination and a `DATABASE_PATH` that does not exist. Never copy
+`agentfeedback.db` from the volume while the service runs; the `-wal` file
+holds committed data the main file lacks.
 
 **Logical backup** (portable, inspectable, the migration format):
 
 ```bash
-bash skills/agentfeedback/scripts/query.sh export > feedback-$(date -u +%Y%m%d).jsonl
+curl -sS --fail -H "Authorization: Bearer $AGENT_FEEDBACK_API_KEY" \
+  "$AGENT_FEEDBACK_URL/api/v1/export" > feedback-$(date -u +%Y%m%d).ndjson
+tail -n 1 feedback-*.ndjson   # the trailer: {"export_complete":true,"count":…,"sha256":…}
 ```
 
-The client verifies the export header, record count and digest. Store
-backups off-host and restrict them: they contain everything agents reported.
+The export is format 2: a header line, one line per record (tombstones
+included), and a trailer with the record count and the SHA-256 over the record
+lines. A file without the trailer is incomplete. Store backups off-host and
+restrict them: they contain everything agents reported.
 
 ## Restore and migration
 
@@ -115,23 +125,37 @@ backups off-host and restrict them: they contain everything agents reported.
 the volume (remove any `-wal`/`-shm` files beside it), start the stack, check
 `/ready`.
 
-**Restore or import a logical export** into an empty database:
+**Restore a logical export** (format 2) into the service's database:
 
 ```bash
 docker compose stop agentfeedback
-docker compose run --rm -v "$PWD/feedback.jsonl:/import.jsonl:ro" agentfeedback import /import.jsonl
+docker compose run --rm -v "$PWD/feedback.ndjson:/import.ndjson:ro" agentfeedback import --dry-run /import.ndjson
+docker compose run --rm -v "$PWD/feedback.ndjson:/import.ndjson:ro" agentfeedback import /import.ndjson
 docker compose start agentfeedback
 ```
 
-`agentfeedback import` runs in one transaction and verifies the header, record
-count and digest before committing anything. It preserves `id`, `created_at`,
-`processed_at`, `resolution` and `payload_hash` (recomputing and checking each
-hash; `--trust-hashes` skips the check), advances the id sequence past the
-highest id in the stream (skipped rows included, so archived ids are never
-reused), and refuses a non-empty database (`--allow-nonempty` to merge) or a
-filtered export (`--allow-partial`). `--family friction` imports only that
-family from a full export; `--reserve-ids-through N` raises the sequence
-further when needed. Flags go before the file name.
+`agentfeedback import [--dry-run] <file>` verifies the whole file (header,
+record count, digest, every record, each `content_hash` recomputed) before it
+writes anything, then restores it in one transaction. Records keep their `id`,
+`uid`, `content_hash`, payload bytes, timestamps and processing fields, and
+tombstones stay tombstones; the id sequence moves past the highest id in the
+file, so a restored id is never handed out again. A record whose `uid` is
+already stored is skipped whatever the two contain (a mark or redaction in
+the file does not reach the stored row), so running the same restore twice
+changes nothing.
+A record whose `id`, or whose `(kind, key)` with different content, belongs to
+another stored record is skipped and listed under `conflicts` (`id_taken`,
+`key_mismatch`); conflicts never fail the restore. It prints one JSON line
+(`imported`, `skipped`, `conflicts`, `warnings`, `first_id`, `last_id`,
+`dry_run`); `--dry-run` reports the same counts and writes nothing; a
+rejected file writes nothing either, and a dry run against a `DATABASE_PATH`
+that does not exist reports a restore into an empty database without creating
+it. Stop the service first, as above: a restore, dry run included, holds the
+database's only writer until it finishes. The file is read whole into memory,
+so the host needs a few times its size free. Flags go before the file name.
+
+**Move to another server** with `POST /api/v1/import`, which takes the same
+format and assigns new ids ([openapi.yaml](openapi.yaml)).
 
 ## Upgrade
 
@@ -139,6 +163,11 @@ further when needed. Flags go before the file name.
 at startup, forward only; a binary older than the database's schema refuses
 to start rather than corrupting it. Take a physical backup first. Rolling back
 the image does not roll back the schema.
+
+From v3 to v4 the database starts over: a v4 binary refuses a v3 database
+at startup and names the path. Keep the old database with the image that wrote
+it, point `DATABASE_PATH` at a new file (a new volume), and start empty. A v3
+export is not format 2, so `agentfeedback import` does not take it.
 
 ## Key rotation
 
@@ -167,7 +196,7 @@ age out on their own.
   current; `503` while shutting down.
 - `GET /metrics` (Prometheus): `http_requests_total` and
   `http_request_duration_seconds` by route, method and code;
-  `submissions_created_total` by family and outcome;
+  `submissions_created_total` by outcome;
   `agentfeedback_submissions_unprocessed` (the backlog);
   `agentfeedback_db_bytes` (database plus WAL size); `agentfeedback_sqlite_busy_total`
   (writes that waited out the busy timeout, should stay at zero).

@@ -49,3 +49,28 @@ kill -0 "$server_pid" 2>/dev/null || { echo "gate-e2e: the server exited before 
 curl --fail --silent --show-error "http://$ADDR/ready" >/dev/null
 
 bash "$ROOT/scripts/e2e.sh" "$KEY" "http://$ADDR"
+
+# The server-host commands on the database the suite just filled: backup while
+# serve runs, then restore of the full export into a new database (dry run,
+# real run, re-run as a no-op).
+fail() { echo "gate-e2e: $*" >&2; exit 1; }
+DATABASE_PATH="$workdir/agentfeedback.db" "$BIN" backup "$workdir/backup.db" >/dev/null ||
+  fail "backup while serve runs failed"
+[ -s "$workdir/backup.db" ] || fail "backup wrote no file"
+
+curl --fail --silent --show-error -H "Authorization: Bearer $KEY" "http://$ADDR/api/v1/export" >"$workdir/export.ndjson"
+count=$(tail -n 1 "$workdir/export.ndjson" | jq -e '.count') || fail "export has no trailer"
+restore() { DATABASE_PATH="$workdir/restored.db" "$BIN" import "$@" "$workdir/export.ndjson"; }
+check() { # check <label> <jq filter over the import result>
+  local label=$1 out
+  shift
+  out=$(restore "${@:2}") || fail "import $label failed"
+  jq -e --argjson n "$count" "$1" >/dev/null <<<"$out" || fail "import $label: unexpected result $out"
+  echo "PASS  import $label"
+}
+# shellcheck disable=SC2016 # $n is a jq variable
+check "--dry-run writes nothing" '.dry_run and .imported == $n and .skipped == 0' --dry-run
+# shellcheck disable=SC2016
+check "restores every record" '(.dry_run | not) and .imported == $n and .conflicts == []'
+# shellcheck disable=SC2016
+check "re-run is a no-op" '.imported == 0 and .skipped == $n and .conflicts == []'

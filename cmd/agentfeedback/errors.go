@@ -83,6 +83,25 @@ func errDatabaseDir(dir, reason string) error {
 		"set DATABASE_PATH to a file in an existing, writable directory")
 }
 
+func errBackupNoSource(path string) error {
+	return failErr(fmt.Sprintf("database %s does not exist; nothing to back up", path),
+		"set DATABASE_PATH to the database file to back up")
+}
+
+func errImportRead(path string, err error) error {
+	return failErr(fmt.Sprintf("cannot read %s: %v", path, err), "check the export file exists and is readable")
+}
+
+func errImportRejected(path, message string) error {
+	return failErr(fmt.Sprintf("%s was not imported, nothing was written: %s", path, message),
+		"fix the export or export it again")
+}
+
+func errImportFailed(path, message string) error {
+	return failErr(fmt.Sprintf("restoring %s failed, nothing was written: %s", path, message),
+		"retry the import, stopping the service first if it holds the database")
+}
+
 func errBackupExists(dest string) error {
 	return failErr(fmt.Sprintf("destination %s already exists", dest), "give a new destination path or remove the old file")
 }

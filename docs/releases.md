@@ -18,9 +18,9 @@ Maintainers need Git, Python 3, the tools `just ci` needs
 authenticated GitHub CLI (`gh`) with write access to the repository and its
 tags. There is no hosted CI: every check runs on the releasing machine.
 
-1. Update the stable version link in `README.md`, the `SERVICE_VERSION`
-   default in `cmd/agentfeedback/main.go` and in the root `.env.example`, and add
-   notes to this file.
+1. Update the stable version link in `README.md` and add notes to this file.
+   The service version is the build version (`just docker-build` and
+   `just image-push` stamp it from the tag); nothing in the code holds it.
 2. Run `just ci`, commit, push `main`.
 3. Write the release notes to a file outside the checkout or under the
    gitignored `.private/`.

@@ -1,5 +1,9 @@
 # AgentFeedback HTTP API
 
+> This page describes the v3 service of the latest release. The server on
+> `main` implements the v1 contract, [openapi.yaml](openapi.yaml), and does not
+> answer the routes below.
+
 The contract producers and processors integrate against. Self-contained: read
 this, then write the calls. Prefer the shipped client scripts in
 [`skills/agentfeedback/scripts/`](../skills/agentfeedback/scripts/README.md); they implement
