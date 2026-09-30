@@ -153,6 +153,17 @@ func TestMeta(t *testing.T) {
 	}
 }
 
+// TestMetaClientVersions: min_version is the constant oldest client that
+// speaks API 1.0, not the server version; latest_known is the server version.
+func TestMetaClientVersions(t *testing.T) {
+	t.Parallel()
+	_, db, _ := newTestService(t)
+	got := New(db, Config{Version: "4.0.1"}).Meta().Client
+	if got != (MetaClient{MinVersion: "4.0.0", LatestKnown: "4.0.1"}) || ClientMinVersion != "4.0.0" {
+		t.Errorf("client %+v, ClientMinVersion %s", got, ClientMinVersion)
+	}
+}
+
 func TestStatsRequestedEmpty(t *testing.T) {
 	t.Parallel()
 	s, _, _ := newTestService(t)

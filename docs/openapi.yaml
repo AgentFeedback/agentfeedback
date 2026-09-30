@@ -609,7 +609,10 @@ paths:
       summary: Service metadata
       description: >-
         Versions, limits, known kinds and features. `client.min_version` lets
-        a client report plainly when it is too old for the server.
+        a client report plainly when it is too old for the server: it is the
+        oldest client release that speaks API 1.0, raised only when a server
+        change breaks older clients, so a client behind the server version
+        still passes. `client.latest_known` is the server version.
       responses:
         '200':
           description: Metadata.
@@ -1342,8 +1345,8 @@ components:
         client:
           type: object
           properties:
-            min_version: {type: string}
-            latest_known: {type: string}
+            min_version: {type: string, description: 'Oldest client release that speaks this API; not the server version.'}
+            latest_known: {type: string, description: 'The server version.'}
     ImportResponse:
       type: object
       required: [imported, skipped, conflicts]

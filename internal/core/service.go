@@ -72,7 +72,7 @@ const (
 var Features = []string{"q", "stats", "export.after_id", "export.limit", "import", "mcp", "redaction"}
 
 // Config is what the server tells the core about itself: the service version
-// (service_version and both client versions in Meta) and the features it
+// (service_version and client.latest_known in Meta) and the features it
 // wires.
 type Config struct {
 	Version  string

@@ -21,6 +21,11 @@ type MetaLimits struct {
 	SummaryBytes       int `json:"summary_bytes"`
 }
 
+// ClientMinVersion is the oldest client release that speaks API 1.0. It is
+// not the server version: raise it only when a server change breaks older
+// clients.
+const ClientMinVersion = "4.0.0"
+
 // MetaClient tells a client which versions the server expects.
 type MetaClient struct {
 	MinVersion  string `json:"min_version"`
@@ -68,8 +73,10 @@ var limits = func() MetaLimits {
 	}
 }()
 
-// Meta returns the service metadata: versions from the Config, the limits,
-// the kinds with schemas (the envelope excluded) and the configured features.
+// Meta returns the service metadata: the service version from the Config
+// (also the latest client it knows of), the oldest client it accepts, the
+// limits, the kinds with schemas (the envelope excluded) and the configured
+// features.
 func (s *Service) Meta() Meta {
 	var kinds []schema.Entry
 	for _, e := range schema.List() {
@@ -89,7 +96,7 @@ func (s *Service) Meta() Meta {
 		Limits:         limits,
 		Kinds:          kinds,
 		Features:       features,
-		Client:         MetaClient{MinVersion: s.config.Version, LatestKnown: s.config.Version},
+		Client:         MetaClient{MinVersion: ClientMinVersion, LatestKnown: s.config.Version},
 	}
 }
 

@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/agentfeedback/agentfeedback/internal/api"
+	"github.com/agentfeedback/agentfeedback/internal/core"
 	"github.com/agentfeedback/agentfeedback/internal/skillgen"
 	"github.com/agentfeedback/agentfeedback/pkg/schema"
 )
@@ -312,6 +314,33 @@ func TestDoctor_ClientTooOld(t *testing.T) {
 	rep, r = doctorJSON(t, "--url", srv.URL)
 	if r.code != 0 || rep.Versions.Compare != "unknown" {
 		t.Fatalf("dev build: %+v", r)
+	}
+}
+
+// TestDoctor_AgainstServer: against the real v1 handler of a 4.0.1 server, a
+// client one patch behind passes and a client below the server's minimum is
+// too old.
+func TestDoctor_AgainstServer(t *testing.T) {
+	isolate(t)
+	t.Setenv(envAPIKey, testKey)
+	db := openDB(t, filepath.Join(t.TempDir(), "doctor.db"))
+	svc := core.New(db, core.Config{Version: "4.0.1", Features: api.Features})
+	srv := httptest.NewServer(api.New(api.Config{Service: svc, DB: db, APIKey: testKey}).Handler())
+	t.Cleanup(srv.Close)
+	old := version
+	t.Cleanup(func() { version = old })
+
+	version = "v4.0.0"
+	rep, r := doctorJSON(t, "--url", srv.URL)
+	if r.code != 0 || rep.Versions.Compare != "ok" || rep.Meta.ClientMinVersion != core.ClientMinVersion ||
+		rep.Meta.ClientLatestKnown != "4.0.1" {
+		t.Fatalf("one patch behind: %+v", r)
+	}
+
+	version = "v3.9.9"
+	rep, r = doctorJSON(t, "--url", srv.URL)
+	if r.code != 1 || rep.Versions.Compare != "too_old" || !hasProblem(rep, "upgrade the agentfeedback binary") {
+		t.Fatalf("below the minimum: %+v", r)
 	}
 }
 

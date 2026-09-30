@@ -117,7 +117,8 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
   a description that forbids loading it from phrasing about the queue.
 - **Compatibility.** Everything in API 1.0 keeps working. Additive changes
   bump the API minor in api.md's version line and "Changes" section; anything else is a major
-  release.
+  release. A server change that breaks older clients also raises
+  `core.ClientMinVersion`, which `/api/v1/meta` serves as `client.min_version`.
 
 ## Verification before you are done
 
