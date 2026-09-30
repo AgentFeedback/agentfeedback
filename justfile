@@ -21,6 +21,24 @@ vet:
 tidy:
     go mod tidy
 
+staticcheck_version := "2026.2.1"
+
+# Run staticcheck at the pinned version.
+staticcheck:
+    go run honnef.co/go/tools/cmd/staticcheck@{{staticcheck_version}} ./...
+
+# Cross-compile the binary for every release platform into dist/<os>-<arch>/. Release artifacts are built by the release step; this proves the matrix.
+build-all:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for os in linux darwin windows; do
+        for arch in amd64 arm64; do
+            ext=""
+            if [ "$os" = windows ]; then ext=".exe"; fi
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -o "dist/$os-$arch/agentfeedback$ext" ./cmd/agentfeedback
+        done
+    done
+
 # Run the tests with race detection. No Docker, no database required.
 test:
     go test -race -count=1 ./...
@@ -71,6 +89,8 @@ ci:
         git status --short >&2
         exit 1
     fi
+    just staticcheck
+    just build-all
     if ! git diff --quiet -- {{skill_renders}}; then
         echo "just ci: a generated skill render has uncommitted edits; renders are never edited by hand: move the change into internal/skillgen/source" >&2
         git diff --stat -- {{skill_renders}} >&2
@@ -113,4 +133,4 @@ image-push +tags:
 
 # Remove build artifacts.
 clean:
-    rm -rf bin/
+    rm -rf bin/ dist/

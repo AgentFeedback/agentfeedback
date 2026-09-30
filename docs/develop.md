@@ -6,7 +6,7 @@ How to change the service and the skills, verify, and release. Read
 ## Layout
 
 ```
-cmd/agentfeedback/              main: bare invocation prints help; server `serve` (internal/api), `import [--dry-run] <export.ndjson>` (restore keeping ids), `backup <dest.db>`; client `doctor`, `doctor --init`, `submit` (friction|review|<kind>, --stdin, --dry-run), `flush`, `version`, `schema`, `skill`, read and processing `list`, `get`, `stats`, `done`, `undo`, `redact`, `rekind`, `export` (streamed, trailer verified), `digest`, `migrate` (to cloud or a URL through its import route, target key from stdin), settings resolved flag > AGENT_FEEDBACK_* env > config.toml (API key: env > config only)
+cmd/agentfeedback/              main: bare invocation prints help; server `serve` (internal/api), `import [--dry-run] <export.ndjson>` (restore keeping ids), `backup <dest.db>`; client `doctor`, `doctor --init`, `submit` (friction|review|<kind>, --stdin, --dry-run), `flush`, `version`, `schema`, `skill`, read and processing `list`, `get`, `stats`, `done`, `undo`, `redact`, `rekind`, `export` (streamed, trailer verified), `digest`, `migrate` (to cloud or a URL through its import route, target key from stdin), settings resolved flag > AGENT_FEEDBACK_* env > config.toml (API key: env > config only); coverage.toml maps every OpenAPI operation, parameter and body property to a command, flag or argument, or lists it with a reason (checked by coverage_test.go)
 internal/api/                   v1 HTTP transport over internal/core: mux, middleware, query grammar, Problem mapping, bundled openapi.json; conformance test against docs/openapi.yaml
 internal/core/                  v1 service, no net/http: create with identity and dedupe, get, list, marks, redaction, stats, export, import and restore of format 2, meta; typed problems
 internal/store/                 SQLite for the v1 API: open + pragmas + the application_id stamp, the single init migration, hand-written SQL, query plans pinned by a test
@@ -36,6 +36,8 @@ Go toolchain and module versions are pinned in `go.mod`. Tools: `just`,
 ```bash
 just ci             # every gate of "Verification before you are done", in order; there is no hosted CI, this is the merge gate
 just check          # gofmt, go vet, go mod tidy, build — the pre-commit gate
+just staticcheck    # staticcheck at the version pinned in the justfile
+just build-all      # CGO_ENABLED=0 cross-compile for linux, darwin, windows × amd64, arm64 into dist/<os>-<arch>/
 just test           # go test -race -count=1 ./...  (SQLite on temp files; no services needed)
 just fuzz           # go test -fuzz=FuzzDecode -fuzztime=30s ./pkg/envelope: the decoder on top of its seed corpus (every fixture body)
 just skills         # regenerate the checked-in skill renders (skills/agentfeedback/SKILL.md) from internal/skillgen/source
@@ -55,11 +57,12 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
 ## Rules that are not visible in the code
 
 - **An API change is a five-artifact change**, in one commit: `internal/`
-  code, the contract files, `scripts/e2e.sh`, the client scripts in
-  `skills/agentfeedback/scripts/`, and `tests/skill/`. Producers build their
-  calls from the contract without reading the code. `scripts/e2e.sh` fails
-  on any `docs/openapi.yaml` operation it does not exercise, so a new route
-  needs its check in the same commit.
+  code (with `cmd/agentfeedback/coverage.toml`), the contract files,
+  `scripts/e2e.sh`, the client scripts in `skills/agentfeedback/scripts/`,
+  and `tests/skill/`. Producers build their calls from the contract without
+  reading the code. `scripts/e2e.sh` fails on any `docs/openapi.yaml`
+  operation it does not exercise, so a new route needs its check in the same
+  commit.
 - **Write-once payloads.** After insert only the processing fields
   (`processed_at`, `verdict`, `resolution`, `ref`, `processed_by`) change,
   and a redaction replaces the payload with its tombstone. Never add an
@@ -123,17 +126,19 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
 ## Verification before you are done
 
 1. `just check` clean.
-2. `just skills` leaves every checked-in render unchanged (`git diff --exit-code`).
-3. `just test` (`go test -race -count=1 ./...`) green.
-4. Decoder touched (`pkg/envelope/`): `just fuzz` green; a crash it finds is
+2. `just staticcheck` clean and `just build-all` builds every platform.
+3. `just skills` leaves every checked-in render unchanged (`git diff --exit-code`).
+4. `just test` (`go test -race -count=1 ./...`) green.
+5. Decoder touched (`pkg/envelope/`): `just fuzz` green; a crash it finds is
    committed under `pkg/envelope/testdata/fuzz/FuzzDecode/` as a regression
    seed beside the fix.
-5. API touched: `just e2e` green (builds, serves on a temp database, runs
-   `scripts/e2e.sh`, which also fails on an uncovered operation).
-6. Skill scripts touched: the shellcheck command above and `bash tests/skill/run-tests.sh`
+6. API touched: `just e2e` green (builds, serves on a temp database, runs
+   `scripts/e2e.sh`, which also fails on an uncovered operation), and
+   `cmd/agentfeedback/coverage.toml` updated (`just test` fails otherwise).
+7. Skill scripts touched: the shellcheck command above and `bash tests/skill/run-tests.sh`
    all green.
-7. Docs touched: every relative link resolves.
-8. Contract files touched (`schemas/`, `docs/openapi.yaml`, `conformance/`):
+8. Docs touched: every relative link resolves.
+9. Contract files touched (`schemas/`, `docs/openapi.yaml`, `conformance/`):
    `just contract` green.
 
 `just ci` runs all of the above in order and fails if `just check` rewrote a

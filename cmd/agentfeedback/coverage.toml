@@ -1,0 +1,192 @@
+# Contract coverage of the CLI: every operation of docs/openapi.yaml, every
+# parameter it takes (query, path, header, cookie; path-item parameters
+# included) and every property of its request-body schema (every content
+# type; a body without properties, such as NDJSON, has none) is listed here.
+# coverage_test.go fails on anything missing, anything stale, and any command,
+# flag or argument the CLI lacks.
+#
+# Format:
+#   [operations.<operationId>]              exactly one of
+#     command = "<cli command name>"        the command that calls it, or that
+#                                           serves the same content locally
+#     reason = "<why the CLI has no command>"
+#   [operations.<operationId>.parameters]   every parameter (query, path, header, cookie)
+#   [operations.<operationId>.body]         every request-body property
+#     <name> = { flag = "--name" }          set by this flag
+#     <name> = { arg = "<name>" }           set by this positional argument
+#     <name> = { reason = "..." }           not set by the command, and why
+# Operations listed with a reason still list their parameters and body.
+# Another client surface reuses the format with tool and argument in place of
+# command and flag.
+
+[operations.createSubmission]
+command = "submit"
+
+[operations.createSubmission.body]
+kind = { arg = "<kind>" }
+schema_version = { flag = "--schema-version" }
+key = { flag = "--key" }
+summary = { flag = "--summary" }
+machine = { flag = "--machine" }
+model = { flag = "--model" }
+harness = { flag = "--harness" }
+project = { flag = "--project" }
+occurred_at = { reason = "set to the current time; --stdin carries an explicit value" }
+context = { reason = "collected on the client; --stdin carries an explicit object" }
+payload = { reason = "friction members from --category, --details, --suggested-fix, --fix-status, --fix-ref and --severity; any kind through --stdin" }
+
+[operations.listSubmissions]
+command = "list"
+
+[operations.listSubmissions.parameters]
+kind = { flag = "--kind" }
+schema_version = { flag = "--schema-version" }
+key = { flag = "--key" }
+machine = { flag = "--machine" }
+model = { flag = "--model" }
+project = { flag = "--project" }
+harness = { flag = "--harness" }
+category = { flag = "--category" }
+fix_status = { flag = "--fix-status" }
+exclude_kind = { flag = "--exclude-kind" }
+verdict = { flag = "--verdict" }
+processed = { flag = "--processed" }
+redacted = { flag = "--redacted" }
+content_hash = { flag = "--content-hash" }
+since = { flag = "--since" }
+until = { flag = "--until" }
+on = { flag = "--on" }
+q = { flag = "--q" }
+before_id = { flag = "--before-id" }
+after_id = { flag = "--after-id" }
+limit = { flag = "--limit" }
+include = { flag = "--include" }
+
+[operations.getSubmission]
+command = "get"
+
+[operations.getSubmission.parameters]
+id = { arg = "<id>" }
+
+[operations.markSubmission]
+reason = "done and undo use the bulk route; a single id is a one-element list"
+
+[operations.markSubmission.parameters]
+id = { reason = "done and undo send ids in the bulk body" }
+
+[operations.markSubmission.body]
+processed = { reason = "done and undo use the bulk route" }
+verdict = { reason = "done and undo use the bulk route" }
+resolution = { reason = "done and undo use the bulk route" }
+ref = { reason = "done and undo use the bulk route" }
+processed_by = { reason = "done and undo use the bulk route" }
+
+[operations.redactSubmission]
+command = "redact"
+
+[operations.redactSubmission.parameters]
+id = { arg = "<id>" }
+
+[operations.markSubmissions]
+command = "done"
+
+[operations.markSubmissions.body]
+ids = { arg = "<id>" }
+processed = { reason = "done sends true, undo sends false" }
+verdict = { flag = "--verdict" }
+resolution = { flag = "--resolution" }
+ref = { flag = "--ref" }
+processed_by = { flag = "--processed-by" }
+
+[operations.getStats]
+command = "stats"
+
+[operations.getStats.parameters]
+kind = { flag = "--kind" }
+schema_version = { flag = "--schema-version" }
+key = { flag = "--key" }
+machine = { flag = "--machine" }
+model = { flag = "--model" }
+project = { flag = "--project" }
+harness = { flag = "--harness" }
+category = { flag = "--category" }
+fix_status = { flag = "--fix-status" }
+exclude_kind = { flag = "--exclude-kind" }
+verdict = { flag = "--verdict" }
+processed = { flag = "--processed" }
+redacted = { flag = "--redacted" }
+content_hash = { flag = "--content-hash" }
+since = { flag = "--since" }
+until = { flag = "--until" }
+on = { flag = "--on" }
+q = { flag = "--q" }
+by = { flag = "--by" }
+top = { flag = "--top" }
+bucket = { flag = "--bucket" }
+
+[operations.exportSubmissions]
+command = "export"
+
+[operations.exportSubmissions.parameters]
+kind = { flag = "--kind" }
+since = { flag = "--since" }
+after_id = { flag = "--after-id" }
+limit = { flag = "--limit" }
+
+[operations.exportSubmissionsHead]
+reason = "export reads the stream and verifies its trailer; the HEAD count is not used"
+
+[operations.exportSubmissionsHead.parameters]
+kind = { reason = "HEAD is not called" }
+since = { reason = "HEAD is not called" }
+after_id = { reason = "HEAD is not called" }
+limit = { reason = "HEAD is not called" }
+
+[operations.importSubmissions]
+command = "migrate"
+
+# The schema command prints the schemas embedded in the binary, the same documents these routes serve.
+[operations.listSchemas]
+command = "schema"
+
+# The schema command prints the schemas embedded in the binary, the same documents these routes serve.
+[operations.getSchema]
+command = "schema"
+
+[operations.getSchema.parameters]
+kind = { arg = "<kind>" }
+version = { arg = "<version>" }
+
+[operations.getMeta]
+command = "doctor"
+
+[operations.getOpenApi]
+reason = "the document is for API tooling; the CLI is built against docs/openapi.yaml"
+
+[operations.postMcp]
+reason = "the MCP transport is for MCP clients; the CLI calls the REST routes"
+
+[operations.postMcpProject]
+reason = "the MCP transport is for MCP clients; the CLI calls the REST routes"
+
+[operations.postMcpProject.parameters]
+project = { reason = "selects the project of an MCP connection; the CLI does not speak MCP" }
+
+# skill render prints the same guidance the route serves, from the embedded source.
+[operations.getSkill]
+command = "skill"
+
+[operations.getSkill.parameters]
+format = { arg = "<form>" }
+
+[operations.getDiscovery]
+reason = "the CLI is configured with a base URL and does not discover one"
+
+[operations.getHealth]
+reason = "liveness probe for the deployment; doctor checks the server through meta"
+
+[operations.getReady]
+reason = "readiness probe for the deployment; doctor checks the server through meta"
+
+[operations.getMetrics]
+reason = "scraped by monitoring, not a client read"

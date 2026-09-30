@@ -14,6 +14,7 @@
 # Code coverage profiles and other test artifacts
 *.out
 coverage.*
+!coverage.toml
 *.coverprofile
 profile.cov
 
@@ -37,6 +38,7 @@ __pycache__/
 
 # Local build output (just build) and the local run-local database
 bin/
+dist/
 local/
 *.db
 *.db-wal
