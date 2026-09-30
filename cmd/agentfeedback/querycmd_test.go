@@ -25,6 +25,7 @@ var clockStart = time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
 // one second per reading and a log of every request's method and path.
 type live struct {
 	srv *httptest.Server
+	key string
 	mu  sync.Mutex
 	log []string
 }
@@ -32,6 +33,17 @@ type live struct {
 // liveServer starts the server and points the client at it; call isolate
 // first.
 func liveServer(t *testing.T) *live {
+	t.Helper()
+	l := newLive(t, testKey)
+	t.Setenv(envURL, l.srv.URL)
+	t.Setenv(envAPIKey, testKey)
+
+	return l
+}
+
+// newLive starts the server with key as its API key and leaves the client's
+// environment alone.
+func newLive(t *testing.T, key string) *live {
 	t.Helper()
 	db := openDB(t, filepath.Join(t.TempDir(), "live.db"))
 	var clockMu sync.Mutex
@@ -44,8 +56,8 @@ func liveServer(t *testing.T) *live {
 		return tick
 	}
 	svc := core.New(db, core.Config{Version: "4.0.0", Features: api.Features}, core.WithClock(clock))
-	h := api.New(api.Config{Service: svc, DB: db, APIKey: testKey}).Handler()
-	l := &live{}
+	h := api.New(api.Config{Service: svc, DB: db, APIKey: key}).Handler()
+	l := &live{key: key}
 	l.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		l.mu.Lock()
 		l.log = append(l.log, r.Method+" "+r.URL.Path)
@@ -53,8 +65,6 @@ func liveServer(t *testing.T) *live {
 		h.ServeHTTP(w, r)
 	}))
 	t.Cleanup(l.srv.Close)
-	t.Setenv(envURL, l.srv.URL)
-	t.Setenv(envAPIKey, testKey)
 
 	return l
 }
@@ -66,7 +76,7 @@ func (l *live) requests() []string {
 	return append([]string(nil), l.log...)
 }
 
-// call sends one request with the test key and returns status and body.
+// call sends one request with the server's key and returns status and body.
 func (l *live) call(t *testing.T, method, path, body string) (int, []byte) {
 	t.Helper()
 	var rd io.Reader
@@ -77,7 +87,7 @@ func (l *live) call(t *testing.T, method, path, body string) (int, []byte) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set("Authorization", "Bearer "+testKey)
+	req.Header.Set("Authorization", "Bearer "+l.key)
 	if body != "" {
 		req.Header.Set("Content-Type", "application/json")
 	}

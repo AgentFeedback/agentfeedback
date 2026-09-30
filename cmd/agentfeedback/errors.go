@@ -203,12 +203,12 @@ func errInitBadURL(raw, reason string) error {
 		"pass an http or https URL with a host and no credentials, query or fragment")
 }
 
-func errInitKeyRead(err error) error {
-	return failErr(fmt.Sprintf("cannot read the API key from stdin: %v", err), "pass the key on stdin to agentfeedback doctor --init --key-from-stdin")
+func errInitKeyRead(err error, command string) error {
+	return failErr(fmt.Sprintf("cannot read the API key from stdin: %v", err), "pass the key on stdin to agentfeedback "+command)
 }
 
-func errInitKeyEmpty() error {
-	return failErr("the API key read from stdin is empty", "pass the key on stdin to agentfeedback doctor --init --key-from-stdin")
+func errInitKeyEmpty(command string) error {
+	return failErr("the API key read from stdin is empty", "pass the key on stdin to agentfeedback "+command)
 }
 
 func errInitKeyInvalid() error {
@@ -255,15 +255,27 @@ func errSkillVerb(verb string) error {
 // errSkillServer never shows credentials: a URL that carries them is refused
 // for that reason, and the refusal must not print them.
 func errSkillServer(raw, reason string) error {
-	shown := raw
-	if u, err := url.Parse(raw); err == nil && u.User != nil {
-		shown = u.Redacted()
-	} else if err != nil && strings.Contains(raw, "@") {
-		shown = "(not shown)"
-	}
+	shown := shownURL(raw)
 
 	return usageErr(fmt.Sprintf("--server %q is not a usable base URL: %s", shown, reason),
 		"pass an http or https URL without credentials, query or fragment")
+}
+
+// shownURL is raw with its whole userinfo, user name included (it can be a
+// key), replaced by REDACTED; a URL that does not parse but holds an @ is
+// not shown at all.
+func shownURL(raw string) string {
+	u, err := url.Parse(raw)
+	switch {
+	case err == nil && u.User != nil:
+		u.User = url.User("REDACTED")
+
+		return u.String()
+	case err != nil && strings.Contains(raw, "@"):
+		return "(not shown)"
+	}
+
+	return raw
 }
 
 // Read and processing command errors (list, get, stats, done, undo, redact,
@@ -417,6 +429,60 @@ func errPayloadNotObject() error {
 
 func errSummaryRequired() error {
 	return usageErr("submit friction needs a summary", "pass --summary or a summary member on stdin")
+}
+
+// migrate errors. The target's key is the key read from stdin; no message
+// names AGENT_FEEDBACK_API_KEY for it, and none shows either key.
+
+func errMigrateNeedsTo() error {
+	return usageErr("migrate needs a target", "pass --to cloud or --to https://your-server")
+}
+
+func errMigrateNeedsStdin() error {
+	return usageErr("migrate reads the target's API key from stdin only", "pass --to-key-from-stdin and pipe the key in")
+}
+
+// errMigrateBadTo never shows credentials, as errSkillServer.
+func errMigrateBadTo(raw, reason string) error {
+	shown := shownURL(raw)
+
+	return usageErr(fmt.Sprintf("--to %q is not usable: %s", shown, reason),
+		"pass cloud or an http or https URL with a host and no credentials, query or fragment")
+}
+
+func errMigrateLimit(n int) error {
+	return usageErr(fmt.Sprintf("--limit %d is not a positive number of records", n), "pass --limit 1 or more")
+}
+
+func errMigrateSameServer(target string) error {
+	return usageErr(fmt.Sprintf("the target %s is the configured source server", target), "pass another server with --to")
+}
+
+func errMigrateTargetKey(target string, status int) error {
+	return failErr(fmt.Sprintf("the target %s refused the key read from stdin (HTTP %d)", target, status),
+		"pass the target's API key on stdin to agentfeedback migrate --to-key-from-stdin")
+}
+
+func errMigrateTooOld(target string) error {
+	return failErr(fmt.Sprintf("the target %s is too old: it has no POST /api/v1/import", target),
+		"upgrade the target server or pass another --to")
+}
+
+func errMigrateTarget(target, reason string) error {
+	return failErr(fmt.Sprintf("the target %s failed: %s", target, oneLine(reason)),
+		"check the target URL points at an AgentFeedback v1 server and is reachable")
+}
+
+func errMigrateRecordTooLarge(uid string, limit int) error {
+	return failErr(fmt.Sprintf("record uid=%s alone exceeds the target's %d-byte import limit", clean(uid), limit),
+		"export it with agentfeedback export and move it by hand, or pass filters that leave it out")
+}
+
+// errMigrateStopped carries the counts of a run that stopped part way.
+func errMigrateStopped(reason string, sent, imported, skipped int) error {
+	return failErr(fmt.Sprintf("migration stopped after %d records sent (%d imported, %d skipped): %s",
+		sent, imported, skipped, oneLine(reason)),
+		"run agentfeedback migrate again once that is fixed, which is safe because the target skips the uids it already holds")
 }
 
 func errWorkdir(err error) error {

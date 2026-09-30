@@ -49,6 +49,27 @@ func TestDo_HeadersQueryAndBody(t *testing.T) {
 	}
 }
 
+func TestSend_ContentType(t *testing.T) {
+	var gotType, gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotType = r.Header.Get("Content-Type")
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		_, _ = io.WriteString(w, `{"ok":true}`)
+	}))
+	t.Cleanup(srv.Close)
+	e := newTestEnv(t, srv.URL, nil)
+
+	body := "{\"export_format\":2}\n"
+	res, err := e.c.Send(context.Background(), http.MethodPost, "/api/v1/import", nil, "application/x-ndjson", []byte(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != 200 || gotType != "application/x-ndjson" || gotBody != body {
+		t.Fatalf("content type %q body %q response %+v", gotType, gotBody, res)
+	}
+}
+
 func TestDo_APIErrorAndRedirect(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/moved" {

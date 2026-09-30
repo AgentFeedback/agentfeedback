@@ -45,7 +45,7 @@ func runDoctorInit(getenv func(string) string, rawURL string, keyFromStdin, forc
 	if err := checkInitURL(rawURL); err != nil {
 		return "", err
 	}
-	key, err := readKey(stdin)
+	key, err := readKey(stdin, "doctor --init --key-from-stdin")
 	if err != nil {
 		return "", err
 	}
@@ -69,20 +69,27 @@ func checkInitURL(raw string) error {
 	if raw == "" {
 		return errInitNeedsURL()
 	}
+
+	return checkBaseURL(raw, errInitBadURL)
+}
+
+// checkBaseURL accepts an http or https URL with a host and no credentials,
+// query or fragment; bad builds the refusal from raw and the reason.
+func checkBaseURL(raw string, bad func(raw, reason string) error) error {
 	u, err := url.Parse(raw)
 	switch {
 	case err != nil:
-		return errInitBadURL(raw, "it does not parse")
+		return bad(raw, "it does not parse")
 	case u.Scheme != "http" && u.Scheme != "https":
-		return errInitBadURL(raw, "the scheme is not http or https")
+		return bad(raw, "the scheme is not http or https")
 	case u.Host == "" || u.Hostname() == "":
-		return errInitBadURL(raw, "it has no host")
+		return bad(raw, "it has no host")
 	case u.User != nil:
-		return errInitBadURL(raw, "it carries credentials")
+		return bad(raw, "it carries credentials")
 	case u.RawQuery != "" || u.ForceQuery:
-		return errInitBadURL(raw, "it has a query")
+		return bad(raw, "it has a query")
 	case u.Fragment != "" || strings.Contains(raw, "#"):
-		return errInitBadURL(raw, "it has a fragment")
+		return bad(raw, "it has a fragment")
 	}
 
 	return nil
@@ -90,17 +97,18 @@ func checkInitURL(raw string) error {
 
 // readKey reads one key from stdin: surrounding whitespace is trimmed, and
 // anything left that is whitespace or a control character is refused.
-func readKey(stdin io.Reader) (string, error) {
+// command is the command line the errors tell the user to pipe the key to.
+func readKey(stdin io.Reader, command string) (string, error) {
 	data, err := io.ReadAll(io.LimitReader(stdin, keyReadLimit+1))
 	if err != nil {
-		return "", errInitKeyRead(err)
+		return "", errInitKeyRead(err, command)
 	}
 	if len(data) > keyReadLimit {
 		return "", errInitKeyTooLong()
 	}
 	key := strings.TrimSpace(string(data))
 	if key == "" {
-		return "", errInitKeyEmpty()
+		return "", errInitKeyEmpty(command)
 	}
 	if strings.ContainsFunc(key, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) {
 		return "", errInitKeyInvalid()

@@ -789,6 +789,10 @@ func TestSkillRender(t *testing.T) {
 	if r := runCLI(t, "", "skill", "render", "mcp", "--server", "https://user:s3cret@x"); strings.Contains(r.stderr, "s3cret") {
 		t.Errorf("credentials shown: %q", r.stderr)
 	}
+	if r := runCLI(t, "", "skill", "render", "mcp", "--server", "https://sk-secret-123@host"); r.code != 2 ||
+		strings.Contains(r.stderr, "sk-secret-123") || !strings.Contains(r.stderr, "REDACTED@host") {
+		t.Errorf("a key as user name shown: %q", r.stderr)
+	}
 	if r := runCLI(t, "", "skill", "render", "skill-md", "--server", "ftp://ignored"); r.code != 0 || r.stdout != string(checkedIn) {
 		t.Errorf("skill-md with an unused --server: %+v", r.code)
 	}

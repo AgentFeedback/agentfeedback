@@ -61,8 +61,9 @@ var ErrTooLarge = errors.New("the response is larger than 48 MiB")
 // streamIdle is how long Stream waits for the next byte before it cancels.
 var streamIdle = 60 * time.Second
 
-// newRequest builds a request to base+path?query with both auth headers.
-func (c *Client) newRequest(ctx context.Context, method, path string, query url.Values, body []byte) (*http.Request, error) {
+// newRequest builds a request to base+path?query with both auth headers; a
+// body is sent with contentType.
+func (c *Client) newRequest(ctx context.Context, method, path string, query url.Values, contentType string, body []byte) (*http.Request, error) {
 	target := c.baseURL + path
 	if len(query) > 0 {
 		target += "?" + query.Encode()
@@ -80,17 +81,22 @@ func (c *Client) newRequest(ctx context.Context, method, path string, query url.
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "agentfeedback/"+c.version)
 	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Type", contentType)
 	}
 
 	return req, nil
 }
 
-// Do sends one request and returns the 2xx answer, an *APIError for any
-// other status, or a *TransportError. The body is read up to 48 MiB; a
-// longer one is an error.
+// Do sends one request with a JSON body, if any; see Send.
 func (c *Client) Do(ctx context.Context, method, path string, query url.Values, body []byte) (*Response, error) {
-	req, err := c.newRequest(ctx, method, path, query, body)
+	return c.Send(ctx, method, path, query, "application/json", body)
+}
+
+// Send sends one request, a body with contentType, and returns the 2xx
+// answer, an *APIError for any other status, or a *TransportError. The
+// answer is read up to 48 MiB; a longer one is an error.
+func (c *Client) Send(ctx context.Context, method, path string, query url.Values, contentType string, body []byte) (*Response, error) {
+	req, err := c.newRequest(ctx, method, path, query, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +135,7 @@ func (c *Client) Stream(ctx context.Context, path string, query url.Values) (bod
 
 		return nil, "", err
 	}
-	req, err := c.newRequest(ctx, http.MethodGet, path, query, nil)
+	req, err := c.newRequest(ctx, http.MethodGet, path, query, "", nil)
 	if err != nil {
 		return fail(err)
 	}

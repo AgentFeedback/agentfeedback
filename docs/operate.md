@@ -154,8 +154,27 @@ it. Stop the service first, as above: a restore, dry run included, holds the
 database's only writer until it finishes. The file is read whole into memory,
 so the host needs a few times its size free. Flags go before the file name.
 
-**Move to another server** with `POST /api/v1/import`, which takes the same
-format and assigns new ids ([openapi.yaml](openapi.yaml)).
+**Move to another server** with `agentfeedback migrate`, run from any
+machine whose client is configured with the source's URL and key:
+
+```bash
+printf '%s' "$TARGET_KEY" | agentfeedback migrate --to https://target --to-key-from-stdin \
+  [--kind K] [--include-kind K] [--since T] [--limit N] [--dry-run]
+```
+
+It pages the source's export and writes each chunk to the target's
+`POST /api/v1/import` ([openapi.yaml](openapi.yaml)), which keeps uid,
+content_hash, the timestamps and the processing fields and assigns new ids.
+The target skips uids it already holds, so a re-run only adds what is
+missing, and marks or redactions made on the source after a record moved do
+not propagate. `install-check` rows stay behind unless `--kind` or
+`--include-kind` names that kind. A record whose (kind, key) the target holds
+under another uid is printed as one `conflict` line and skipped. The run
+stops at the first failure and says how many records landed. `--dry-run`
+sends nothing: it prints the count per kind, the first record of each, and
+the source tombstones the target still holds unredacted; redact those on the
+target by hand. `--to cloud` targets the hosted service at
+`https://api.agentfeedback.io`.
 
 ## Upgrade
 

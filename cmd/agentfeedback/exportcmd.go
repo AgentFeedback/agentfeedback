@@ -64,9 +64,24 @@ func runExport(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 // exportLineMax caps one export line; a var so tests can lower it.
 var exportLineMax = 64 << 20
 
-// copyExport copies an export to w and verifies its trailer. At most one
-// line (capped at exportLineMax) is held beside the one being read.
+// copyExport copies an export to w and verifies its trailer.
 func copyExport(w io.Writer, r io.Reader) error {
+	each := func(line []byte) error {
+		_, err := w.Write(line)
+
+		return err
+	}
+
+	return walkExport(r, each, nil)
+}
+
+// walkExport reads an export line by line and verifies its trailer: each,
+// when not nil, gets every line as it arrives, and record, when not nil,
+// every record line once the line after it shows it is not the trailer.
+// Lines keep their newline and are only valid during the call. At most one
+// line (capped at exportLineMax) is held beside the one being read. An
+// error of each or record is returned as it is.
+func walkExport(r io.Reader, each, record func(line []byte) error) error {
 	br := bufio.NewReaderSize(r, 64<<10)
 	sum := sha256.New()
 	var lines, records int64
@@ -75,12 +90,19 @@ func copyExport(w io.Writer, r io.Reader) error {
 		var err error
 		line, err = readLine(br, line[:0])
 		if len(line) > 0 {
-			if _, werr := w.Write(line); werr != nil {
-				return werr
+			if each != nil {
+				if werr := each(line); werr != nil {
+					return werr
+				}
 			}
 			if lines >= 2 {
 				sum.Write(pending)
 				records++
+				if record != nil {
+					if rerr := record(pending); rerr != nil {
+						return rerr
+					}
+				}
 			}
 			pending, line = line, pending
 			lines++

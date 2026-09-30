@@ -2,7 +2,7 @@
 // API, import and backup maintain its database, and doctor, submit (friction,
 // review or any kind), flush, version, schema, skill and the read and
 // processing commands (list, get, stats, done, undo, redact, rekind, export,
-// digest) are client commands. A bare invocation prints help.
+// digest) and migrate are client commands. A bare invocation prints help.
 package main
 
 import (
@@ -51,6 +51,7 @@ var commands = []command{
 	{"redact", "redact <id>: replace a submission with its tombstone (not reversible)", runRedact},
 	{"rekind", "rekind <id> <kind>: file a submission again under another kind and mark the original duplicate", runRekind},
 	{"export", "export [--after-id N] [--kind K] [--since T] [--limit N]: stream an export (format 2) and verify its trailer", runExport},
+	{"migrate", "migrate --to cloud|URL --to-key-from-stdin [--kind K] [--include-kind K]... [--since T] [--limit N] [--dry-run]: copy the records to another server through its import route", runMigrate},
 	{"digest", "digest [--out DIR] [--kind K] [--include-kind K]: pull the open queue into a triage directory", runDigest},
 	{"version", "print the client version", runVersion},
 	{"schema", "schema [<kind> [<version>]]: list the schemas or print one", runSchema},
