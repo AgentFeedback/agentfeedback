@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -35,17 +36,28 @@ type logLine struct {
 // Log appends o to the client log. A failure is one stderr warning; it never
 // changes the outcome.
 func (c *Client) Log(o Outcome) {
-	if err := c.appendLog(o); err != nil {
-		fmt.Fprintf(c.stderr, "agentfeedback: warning: cannot write the client log %s (%v)\n", LogPath(c.cacheDir), err)
+	LogTo(c.cacheDir, o, c.now(), c.stderr)
+}
+
+// LogTo appends o to the client log under cache without a configured Client,
+// for an outcome decided before one exists (a disabled submission, where the
+// URL and the key may be unset). now stamps the line; a nil stderr discards
+// the warning a failure prints.
+func LogTo(cache string, o Outcome, now time.Time, stderr io.Writer) {
+	if stderr == nil {
+		stderr = io.Discard
+	}
+	if err := appendLog(cache, o, now, stderr); err != nil {
+		fmt.Fprintf(stderr, "agentfeedback: warning: cannot write the client log %s (%v)\n", LogPath(cache), err)
 	}
 }
 
-func (c *Client) appendLog(o Outcome) error {
+func appendLog(cache string, o Outcome, now time.Time, stderr io.Writer) error {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
 	if err := enc.Encode(logLine{
-		TS:        c.now().UTC().Format(time.RFC3339Nano),
+		TS:        now.UTC().Format(time.RFC3339Nano),
 		Outcome:   o.Outcome,
 		Kind:      o.Kind,
 		Key:       o.Key,
@@ -57,8 +69,8 @@ func (c *Client) appendLog(o Outcome) error {
 	}
 	line := buf.Bytes()
 
-	path := LogPath(c.cacheDir)
-	if err := c.ensureDir(filepath.Dir(path)); err != nil {
+	path := LogPath(cache)
+	if err := ensureDir(filepath.Dir(path), stderr); err != nil {
 		return err
 	}
 	f, err := openLog(path)

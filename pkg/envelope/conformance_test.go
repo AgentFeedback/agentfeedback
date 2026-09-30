@@ -398,3 +398,14 @@ func TestConstantsAgreeWithContract(t *testing.T) {
 		t.Errorf("BodyLimit %d is not the README's limit", BodyLimit)
 	}
 }
+
+func TestMembersIsAClone(t *testing.T) {
+	got := Members()
+	if !slices.Equal(got, envelopeMembers) {
+		t.Fatalf("Members() = %v", got)
+	}
+	got[0] = "changed"
+	if envelopeMembers[0] != "kind" {
+		t.Error("Members() shares its backing array")
+	}
+}

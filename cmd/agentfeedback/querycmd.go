@@ -59,6 +59,7 @@ func apiClient(getenv func(string) string, stderr io.Writer) (*client.Client, er
 		URL:      settings.URL.Value,
 		APIKey:   settings.APIKey.Value,
 		CacheDir: cache,
+		Now:      nowFunc,
 		Stderr:   stderr,
 		Version:  clientVersion().Version,
 	})

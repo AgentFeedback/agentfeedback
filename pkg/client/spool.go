@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -118,12 +119,14 @@ func newEntryName(now time.Time) string {
 
 // ensureDir creates dir owner-only and tightens it every time; a failed
 // chmod is a warning, not a failure.
-func (c *Client) ensureDir(dir string) error {
+func (c *Client) ensureDir(dir string) error { return ensureDir(dir, c.stderr) }
+
+func ensureDir(dir string, stderr io.Writer) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 	if err := os.Chmod(dir, 0o700); err != nil {
-		fmt.Fprintf(c.stderr, "agentfeedback: warning: cannot make %s owner-only (%v); run chmod 700 %s\n", dir, err, dir)
+		fmt.Fprintf(stderr, "agentfeedback: warning: cannot make %s owner-only (%v); run chmod 700 %s\n", dir, err, dir)
 	}
 
 	return nil

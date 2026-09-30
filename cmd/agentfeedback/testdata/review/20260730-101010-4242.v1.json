@@ -1,0 +1,39 @@
+{
+  "kind": "review",
+  "key": "review-panel-testmach-20260730-101010-4242",
+  "summary": "review-panel: 3 reviewers, 2 completed, mean 4.0/5",
+  "machine": "testmach",
+  "model": "claude-fable-5",
+  "occurred_at": "2026-07-30T10:10:10.000000Z",
+  "payload": {
+    "skill": "review-panel",
+    "grader": {
+      "model": "claude-fable-5"
+    },
+    "reviewers": [
+      {
+        "slot": "gpt56",
+        "model": "openai-codex/gpt-5.6-sol",
+        "status": "completed",
+        "duration_s": 354.5,
+        "bytes": 2392,
+        "score": 5,
+        "valid": 2,
+        "invalid": 0,
+        "note": "solid\tsecond part"
+      },
+      {
+        "slot": "glm",
+        "model": "example/glm",
+        "status": "completed",
+        "duration_s": 12,
+        "score": 3
+      },
+      {
+        "slot": "model-x",
+        "model": "example/model-x",
+        "status": "timeout"
+      }
+    ]
+  }
+}

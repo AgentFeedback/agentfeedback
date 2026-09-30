@@ -1,0 +1,31 @@
+{
+  "skill": "review-panel",
+  "machine_name": "testmach",
+  "coordinator_model": "claude-fable-5",
+  "run_id": "testmach-20260730-101010-4242",
+  "reviewers": [
+    {
+      "slot": "gpt56",
+      "model": "openai-codex/gpt-5.6-sol",
+      "status": "completed",
+      "duration_s": 354.5,
+      "bytes": 2392,
+      "score": 5,
+      "valid": 2,
+      "invalid": 0,
+      "note": "solid\tsecond part"
+    },
+    {
+      "slot": "glm",
+      "model": "example/glm",
+      "status": "completed",
+      "duration_s": 12,
+      "score": 3
+    },
+    {
+      "slot": "model-x",
+      "model": "example/model-x",
+      "status": "timeout"
+    }
+  ]
+}

@@ -391,3 +391,35 @@ func errDigestContaminated(n int) error {
 
 // oneLine keeps a multi-line library message on one line of output.
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// submit and flush errors.
+
+func errSubmitKind(got string) error {
+	return usageErr(fmt.Sprintf("%q is not a kind", got), "use agentfeedback "+submitSynopsis)
+}
+
+func errStdinRead(err error) error {
+	return failErr(fmt.Sprintf("cannot read stdin: %v", err), "pipe one JSON object to agentfeedback submit --stdin")
+}
+
+func errStdinObject(reason string) error {
+	return usageErr(fmt.Sprintf("--stdin needs exactly one JSON object: %s", reason), "pipe one JSON object and nothing else")
+}
+
+func errSchemaVersionFlag(got string) error {
+	return usageErr(fmt.Sprintf("--schema-version %q is not a positive integer", got), "pass a version such as 1")
+}
+
+func errPayloadNotObject() error {
+	return usageErr("the payload given on stdin is not a JSON object, so a payload flag cannot be added to it",
+		"drop the payload flags or send payload as an object")
+}
+
+func errSummaryRequired() error {
+	return usageErr("submit friction needs a summary", "pass --summary or a summary member on stdin")
+}
+
+func errWorkdir(err error) error {
+	return failErr(fmt.Sprintf("cannot resolve the working directory (%v); narrowing rules cannot be applied, so nothing was sent", err),
+		"run agentfeedback from a directory that exists")
+}

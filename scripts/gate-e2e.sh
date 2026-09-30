@@ -74,3 +74,15 @@ check "--dry-run writes nothing" '.dry_run and .imported == $n and .skipped == 0
 check "restores every record" '(.dry_run | not) and .imported == $n and .conflicts == []'
 # shellcheck disable=SC2016
 check "re-run is a no-op" '.imported == 0 and .skipped == $n and .conflicts == []'
+
+# The client binary files one friction against the live server, with isolated
+# config and cache directories and none of the caller's AGENT_FEEDBACK_*
+# settings.
+out=$(env -u AGENT_FEEDBACK_URL -u AGENT_FEEDBACK_API_KEY -u AGENT_FEEDBACK_MACHINE \
+  -u AGENT_FEEDBACK_MODEL -u AGENT_FEEDBACK_HARNESS -u AGENT_FEEDBACK_SESSION_ID \
+  XDG_CONFIG_HOME="$workdir/xdg-config" XDG_CACHE_HOME="$workdir/xdg-cache" \
+  AGENT_FEEDBACK_URL="http://$ADDR" AGENT_FEEDBACK_API_KEY="$KEY" \
+  "$BIN" submit friction --summary x) || fail "submit friction failed: $out"
+tail -n 1 <<<"$out" | jq -e '.outcome == "submitted" and (.id | type) == "number"' >/dev/null ||
+  fail "submit friction: unexpected outcome $out"
+echo "PASS  submit friction is submitted with an id"

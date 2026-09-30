@@ -17,6 +17,10 @@ var envelopeMembers = []string{
 	"harness", "project", "occurred_at", "context", "payload",
 }
 
+// Members returns the top-level members the envelope knows, in the
+// contract's order.
+func Members() []string { return slices.Clone(envelopeMembers) }
+
 // stringMembers are the members the coerce and normalisation rows apply to;
 // kind, schema_version, occurred_at, context and payload have rows of their
 // own.

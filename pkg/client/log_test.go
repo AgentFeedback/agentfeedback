@@ -147,3 +147,30 @@ func TestLogPathSingleSource(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestLogToWithoutClient appends a line with no Client configured: the
+// disabled outcome is logged where the URL and the key may be unset.
+func TestLogToWithoutClient(t *testing.T) {
+	cache := filepath.Join(t.TempDir(), "agentfeedback")
+	var stderr bytes.Buffer
+	LogTo(cache, Disabled("deny_paths"), t0, &stderr)
+	lines := logLines(t, cache)
+	if len(lines) != 1 || lines[0]["outcome"] != OutcomeDisabled || lines[0]["reason"] != "deny_paths" || stderr.Len() != 0 {
+		t.Fatalf("log = %v, stderr %q", lines, stderr.String())
+	}
+	if runtime.GOOS != "windows" {
+		if st, _ := os.Stat(LogPath(cache)); st.Mode().Perm() != 0o600 {
+			t.Errorf("mode %v", st.Mode().Perm())
+		}
+	}
+
+	blocked := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(blocked, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	LogTo(blocked, Disabled("disabled"), t0, &stderr)
+	if !strings.Contains(stderr.String(), "cannot write the client log") {
+		t.Fatalf("stderr %q", stderr.String())
+	}
+	LogTo(blocked, Disabled("disabled"), t0, nil)
+}

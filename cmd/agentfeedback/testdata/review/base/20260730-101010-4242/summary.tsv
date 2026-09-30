@@ -1,0 +1,4 @@
+slot	model	status	duration_s	bytes
+gpt56	openai-codex/gpt-5.6-sol	completed	354.5	2392
+glm	example/glm	completed	12	12x
+model-x	example/model-x	timeout		

@@ -1,0 +1,2 @@
+{"machine":"testmach","skill":"review-panel","run_ts":"20260730-101010","caller":"claude-fable-5",
+ "slots":{"gpt56":{"label":"GPT-5.6-Sol"},"glm":{"label":"GLM"},"model-x":{"label":"Model-X"}}}
