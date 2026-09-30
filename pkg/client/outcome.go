@@ -62,3 +62,9 @@ func (o Outcome) Write(w io.Writer) error {
 func Valid(kind, key string) Outcome {
 	return Outcome{Outcome: OutcomeValid, Kind: kind, Key: key}
 }
+
+// Disabled is the outcome of a submission a narrowing rule switched off;
+// reason names the rule.
+func Disabled(reason string) Outcome {
+	return Outcome{Outcome: OutcomeDisabled, Reason: reason}
+}

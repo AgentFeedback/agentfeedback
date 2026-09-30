@@ -52,7 +52,8 @@ func TestRun_HelpAndRouting(t *testing.T) {
 	for _, args := range [][]string{nil, {"help"}, {"-h"}, {"--help"}} {
 		r := runCLI(t, "", args...)
 		if r.code != 0 || !strings.Contains(r.stdout, "doctor") || !strings.Contains(r.stdout, envAPIKey) ||
-			!strings.Contains(r.stdout, "config.toml") || !strings.Contains(r.stdout, "DATABASE_PATH") {
+			!strings.Contains(r.stdout, "config.toml") || !strings.Contains(r.stdout, "DATABASE_PATH") ||
+			!strings.Contains(r.stdout, "[collect] deny_paths") || !strings.Contains(r.stdout, ".agentfeedback.toml may only narrow") {
 			t.Fatalf("%v: code %d, stdout %q", args, r.code, r.stdout)
 		}
 	}
@@ -148,7 +149,13 @@ func TestLoadFileConfig(t *testing.T) {
 		t.Fatalf("unknown keys: %+v %v %v", cfg, exists, err)
 	}
 
-	for _, body := range []string{"url = ", "url = 5\n"} {
+	writeFile(t, path, "[collect]\ndeny_paths = [\"/a\"]\nopt_in_only = true\n[context]\ncwd = true\ndrop = [\"os\"]\napp = \"x\"\n", 0o600)
+	cfg, _, err = loadFileConfig(path)
+	if err != nil || len(cfg.Collect.DenyPaths) != 1 || !cfg.Collect.OptInOnly || !cfg.Context.Cwd || cfg.Context.App != "x" {
+		t.Fatalf("tables: %+v %v", cfg, err)
+	}
+
+	for _, body := range []string{"url = ", "url = 5\n", "[collect]\ndeny_paths = 5\n", "[context]\ncwd = \"yes\"\n"} {
 		writeFile(t, path, body, 0o600)
 		_, _, err := loadFileConfig(path)
 		if err == nil || !strings.Contains(err.Error(), path) || !strings.Contains(err.Error(), "doctor --init --force") {
@@ -225,6 +232,27 @@ func TestDoctor_OK(t *testing.T) {
 	human := runCLI(t, "", "doctor", "--url", srv.URL)
 	if human.code != 0 || strings.Contains(human.stdout, testKey) || !strings.Contains(human.stdout, "status:   ok") {
 		t.Fatalf("human: %+v", human)
+	}
+}
+
+// TestDoctor_IgnoresNarrowing: doctor reports the same with a [collect]
+// table that would switch collection off in the working directory.
+func TestDoctor_IgnoresNarrowing(t *testing.T) {
+	cfgPath, _ := isolate(t)
+	srv := metaServer(t, http.StatusOK, "v0.0.1")
+	t.Setenv(envAPIKey, testKey)
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := "url = " + strconv.Quote(srv.URL) + "\n"
+	writeFile(t, cfgPath, base, 0o600)
+	plain := runCLI(t, "", "doctor", "--json")
+
+	writeFile(t, cfgPath, base+"[collect]\ndeny_paths = ["+strconv.Quote(wd)+"]\nopt_in_only = true\n", 0o600)
+	narrowed := runCLI(t, "", "doctor", "--json")
+	if plain.code != 0 || narrowed != plain {
+		t.Fatalf("plain %+v\nnarrowed %+v", plain, narrowed)
 	}
 }
 

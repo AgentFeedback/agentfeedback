@@ -1,0 +1,9 @@
+{
+  "project": "repo",
+  "machine": "testhost",
+  "context": {
+    "folder": "repo",
+    "git_branch": "main",
+    "repo_root": "<tmp>/repo"
+  }
+}

@@ -57,6 +57,8 @@ client environment (flag > environment > config file):
   AGENT_FEEDBACK_HARNESS   harness name
 client config file: %s
   flat keys: url, api_key, machine, model, harness
+  tables: [collect] deny_paths, opt_in_only, opt_in_paths, disabled; [context] cwd, drop, app, workspace, url, channel, task_id, workflow
+  a repository .agentfeedback.toml may only narrow (collect.disabled, collect.deny_paths, context.drop)
 
 server environment: API_KEY (serve only), DATABASE_PATH, HTTP_LISTEN_ADDR,
 GRACEFUL_SHUTDOWN_TIMEOUT, SERVICE_VERSION, LOG_LEVEL

@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 
 	"github.com/pelletier/go-toml/v2"
+
+	"github.com/agentfeedback/agentfeedback/pkg/collect"
 )
 
 // Client environment variables. Each overrides the config file key of the
@@ -25,14 +27,17 @@ const (
 	sourceConfig = "config"
 )
 
-// fileConfig is the config file: flat top-level keys. Keys and tables it does
-// not name are ignored so newer files stay readable.
+// fileConfig is the config file: flat top-level keys plus the [collect] and
+// [context] tables. Keys and tables it does not name are ignored so newer
+// files stay readable.
 type fileConfig struct {
-	URL     string `toml:"url"`
-	APIKey  string `toml:"api_key"`
-	Machine string `toml:"machine"`
-	Model   string `toml:"model"`
-	Harness string `toml:"harness"`
+	URL     string                `toml:"url"`
+	APIKey  string                `toml:"api_key"`
+	Machine string                `toml:"machine"`
+	Model   string                `toml:"model"`
+	Harness string                `toml:"harness"`
+	Collect collect.Policy        `toml:"collect"`
+	Context collect.ContextConfig `toml:"context"`
 }
 
 // flagConfig holds the values given on the command line. There is no API key

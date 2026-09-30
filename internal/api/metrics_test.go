@@ -53,8 +53,15 @@ func TestMetrics_LabelsAreBounded(t *testing.T) {
 				}
 			}
 		}
+		// Only the series name and labels can carry client input; the sample
+		// value after them is a number that may contain any digits.
+		// Route label values contain spaces, so cut at the last one.
+		series := line
+		if i := strings.LastIndex(line, " "); i >= 0 {
+			series = line[:i]
+		}
 		for _, raw := range []string{"123", "456", "abc", "xyz", "nope", "BREW"} {
-			if strings.Contains(line, raw) && !strings.Contains(line, "le=") {
+			if strings.Contains(series, raw) && !strings.Contains(series, "le=") {
 				t.Errorf("raw client input %q in %s", raw, line)
 			}
 		}

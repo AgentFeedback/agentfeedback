@@ -228,6 +228,20 @@ func TestOutcomeLastLine(t *testing.T) {
 	}
 }
 
+func TestDisabledOutcome(t *testing.T) {
+	o := Disabled("deny_paths")
+	if o.ExitCode() != 0 {
+		t.Fatalf("exit = %d, want 0", o.ExitCode())
+	}
+	var buf bytes.Buffer
+	if err := o.Write(&buf); err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"outcome":"disabled","reason":"deny_paths"}` + "\n"; buf.String() != want {
+		t.Fatalf("line = %q, want %q", buf.String(), want)
+	}
+}
+
 // TestWarningsRelayedVerbatim checks the accepted response's warnings reach
 // stderr byte for byte.
 func TestWarningsRelayedVerbatim(t *testing.T) {

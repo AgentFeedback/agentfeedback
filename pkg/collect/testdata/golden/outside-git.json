@@ -1,0 +1,7 @@
+{
+  "project": "plain",
+  "machine": "testhost",
+  "context": {
+    "folder": "plain"
+  }
+}

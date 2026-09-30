@@ -1,0 +1,15 @@
+{
+  "project": "fixture",
+  "machine": "testhost",
+  "context": {
+    "folder": "sub",
+    "git_branch": "main",
+    "git_commit": "eca957ddd6a6f8f79aae4152adfade992df6ebe4",
+    "git_default_branch": "main",
+    "git_dirty": "false",
+    "git_remote": "https://example.com/org/fixture.git",
+    "git_tag": "old",
+    "git_upstream": "origin/main",
+    "repo_root": "<tmp>/repo"
+  }
+}
