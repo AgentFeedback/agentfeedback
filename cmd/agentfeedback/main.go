@@ -1,6 +1,8 @@
 // Command agentfeedback is the AgentFeedback server and client: serve runs the
-// API, import and backup maintain its database, and doctor, version and schema
-// are client commands. A bare invocation prints help.
+// API, import and backup maintain its database, and doctor, version, schema,
+// skill and the read and processing commands (list, get, stats, done, undo,
+// redact, rekind, export, digest) are client commands. A bare invocation
+// prints help.
 package main
 
 import (
@@ -39,6 +41,15 @@ var commands = []command{
 	{"import", "import [--dry-run] <export.ndjson>: restore an export (format 2) into the database, keeping ids", runImport},
 	{"backup", "backup <dest.db>: write a consistent copy of the database", runBackup},
 	{"doctor", "check the client configuration and the server connection", runDoctor},
+	{"list", "list [filters] [--limit N] [--before-id N | --after-id N] [--include payload] [--all] [--json | --tsv]: list submissions, newest first", runList},
+	{"get", "get <id> [--json]: print one submission", runGet},
+	{"stats", "stats [filters] [--by a,b] [--top N] [--bucket day|week] [--json]: print aggregates", runStats},
+	{"done", "done <id>... --verdict V [--resolution R] [--ref REF] [--processed-by P]: mark submissions processed", runDone},
+	{"undo", "undo <id>...: clear the processing mark", runUndo},
+	{"redact", "redact <id>: replace a submission with its tombstone (not reversible)", runRedact},
+	{"rekind", "rekind <id> <kind>: file a submission again under another kind and mark the original duplicate", runRekind},
+	{"export", "export [--after-id N] [--kind K] [--since T] [--limit N]: stream an export (format 2) and verify its trailer", runExport},
+	{"digest", "digest [--out DIR] [--kind K] [--include-kind K]: pull the open queue into a triage directory", runDigest},
 	{"version", "print the client version", runVersion},
 	{"schema", "schema [<kind> [<version>]]: list the schemas or print one", runSchema},
 	{"skill", "skill render <form> [--server URL]: print the submission guidance in one form", runSkill},
@@ -46,7 +57,7 @@ var commands = []command{
 }
 
 const helpFooter = `
-Add --json to help, doctor, version or schema for JSON output.
+Add --json to help, doctor, version, schema, list, get or stats for JSON output.
 First-time setup: printf '%%s' "$KEY" | agentfeedback doctor --init --url URL --key-from-stdin
 
 client environment (flag > environment > config file):

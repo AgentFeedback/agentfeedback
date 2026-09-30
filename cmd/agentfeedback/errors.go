@@ -266,5 +266,128 @@ func errSkillServer(raw, reason string) error {
 		"pass an http or https URL without credentials, query or fragment")
 }
 
+// Read and processing command errors (list, get, stats, done, undo, redact,
+// rekind, export, digest).
+
+func errClientSetup(err error) error {
+	return failErr(fmt.Sprintf("the client cannot be set up: %s", oneLine(err.Error())), "run agentfeedback doctor")
+}
+
+// errURLUnsetNoFlag is errURLUnset for the commands that take no --url.
+func errURLUnsetNoFlag() error {
+	return failErr("no server URL is set", "set AGENT_FEEDBACK_URL or run agentfeedback doctor --init")
+}
+
+func errRedirected(status int, location string) error {
+	if location == "" {
+		location = "(no Location header)"
+	}
+
+	return failErr(fmt.Sprintf("the server redirected (HTTP %d) to %s", status, location),
+		"set AGENT_FEEDBACK_URL to the address it redirects to, or check AGENT_FEEDBACK_URL")
+}
+
+func errTooLarge() error {
+	return failErr("the server's answer is larger than 48 MiB", "pass a lower --limit")
+}
+
+func errTooManyIDs(n int) error {
+	return usageErr(fmt.Sprintf("%d ids given; one batch marks at most 500", n), "pass at most 500 ids per run")
+}
+
+func errRekindProcessed(id int64, verdict string) error {
+	return failErr(fmt.Sprintf("submission %d is already marked %s", id, verdict),
+		fmt.Sprintf("run agentfeedback undo %d first to re-kind it", id))
+}
+
+func errRekindContextFull(id int64, n int) error {
+	return failErr(fmt.Sprintf("submission %d has %d context entries, and the rekinded_from marker would overflow the 32-entry context limit", id, n),
+		fmt.Sprintf("use agentfeedback get %d and submit a corrected copy by hand instead", id))
+}
+
+func errDigestSymlink(dir string) error {
+	return failErr(fmt.Sprintf("--out %s is a symbolic link", dir), "give a real directory path for --out")
+}
+
+func errKeyRefused(status int) error {
+	return failErr(fmt.Sprintf("the server refused the API key (HTTP %d)", status), "run agentfeedback doctor")
+}
+
+func errNotFound(id int64) error {
+	return failErr(fmt.Sprintf("submission %d not found", id), "run agentfeedback list to find its id")
+}
+
+func errBadRequest(message string) error {
+	return failErr(fmt.Sprintf("the server rejected the request: %s", oneLine(message)), "fix the arguments and run the command again")
+}
+
+func errHTTP(status int, message, requestID string) error {
+	return failErr(fmt.Sprintf("HTTP %d: %s (request id %s)", status, oneLine(message), requestID),
+		"retry the command, and run agentfeedback doctor if it fails again")
+}
+
+func errBadResponse(what string, err error) error {
+	return failErr(fmt.Sprintf("the server's answer to %s is not readable: %v", what, err),
+		"run agentfeedback doctor to check the URL points at an AgentFeedback v1 server")
+}
+
+func errPagination(reason string) error {
+	return failErr(fmt.Sprintf("the server's pagination is inconsistent: %s", reason),
+		"retry the command, and run agentfeedback doctor if it fails again")
+}
+
+func errExclusive(a, b string) error {
+	return usageErr(fmt.Sprintf("%s and %s cannot be combined", a, b), "pass only one of them")
+}
+
+func errTimeFlag(name, got string) error {
+	return usageErr(fmt.Sprintf("--%s %q is neither an RFC 3339 time nor a relative time", name, got),
+		"pass a time like 2026-09-30T12:00:00Z or 30m, 12h, 7d, 2w")
+}
+
+func errID(arg string) error {
+	return usageErr(fmt.Sprintf("%q is not a submission id", arg), "pass positive integer ids")
+}
+
+func errVerdictRequired() error {
+	return usageErr("done needs a verdict",
+		"pass --verdict fixed, invalid, duplicate, wont_fix, deferred, upstream or unverifiable")
+}
+
+func errRekindKind(got string) error {
+	return usageErr(fmt.Sprintf("%q is not a kind", got), "pass a kind such as friction or review")
+}
+
+func errRekindRedacted(id int64) error {
+	return failErr(fmt.Sprintf("submission %d is redacted and has no content to re-kind", id), "give the id of a row that is not redacted")
+}
+
+func errRekindSameKind(id int64, kind string) error {
+	return failErr(fmt.Sprintf("submission %d is already of kind %s", id, kind), "pass a different kind")
+}
+
+func errExportIncomplete(reason string) error {
+	return failErr(fmt.Sprintf("the export is incomplete: %s", reason), "run agentfeedback export again")
+}
+
+func errDigestDir(dir string, err error) error {
+	return failErr(fmt.Sprintf("cannot create the digest directory %s: %v", dir, err), "check the directory is writable")
+}
+
+func errDigestNotEmpty(dir string) error {
+	return failErr(fmt.Sprintf("--out directory %s is not empty, and digests are never mixed", dir),
+		"give a new or empty --out directory")
+}
+
+func errDigestWrite(path string, err error) error {
+	return failErr(fmt.Sprintf("cannot write %s: %v", path, err), "check the directory is writable")
+}
+
+// errDigestContaminated exits 2: the pull is not the queue it claims to be.
+func errDigestContaminated(n int) error {
+	return usageErr(fmt.Sprintf("%d pulled row(s) already have processed_at set, so the pull is contaminated", n),
+		"run agentfeedback digest again before trusting it")
+}
+
 // oneLine keeps a multi-line library message on one line of output.
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }

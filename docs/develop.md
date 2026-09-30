@@ -6,7 +6,7 @@ How to change the service and the skills, verify, and release. Read
 ## Layout
 
 ```
-cmd/agentfeedback/              main: bare invocation prints help; server `serve` (internal/api), `import [--dry-run] <export.ndjson>` (restore keeping ids), `backup <dest.db>`; client `doctor`, `doctor --init`, `version`, `schema`, settings resolved flag > AGENT_FEEDBACK_* env > config.toml (API key: env > config only)
+cmd/agentfeedback/              main: bare invocation prints help; server `serve` (internal/api), `import [--dry-run] <export.ndjson>` (restore keeping ids), `backup <dest.db>`; client `doctor`, `doctor --init`, `version`, `schema`, `skill`, read and processing `list`, `get`, `stats`, `done`, `undo`, `redact`, `rekind`, `export` (streamed, trailer verified), `digest`, settings resolved flag > AGENT_FEEDBACK_* env > config.toml (API key: env > config only)
 internal/api/                   v1 HTTP transport over internal/core: mux, middleware, query grammar, Problem mapping, bundled openapi.json; conformance test against docs/openapi.yaml
 internal/core/                  v1 service, no net/http: create with identity and dedupe, get, list, marks, redaction, stats, export, import and restore of format 2, meta; typed problems
 internal/store/                 SQLite for the v1 API: open + pragmas + the application_id stamp, the single init migration, hand-written SQL, query plans pinned by a test
@@ -14,7 +14,7 @@ internal/skillgen/               skill generator: source/ (skill.json plus one M
 pkg/schema/                     v1 schema engine: embedded schemas compiled at init, the x- keywords, guide validation, the text and date-time rules
 pkg/envelope/                   v1 decoder: token-stream parse (spellings, duplicates, UTF-8 repair), inference table, normalisation order, guide and recommended checks; the content_hash member set
 pkg/canonjson/                  v1 canonical JSON writer on the write path's JSON tree and its SHA-256; identity hashes and stored bytes are written with it
-pkg/client/                     v1 client transport: both auth headers, no redirects, the retry table, the spool (spool/, rejected/ beside it, retention), outcome lines and exit codes, the owner-only client.jsonl
+pkg/client/                     v1 client transport: both auth headers, no redirects, the retry table, the spool (spool/, rejected/ beside it, retention), outcome lines and exit codes, the owner-only client.jsonl; `Do` and `Stream` for every other route (`APIError`, `TransportError`)
 pkg/collect/                    client context collection: project, machine and harness groups (git metadata with or without git, env allow-list looked up by name), deny_paths/opt-in narrowing, repository .agentfeedback.toml that may only narrow
 infra/agentfeedback/            compose stacks (local build, image-based deploy) and .env.example
 scripts/                        e2e.sh (live v1 contract suite: every openapi.yaml operation, fails on an uncovered one), gate-e2e.sh, deploy.sh, release.py,
