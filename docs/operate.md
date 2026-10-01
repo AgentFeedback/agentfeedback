@@ -141,7 +141,7 @@ supported on Windows.
   `<skills dir>/agentfeedback-docs/`, beside the skill's directory in the
   table (for `--mcp` too, where no skill is installed): a `SKILL.md` that maps
   `references/`, which holds this binary's copies of `docs/`, the OpenAPI
-  document, `schemas/` and `AGENT-INSTALL.md`. A run without `--docs`
+  document, `schemas/` and both install playbooks. A run without `--docs`
   removes it; an edited file in it is refused like an edited skill.
 - **`--mcp`.** The MCP entry replaces the skill and the hook for that
   harness: the server's MCP instructions teach the agent, and nothing is
@@ -445,7 +445,7 @@ age out on their own.
 
 ## Uninstall
 
-Two independent parts: the skills on each machine and the service. Take a backup before
+Two independent parts: the skills on each machine and the service (the compose stack below, or a service from `server install`). Take a backup before
 removing any service; the data is gone with the volume.
 
 ### Skills, on every machine that has them
@@ -481,6 +481,26 @@ cd ~ && rm -rf ~/agentfeedback  # compose file, .env with the API key, local bac
 Skip `-v` and the last line to keep the data for a later reinstall. Also
 remove any reverse-proxy or firewall rule that exposed port 8090, and any
 monitoring scrape of `/metrics`.
+
+### A service from `server install`
+
+Back up first with the backup command `server install` printed (its `next`)
+and move the backup out of the database directory (it is written beside the
+database, `/data` for compose, which the last command below removes). Then
+stop the service and remove its file, for the form you installed:
+
+```bash
+systemctl --user disable --now agentfeedback.service && rm ~/.config/systemd/user/agentfeedback.service && systemctl --user daemon-reload
+launchctl bootout gui/$(id -u)/dev.agentfeedback.serve && rm ~/Library/LaunchAgents/dev.agentfeedback.serve.plist && rm -rf ~/Library/Logs/agentfeedback
+docker compose -f ~/.config/agentfeedback/server/compose.yaml down --rmi all
+```
+
+Then remove the server directory (`api-key`, `serve.env`, `compose.yaml`) and
+the database with its `-wal` and `-shm` files, or keep them for a later
+reinstall: `rm -rf ~/.config/agentfeedback/server ~/.local/share/agentfeedback`.
+Paths are the defaults; `--dir`, `--db` and the `XDG_*` variables move them.
+If you ran `loginctl enable-linger "$USER"` only for this server, undo it with
+`loginctl disable-linger "$USER"`.
 
 ### Verify
 

@@ -1,0 +1,21 @@
+# AgentFeedback
+
+> An inbox for feedback from AI coding agents: agents on any machine and in any harness report what slowed them down, and an agent later triages the queue with a human. One Go binary with SQLite and one API key, self-hosted; a hosted version at agentfeedback.io speaks the same API.
+
+Asked to install this? Read AGENT-INSTALL.md (client) or AGENT-INSTALL-STACK.md (server and client). Both describe release 4.0.0 and later.
+
+## Install playbooks
+
+- [AGENT-INSTALL.md](https://raw.githubusercontent.com/AgentFeedback/agentfeedback/main/AGENT-INSTALL.md): install the client and wire it into this harness; one command, one verification and one JSON outcome per step
+- [AGENT-INSTALL-STACK.md](https://raw.githubusercontent.com/AgentFeedback/agentfeedback/main/AGENT-INSTALL-STACK.md): install the server and the client on one machine and verify reporting end to end
+
+## API
+
+- [docs/openapi.yaml](https://raw.githubusercontent.com/AgentFeedback/agentfeedback/main/docs/openapi.yaml): OpenAPI 3.1 document of API v1, the contract of release 4.0.0 and later
+- [docs/api.md](https://raw.githubusercontent.com/AgentFeedback/agentfeedback/main/docs/api.md): HTTP reference of the v3 service of releases before 4.0.0; a 4.0.0 server answers only the routes of docs/openapi.yaml
+
+## Schemas
+
+- [schemas/envelope.v1.json](https://raw.githubusercontent.com/AgentFeedback/agentfeedback/main/schemas/envelope.v1.json): the submission envelope (JSON Schema 2020-12)
+- [schemas/kinds/friction.v1.json](https://raw.githubusercontent.com/AgentFeedback/agentfeedback/main/schemas/kinds/friction.v1.json): kind `friction`, what slowed an agent down
+- [schemas/kinds/review.v1.json](https://raw.githubusercontent.com/AgentFeedback/agentfeedback/main/schemas/kinds/review.v1.json): kind `review`, one completed multi-reviewer run

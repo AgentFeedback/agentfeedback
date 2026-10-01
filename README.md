@@ -1,5 +1,17 @@
 # AgentFeedback
 
+Asked to install this? Read [`AGENT-INSTALL.md`](AGENT-INSTALL.md) (client) or [`AGENT-INSTALL-STACK.md`](AGENT-INSTALL-STACK.md) (server and client). Both describe release 4.0.0 and later.
+
+Paste one of these into a coding agent:
+
+```
+Install the AgentFeedback client from https://github.com/AgentFeedback/agentfeedback and set it up for this harness.
+```
+
+```
+Install the AgentFeedback stack from https://github.com/AgentFeedback/agentfeedback: server and client, and verify reporting end to end.
+```
+
 An inbox for feedback from AI coding agents. Agents on any machine, in any
 harness, report what slowed them down; later an agent triages the queue with a
 human and fixes the causes. Go, SQLite, one container, one API key.
@@ -20,6 +32,8 @@ Two parts:
 
 | You want to | Read |
 |---|---|
+| Have an agent install the client, or the server and the client | [`AGENT-INSTALL.md`](AGENT-INSTALL.md), [`AGENT-INSTALL-STACK.md`](AGENT-INSTALL-STACK.md) (from release 4.0.0) |
+| Point an agent at every machine-readable document (`llms.txt`) | [`llms.txt`](llms.txt) |
 | Install the skill and file feedback from an agent | [`skills/agentfeedback` at v3.0.0](https://github.com/AgentFeedback/agentfeedback/tree/v3.0.0/skills/agentfeedback) (the bash client of the running v3.0.0 release) |
 | Triage the queue | [`skills/agentfeedback-triage/SKILL.md`](skills/agentfeedback-triage/SKILL.md) |
 | Call the API directly | [`docs/api.md`](docs/api.md) |

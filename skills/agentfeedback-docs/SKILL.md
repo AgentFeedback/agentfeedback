@@ -15,6 +15,7 @@ The reference docs, JSON Schemas, OpenAPI document and install playbooks of Agen
 
 ## References
 
+- [references/AGENT-INSTALL-STACK.md](references/AGENT-INSTALL-STACK.md): Install the AgentFeedback stack (for agents)
 - [references/AGENT-INSTALL.md](references/AGENT-INSTALL.md): Install the AgentFeedback client (for agents)
 - [references/docs/api.md](references/docs/api.md): AgentFeedback HTTP API
 - [references/docs/develop.md](references/docs/develop.md): Develop AgentFeedback

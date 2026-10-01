@@ -1,5 +1,7 @@
 # AgentFeedback: working in this repo
 
+Asked to install this? Read [`AGENT-INSTALL.md`](AGENT-INSTALL.md) (client) or [`AGENT-INSTALL-STACK.md`](AGENT-INSTALL-STACK.md) (server and client). Both describe release 4.0.0 and later.
+
 Go + SQLite HTTP service that stores write-once feedback from AI coding agents
 (frictions, review runs, events) plus three skills: `agentfeedback`
 (submit/read, Bash, installed everywhere), `agentfeedback-triage` (process
