@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/agentfeedback/agentfeedback/pkg/client"
 	"github.com/agentfeedback/agentfeedback/pkg/collect"
@@ -22,7 +23,7 @@ import (
 
 const (
 	submitSynopsis = "submit friction --summary S [flags] | submit <kind> [--stdin] [flags] | submit review <run_dir> [--include-outputs] | submit review --sweep [<base>...]"
-	flushSynopsis  = "flush"
+	flushSynopsis  = "flush [--hook]"
 	// occurredLayout is occurred_at: UTC with microseconds.
 	occurredLayout = "2006-01-02T15:04:05.000000Z"
 	// stdinMax bounds what --stdin reads: one byte over the body limit is
@@ -526,12 +527,18 @@ type flushReport struct {
 // runFlush sends the spool's due entries once and prints the counts.
 func runFlush(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := newFlagSet("flush")
+	hook := fs.Bool("hook", false, "run as a harness hook: print nothing, stop within 4.5 seconds, log failures to the client log and exit 0")
 	pos, err := parseInterleaved(fs, args, stderr)
 	if err != nil {
 		return errFlags("flush", err)
 	}
 	if len(pos) != 0 {
 		return errArgs("flush", flushSynopsis)
+	}
+	if *hook {
+		runFlushHook()
+
+		return nil
 	}
 	s, err := newSubmitter("flush", false, stdout, stderr)
 	if err != nil {
@@ -550,4 +557,81 @@ func runFlush(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		Flushed: rep.Flushed, Duplicates: rep.Duplicates, Pending: rep.Pending, Rejected: rep.Rejected,
 		Mismatched: rep.Mismatched, Expired: rep.Expired, Deferred: rep.Deferred, Stopped: rep.Stopped,
 	})
+}
+
+// The flush --hook deadlines, both from the start of the command and under
+// the 5 s the harness allows the hook: the send stops at flushHookSend, and
+// the hook waits until flushHookDeadline for the flush to finish its
+// bookkeeping (attempts, backoff, releasing the claim) before it logs that
+// the flush ran past its deadline and returns. Variables so tests can
+// shorten them.
+var (
+	flushHookSend     = 3500 * time.Millisecond
+	flushHookDeadline = 4500 * time.Millisecond
+)
+
+// flushHookHasDue is client.HasDue; a variable so tests can slow it down.
+var flushHookHasDue = client.HasDue
+
+// flushHookFlush is the hook's Flush; a variable so tests can stretch the
+// bookkeeping a flush does after its send is cancelled.
+var flushHookFlush = func(ctx context.Context, c *client.Client) client.FlushReport { return c.Flush(ctx) }
+
+// runFlushHook is flush as a harness hook: nothing on stdout or stderr,
+// never a failing exit. An empty spool returns before the config is read;
+// any failure, the deadline included, is one error line in the client log.
+func runFlushHook() {
+	start := time.Now()
+	ctx, cancel := context.WithDeadline(context.Background(), start.Add(flushHookSend))
+	defer cancel()
+	cache, err := cacheDir(os.Getenv)
+	if err != nil {
+		return
+	}
+	fail := func(msg string) {
+		client.LogTo(cache, client.Outcome{Outcome: client.OutcomeError, Reason: "flush --hook: " + oneLine(msg)}, nowFunc(), io.Discard)
+	}
+	done := make(chan string, 1)
+	go func() { done <- flushHookBody(ctx, cache) }()
+	timer := time.NewTimer(time.Until(start.Add(flushHookDeadline)))
+	defer timer.Stop()
+	select {
+	case msg := <-done:
+		if msg != "" {
+			fail(msg)
+		}
+	case <-timer.C:
+		fail("the flush ran past its deadline")
+	}
+}
+
+// flushHookBody is the work runFlushHook bounds; it returns the failure to
+// log, or "".
+func flushHookBody(ctx context.Context, cache string) string {
+	if !flushHookHasDue(cache, nowFunc()) {
+		return ""
+	}
+	if ctx.Err() != nil {
+		return "the flush ran past its deadline"
+	}
+	s, err := newSubmitter("flush", false, io.Discard, io.Discard)
+	if err != nil {
+		return err.Error()
+	}
+	if _, off := s.disabled(); off {
+		return ""
+	}
+	c, err := s.client()
+	if err != nil {
+		return err.Error()
+	}
+	rep := flushHookFlush(ctx, c)
+	switch {
+	case rep.Stopped != "":
+		return "the flush stopped: " + rep.Stopped
+	case ctx.Err() != nil:
+		return "the flush ran past its deadline"
+	}
+
+	return ""
 }

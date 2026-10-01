@@ -3,7 +3,8 @@
 // its database, and doctor, submit (friction,
 // review or any kind), flush, version, schema, skill and the read and
 // processing commands (list, get, stats, done, undo, redact, rekind, export,
-// digest) and migrate are client commands. A bare invocation prints help.
+// digest) and migrate are client commands; install and uninstall wire the
+// client into the coding-agent harnesses. A bare invocation prints help.
 package main
 
 import (
@@ -44,7 +45,7 @@ var commands = []command{
 	{"backup", "backup <dest.db>: write a consistent copy of the database", runBackup},
 	{"doctor", "check the client configuration and the server connection; doctor --e2e [--json]: submit, list and mark one install-check row", runDoctor},
 	{"submit", "submit friction --summary S [...] | submit <kind> --stdin [...] | submit review <run_dir> [--include-outputs] | submit review --sweep [<base>...]; --dry-run sends nothing: file a submission, the outcome is the last line", runSubmit},
-	{"flush", "flush: send the spooled submissions that are due and print the counts", runFlush},
+	{"flush", "flush [--hook]: send the spooled submissions that are due and print the counts; --hook prints nothing, stops after 5 s and always exits 0", runFlush},
 	{"list", "list [filters] [--limit N] [--before-id N | --after-id N] [--include payload] [--all] [--json | --tsv]: list submissions, newest first", runList},
 	{"get", "get <id> [--json]: print one submission", runGet},
 	{"stats", "stats [filters] [--by a,b] [--top N] [--bucket day|week] [--json]: print aggregates", runStats},
@@ -57,7 +58,9 @@ var commands = []command{
 	{"digest", "digest [--out DIR] [--kind K] [--include-kind K]: pull the open queue into a triage directory", runDigest},
 	{"version", "print the client version", runVersion},
 	{"schema", "schema [<kind> [<version>]]: list the schemas or print one", runSchema},
-	{"skill", "skill render <form> [--server URL]: print the submission guidance in one form", runSkill},
+	{"skill", "skill render <form> [--server URL]: print the submission guidance in one form | skill reminder: print the one-line session-start reminder", runSkill},
+	{"install", installSynopsis + ": wire the agentfeedback skill and Stop hook (or with --mcp an MCP entry) into the coding-agent harnesses; no harness named lists them", runInstall},
+	{"uninstall", uninstallSynopsis + ": remove exactly what install added, restoring untouched files from their backups", runUninstall},
 	{"help", "print this help", nil},
 }
 
@@ -157,7 +160,7 @@ func (e *reportedError) Unwrap() []error { return []error{e.err, errReported} }
 func printHelp(w io.Writer) {
 	fmt.Fprint(w, "usage: agentfeedback <command> [arguments]\n\ncommands:\n")
 	for _, c := range commands {
-		fmt.Fprintf(w, "  %-8s %s\n", c.name, c.summary)
+		fmt.Fprintf(w, "  %-9s %s\n", c.name, c.summary)
 	}
 	path, err := configPath(os.Getenv)
 	if err != nil {

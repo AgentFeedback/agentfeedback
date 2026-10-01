@@ -70,13 +70,22 @@ const serverPlaceholder = "<server URL>"
 
 // Meta is source/skill.json.
 type Meta struct {
-	Name          string   `json:"name"`
-	Title         string   `json:"title"`
-	Description   string   `json:"description"`
-	Version       string   `json:"version"`
-	License       string   `json:"license"`
-	Compatibility string   `json:"compatibility"`
-	Fragments     []string `json:"fragments"`
+	Name          string `json:"name"`
+	Title         string `json:"title"`
+	Description   string `json:"description"`
+	Version       string `json:"version"`
+	License       string `json:"license"`
+	Compatibility string `json:"compatibility"`
+	// Reminder is the one line skill reminder prints at a session start.
+	Reminder  string   `json:"reminder"`
+	Fragments []string `json:"fragments"`
+}
+
+// Reminder is the one-line session-start reminder from source/skill.json.
+func Reminder() (string, error) {
+	m, _, err := Source()
+
+	return m.Reminder, err
 }
 
 // Fragment is one teaching point of the source.
@@ -129,6 +138,9 @@ func load(fsys fs.FS) (Meta, []Fragment, error) {
 	}
 	if m.Name == "" || m.Title == "" || m.Description == "" || m.Version == "" || len(m.Fragments) == 0 {
 		return m, nil, errors.New("source/skill.json: name, title, description, version and fragments are required")
+	}
+	if strings.ContainsAny(m.Reminder, "\r\n") {
+		return m, nil, errors.New("source/skill.json: reminder must be one line")
 	}
 	frags := make([]Fragment, 0, len(m.Fragments))
 	for i, id := range m.Fragments {

@@ -10,9 +10,10 @@ import (
 	"github.com/agentfeedback/agentfeedback/internal/skillgen"
 )
 
-const skillSynopsis = "skill render <form> [--server URL]"
+const skillSynopsis = "skill render <form> [--server URL] | skill reminder"
 
-// runSkill prints a rendered form of the submission guidance on stdout.
+// runSkill prints a rendered form of the submission guidance, or the
+// one-line session-start reminder, on stdout.
 func runSkill(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if len(args) > 0 && (args[0] == "-h" || args[0] == "-help" || args[0] == "--help") {
 		fmt.Fprintf(stderr, "usage: agentfeedback %s\nforms: %s\n", skillSynopsis, strings.Join(skillgen.Forms(), ", "))
@@ -21,6 +22,18 @@ func runSkill(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	}
 	if len(args) == 0 {
 		return errArgs("skill", skillSynopsis)
+	}
+	if args[0] == "reminder" {
+		if len(args) != 1 {
+			return errArgs("skill reminder", "skill reminder")
+		}
+		line, err := skillgen.Reminder()
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintln(stdout, line)
+
+		return err
 	}
 	if args[0] != "render" {
 		return errSkillVerb(args[0])

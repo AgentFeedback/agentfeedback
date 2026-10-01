@@ -4,7 +4,7 @@ Install, run, back up, upgrade and migrate the service. One container, one
 SQLite file, one API key. Every step is a command an agent can run.
 
 Contents: [Run locally](#run-locally) · [Bare binary (no Docker)](#bare-binary-no-docker) ·
-[Build from source](#build-from-source) ·
+[Wire the harnesses](#wire-the-harnesses) · [Build from source](#build-from-source) ·
 [Deploy to a host](#deploy-to-a-host) ·
 [Configuration](#configuration) · [Backups](#backups) ·
 [Restore and migration](#restore-and-migration) · [Upgrade](#upgrade) ·
@@ -93,6 +93,136 @@ stops at the first failing step and exits 1. Its row has kind
 `install-check`, which `list`, `stats`, `digest` and `migrate` leave out
 unless `--kind` or `--include-kind` names it, and is marked processed with
 verdict `install-check`.
+
+## Wire the harnesses
+
+On every machine whose coding agents should file feedback, with the
+`agentfeedback` binary installed and the client configured (`doctor --init`):
+
+```bash
+agentfeedback install                            # list the harnesses: detected, mode, skill, mcp, hook, reminder; changes nothing (also --list, --json)
+agentfeedback install all                        # every detected harness: the skill and a Stop hook running agentfeedback flush --hook
+agentfeedback install claude-code codex --with-reminder   # also a session-start hook printing agentfeedback skill reminder
+agentfeedback install opencode --mcp             # an MCP entry instead of the skill and the hook
+agentfeedback install all --dry-run              # print every file that would change, change nothing
+agentfeedback uninstall all                      # remove exactly what install added
+```
+
+Harnesses: `claude-code`, `codex`, `cursor`, `opencode`, `omp`, `pi`. A
+harness counts as detected when its binary is on `PATH` or its directory
+exists; a named harness that is not detected is wired anyway, with a note.
+`all` is every detected harness plus any named beside it.
+Unknown names exit 2. The last stdout line is a JSON outcome (`status`
+`installed`, `unchanged`, `uninstalled`, `dry_run` or `error`, `harnesses`,
+`changed`, `backups`, `next`); progress goes to stderr. Running install twice
+changes nothing the second time (`unchanged`); a changed mode, binary path,
+server or `--with-reminder` replaces what the previous run added. Not
+supported on Windows.
+
+| Harness | Detected by | Skill | Hook (default) | Reminder | MCP entry (`--mcp`) |
+|---|---|---|---|---|---|
+| `claude-code` | `claude`, `$CLAUDE_CONFIG_DIR` (default `~/.claude`) | `<claude config>/skills/agentfeedback/SKILL.md` | `<claude config>/settings.json` `hooks.Stop` | `hooks.SessionStart` | `claude mcp add-json agentfeedback ... --scope user` |
+| `codex` | `codex`, `$CODEX_HOME` (default `~/.codex`) | `~/.agents/skills/agentfeedback/SKILL.md` | `<codex home>/hooks.json` `hooks.Stop` | `hooks.SessionStart` | marked `[mcp_servers.agentfeedback]` block in `<codex home>/config.toml` |
+| `cursor` | `cursor-agent`, or an `agent` that resolves into a Cursor install; `~/.cursor` | `~/.cursor/skills/agentfeedback/SKILL.md` | `~/.cursor/hooks.json` `hooks.stop` | `hooks.sessionStart` | `~/.cursor/mcp.json` `mcpServers.agentfeedback` |
+| `opencode` | `opencode`, `${XDG_CONFIG_HOME:-~/.config}/opencode` | `<opencode>/skills/agentfeedback/SKILL.md` | plugin `<opencode>/plugins/agentfeedback.js` (on `session.idle`) | not supported | `mcp.agentfeedback` in the first of `opencode.jsonc`, `opencode.json` that has an `mcp` member, else an existing `opencode.jsonc`, else `opencode.json` |
+| `omp` | `omp`, `~/.omp` | `~/.omp/agent/skills/agentfeedback/SKILL.md` | extension `~/.omp/agent/extensions/agentfeedback.ts` (on `agent_end`, not for subagents) | not supported | `~/.omp/agent/mcp.json` `mcpServers.agentfeedback` |
+| `pi` | `pi`, `~/.pi` | `~/.pi/agent/skills/agentfeedback/SKILL.md` | extension `~/.pi/agent/extensions/agentfeedback.ts` (on `agent_settled`) | not supported | `~/.pi/agent/mcp.json` `mcpServers.agentfeedback`; needs pi 0.99.0 or later |
+
+- **The hook.** `agentfeedback flush --hook` prints nothing on stdout or
+  stderr, stops sending 3.5 seconds after it starts and returns by 4.5
+  seconds (inside the 5-second timeout the hook is given, so the spool's
+  bookkeeping and the failure log finish before the harness stops it),
+  returns at once when nothing in the spool is due, logs any failure to
+  `client.jsonl` and always exits 0. Hook commands hold the binary's
+  resolved absolute path, which may contain only letters, digits and
+  `/ . _ - + @ , =`; rerun install after moving the binary.
+- **`--mcp`.** The MCP entry replaces the skill and the hook for that
+  harness: the server's MCP instructions teach the agent, and nothing is
+  spooled without the CLI. Entries point at `<server>/mcp` and read the key
+  from `AGENT_FEEDBACK_API_KEY` in the harness's environment; install warns
+  when it is not set. `--with-reminder` does not apply with `--mcp`.
+- **The server.** `--server cloud|URL`, else `url` in `config.toml`, else the
+  server the last install recorded, else a prompt on a terminal; with none of
+  them install fails and writes nothing. A `--server` that differs from
+  `config.toml` is refused: install never changes the configured server
+  (`doctor --init --force` does). Install never writes `config.toml`; when it
+  does not exist, `next` holds the `doctor --init` command.
+- **Edits and backups.** JSON and JSONC files are edited in place, keeping
+  comments, trailing commas and formatting; nothing else in them changes.
+  Before the first change to an existing file install copies it to
+  `<file>.agentfeedback-backup`. Writes are atomic and stop when a file
+  changes while install runs. A file with the same key twice in one object
+  is refused (uninstall leaves it as it is and keeps its backup). Only
+  regular files are edited: a configuration file that is a symbolic link is
+  refused, so wire that harness by hand from the table above, or replace the
+  link with the file it points to; a linked skill (file or directory) or
+  plugin file is refused too: remove it and run install again.
+- **One run at a time.** Install, uninstall and `--dry-run` hold an
+  exclusive lock on the home directory for the whole run, so no lock file is
+  left behind; a second run while one holds it is refused (run it again when
+  the first finishes). The lock is taken before the manifest is read. On a
+  file system that cannot lock (NFS, for one) install warns on stderr and
+  runs without it: make sure no other install runs at the same time. The
+  list takes no lock.
+- **The manifest.** `${XDG_CONFIG_HOME:-~/.config}/agentfeedback/install.json`
+  (`0600`) records every entry, file, backup and directory install made.
+  Uninstall removes exactly those: a file nobody changed since goes back to
+  its backup byte for byte (or away, if install created it) and the backup is
+  deleted; a changed file loses only the recorded entries and keeps its
+  backup, listed in `backups`; an edited skill or plugin file is left in
+  place, and so is an MCP entry whose value was changed since install (noted).
+  A file someone else changed between two installs is marked diverged:
+  uninstall never restores its backup or deletes it, but removes the recorded
+  entries and keeps the backup, listed. A backup that is missing, or is not
+  the copy install took, is not restored either; a backup equal to the file
+  it was taken from is deleted. Before its first change of any kind a run
+  writes the manifest once with its server, binary and locations; if that
+  write fails, the run stops having changed nothing. After that the manifest
+  is updated after every claude command and every file. Each file is
+  checked for changes before its backup is written and again just before it
+  is replaced; when the write fails or the file changed, the backup this run
+  wrote for it is deleted. So after a failed write the manifest matches what
+  was written, and running the command again finishes the job. Only a hard
+  crash in the moment between a write and its manifest update leaves an
+  entry unrecorded; the next run then refuses it as foreign, naming it,
+  except that a leftover backup equal to its file is taken over as the
+  backup and an empty skill directory the manifest records as created is
+  reused. The manifest records the Codex home and Claude Code configuration
+  directory of the harnesses it keeps; a later run under another
+  `CODEX_HOME` or `CLAUDE_CONFIG_DIR` keeps using the recorded location for
+  that harness, notes it, and runs `claude` with `CLAUDE_CONFIG_DIR` set to
+  the recorded directory (unset when it is `~/.claude`). Install refuses a
+  manifest that names a path it does not write under the current
+  environment: run it with the `HOME`, `XDG_CONFIG_HOME`, `CODEX_HOME` and
+  `CLAUDE_CONFIG_DIR` of the install, or fix the manifest.
+  Empty directories install created go, and so does the manifest when
+  no harness is left. What a harness added to a file install created (OpenCode
+  adds `$schema`) stays.
+- **Foreign entries are refused.** An `agentfeedback` MCP entry, TOML table,
+  skill directory or plugin file, or an identical hook, that the manifest does
+  not record stops the run before anything is written, naming the path:
+  remove or rename it and run install again. A skill directory provisioned
+  before `install` existed (a copy or symlink of `skills/agentfeedback`) must
+  be removed first. A recorded skill or plugin file edited since install is
+  refused too.
+- **`CLAUDE_CONFIG_DIR`** moves Claude Code's settings and skills, and
+  install follows it. Its documentation does not say where `.claude.json`
+  lives then, so with it set the check below is skipped: install relies on
+  `claude mcp add-json` reporting an existing entry, and uninstall always
+  runs `claude mcp remove`.
+- **Claude Code's MCP entry** is checked against `~/.claude.json` (read
+  only): an entry removed by hand is added again by install and skipped by
+  uninstall; one pointing at another URL is refused by install and left in
+  place by uninstall. When `claude` is missing or `claude mcp remove` fails,
+  uninstall goes on and notes the command to run by hand:
+  `claude mcp remove agentfeedback --scope user`.
+- **Codex** runs a new hook only after you trust it in `/hooks`.
+- **Cursor** also runs Claude Code's hooks and skills.
+- **Verification status.** Checked against installed harnesses: Claude Code
+  lists the MCP entry; OpenCode loads the skill, the plugin and the MCP entry;
+  the hook commands, the OpenCode plugin and the omp extension were run
+  outside a live session. The Codex, Cursor and pi wiring is written from
+  their documentation and unverified.
 
 ## Build from source
 
@@ -313,17 +443,19 @@ removing any service; the data is gone with the volume.
 
 ### Skills, on every machine that has them
 
-1. Find the installed copies (`agentfeedback`, `agentfeedback-triage`) in every harness skills directory you
+1. Run `agentfeedback uninstall all` first: it removes what `agentfeedback install`
+   wired and restores the files it changed.
+2. Find the installed copies (`agentfeedback`, `agentfeedback-triage`) in every harness skills directory you
    use, e.g. `ls -la ~/.claude/skills | grep feedback`. Entries may be symlinks into
    a shared checkout; remove the links, then the checkout if nothing else uses it.
-2. Flush or discard unsent payloads first: `bash <skill-dir>/scripts/query.sh --flush --limit 1`
+3. Flush or discard unsent payloads first: `bash <skill-dir>/scripts/query.sh --flush --limit 1`
    sends whatever is spooled; or delete `~/.cache/agentfeedback/` to drop it.
-3. Remove the directories or links, then `rm -rf ~/.cache/agentfeedback`.
-4. Remove `AGENT_FEEDBACK_URL`, `AGENT_FEEDBACK_API_KEY`, `AGENT_FEEDBACK_MACHINE`,
+4. Remove the directories or links, then `rm -rf ~/.cache/agentfeedback`.
+5. Remove `AGENT_FEEDBACK_URL`, `AGENT_FEEDBACK_API_KEY`, `AGENT_FEEDBACK_MACHINE`,
    `AGENT_FEEDBACK_MODEL`, `AGENT_FEEDBACK_HARNESS`, `AGENT_FEEDBACK_SESSION_ID`
    `AGENT_FEEDBACK_REVIEW_DIRS` and `AGENT_FEEDBACK_TRIAGE_ROOTS` (plus
    `TYPESAFE_API_KEY` if only triage used it) from shell profiles (`grep -n AGENT_FEEDBACK ~/.zshenv ~/.zshrc ~/.bashrc ~/.profile 2>/dev/null`).
-5. Remove any directive in your agent system prompt that tells agents to
+6. Remove any directive in your agent system prompt that tells agents to
    submit friction, and any hook in a review runner that calls `submit-review.sh`.
 
 ### The service

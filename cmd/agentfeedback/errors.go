@@ -352,7 +352,7 @@ func errSkillForm(form string, known []string) error {
 }
 
 func errSkillVerb(verb string) error {
-	return usageErr(fmt.Sprintf("unknown skill subcommand %q; the only one is render", verb),
+	return usageErr(fmt.Sprintf("unknown skill subcommand %q; the subcommands are render and reminder", verb),
 		"use agentfeedback "+skillSynopsis)
 }
 
@@ -592,4 +592,47 @@ func errMigrateStopped(reason string, sent, imported, skipped int) error {
 func errWorkdir(err error) error {
 	return failErr(fmt.Sprintf("cannot resolve the working directory (%v); narrowing rules cannot be applied, so nothing was sent", err),
 		"run agentfeedback from a directory that exists")
+}
+
+// install and uninstall errors.
+
+func errInstallWindows(command string) error {
+	return usageErr(fmt.Sprintf("%s is not supported on Windows", command),
+		"wire the harness by hand: install the skill from agentfeedback skill render skill-md")
+}
+
+func errInstallHarness(name string, known []string) error {
+	return usageErr(fmt.Sprintf("unknown harness %q; the harnesses are %s", name, strings.Join(known, ", ")),
+		"pass all or one of those names")
+}
+
+func errInstallDocs() error {
+	return usageErr("the docs skill is not available in this release yet", "run agentfeedback install without --docs")
+}
+
+func errInstallNoneDetected() error {
+	return failErr("no harness was detected on this machine",
+		"name the harnesses to wire, such as agentfeedback install claude-code")
+}
+
+func errInstallNoServer() error {
+	return failErr("no server configured", "pass --server cloud|URL or run agentfeedback doctor --init first")
+}
+
+// errInstallBadServer never shows credentials, as errSkillServer. A bad
+// --server is a command-line error; a bad configured, recorded or typed
+// server is not.
+func errInstallBadServer(source, raw, reason string) error {
+	problem := fmt.Sprintf("%s %q is not usable: %s", source, shownURL(raw), reason)
+	next := "use cloud or an http or https URL with a host and no credentials, query, fragment or shell-unsafe characters"
+	if source == "--server" {
+		return usageErr(problem, next)
+	}
+
+	return failErr(problem, next)
+}
+
+func errInstallServerDiffers(flagURL, configured, path string) error {
+	return failErr(fmt.Sprintf("--server %s differs from the url %s in %s, and install never changes the configured server", flagURL, configured, path),
+		"drop --server, or change the server with agentfeedback doctor --init --force first")
 }

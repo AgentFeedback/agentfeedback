@@ -253,3 +253,47 @@ func TestFlushHygiene(t *testing.T) {
 		t.Errorf("requests = %d", hits.Load())
 	}
 }
+
+func TestHasDue(t *testing.T) {
+	e := newTestEnv(t, "http://127.0.0.1:1", nil)
+	if HasDue(e.cache, t0) {
+		t.Fatal("empty spool reported due")
+	}
+	e.spoolEntry(t, entryName(1), "event", "later", t0, t0.Add(time.Minute))
+	e.spoolEntry(t, entryName(2), "friction", "old", t0.Add(-21*time.Hour), t0.Add(-time.Hour))
+	if HasDue(e.cache, t0) {
+		t.Fatal("deferred and expired entries reported due")
+	}
+	e.spoolEntry(t, entryName(4), "event", "now", t0, t0)
+	if !HasDue(e.cache, t0) {
+		t.Fatal("a due entry not reported")
+	}
+	if err := os.Remove(filepath.Join(SpoolDir(e.cache), entryName(4))); err != nil {
+		t.Fatal(err)
+	}
+	// An entry that cannot be read is not due: Flush skips it too.
+	unreadable := filepath.Join(SpoolDir(e.cache), entryName(5))
+	e.spoolEntry(t, entryName(5), "event", "locked", t0, t0)
+	if err := os.Chmod(unreadable, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.ReadFile(unreadable); err == nil {
+		t.Skip("running with permissions that read a mode-0 file")
+	}
+	if HasDue(e.cache, t0) {
+		t.Fatal("an unreadable entry reported due")
+	}
+	if err := os.Remove(unreadable); err != nil {
+		t.Fatal(err)
+	}
+	// An undecodable entry is due: Flush quarantines it.
+	if err := os.WriteFile(filepath.Join(SpoolDir(e.cache), entryName(3)), []byte(`garbage`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !HasDue(e.cache, t0) {
+		t.Fatal("an undecodable entry not reported due")
+	}
+	if got := af1Files(t, SpoolDir(e.cache)); len(got) != 3 {
+		t.Fatalf("HasDue changed the spool: %v", got)
+	}
+}

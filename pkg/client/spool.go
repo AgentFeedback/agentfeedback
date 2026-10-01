@@ -521,3 +521,33 @@ func (c *Client) flushOne(ctx context.Context, cand candidate, rep *FlushReport)
 
 	return ""
 }
+
+// HasDue reports whether the spool under cache holds an entry a Flush would
+// act on now: one within retention and past its not_before, or one that
+// cannot be decoded, which Flush quarantines. One that cannot be read is
+// not due: Flush skips it too. It changes nothing and needs no configured
+// Client.
+func HasDue(cache string, now time.Time) bool {
+	c := &Client{cacheDir: cache, stderr: io.Discard, now: func() time.Time { return now }}
+	spool := SpoolDir(cache)
+	for _, cand := range c.candidates(spool, now) {
+		data, err := os.ReadFile(filepath.Join(spool, cand.name))
+		if err != nil {
+			continue
+		}
+		e, err := decodeEntry(data)
+		if err != nil {
+			return true
+		}
+		age := now.Sub(e.CreatedAt)
+		friction := strings.EqualFold(strings.TrimSpace(e.Kind), "friction")
+		if (friction && age > frictionMaxAge) || (!friction && age > entryMaxAge) {
+			continue
+		}
+		if !e.NotBefore.After(now) {
+			return true
+		}
+	}
+
+	return false
+}
