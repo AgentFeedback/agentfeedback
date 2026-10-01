@@ -448,15 +448,16 @@ removing any service; the data is gone with the volume.
 2. Find the installed copies (`agentfeedback`, `agentfeedback-triage`) in every harness skills directory you
    use, e.g. `ls -la ~/.claude/skills | grep feedback`. Entries may be symlinks into
    a shared checkout; remove the links, then the checkout if nothing else uses it.
-3. Flush or discard unsent payloads first: `bash <skill-dir>/scripts/query.sh --flush --limit 1`
+3. Flush or discard unsent payloads first: `agentfeedback flush`
    sends whatever is spooled; or delete `~/.cache/agentfeedback/` to drop it.
-4. Remove the directories or links, then `rm -rf ~/.cache/agentfeedback`.
+4. Remove the directories or links, then `rm -rf ~/.cache/agentfeedback`, and the binary:
+   `rm "$(command -v agentfeedback)"` (`scripts/install.sh` puts it in `~/.local/bin`).
 5. Remove `AGENT_FEEDBACK_URL`, `AGENT_FEEDBACK_API_KEY`, `AGENT_FEEDBACK_MACHINE`,
    `AGENT_FEEDBACK_MODEL`, `AGENT_FEEDBACK_HARNESS`, `AGENT_FEEDBACK_SESSION_ID`
    `AGENT_FEEDBACK_REVIEW_DIRS` and `AGENT_FEEDBACK_TRIAGE_ROOTS` (plus
    `TYPESAFE_API_KEY` if only triage used it) from shell profiles (`grep -n AGENT_FEEDBACK ~/.zshenv ~/.zshrc ~/.bashrc ~/.profile 2>/dev/null`).
 6. Remove any directive in your agent system prompt that tells agents to
-   submit friction, and any hook in a review runner that calls `submit-review.sh`.
+   submit friction, and any hook in a review runner that submits reviews.
 
 ### The service
 

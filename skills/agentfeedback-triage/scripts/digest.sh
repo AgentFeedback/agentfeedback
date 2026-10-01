@@ -21,9 +21,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-COMMON="$SCRIPT_DIR/../../agentfeedback/scripts/_common.sh"
-[ -f "$COMMON" ] || { echo "agentfeedback-triage: sibling agentfeedback skill not found at $COMMON" >&2; exit 1; }
-# shellcheck source=../../agentfeedback/scripts/_common.sh
+COMMON="$SCRIPT_DIR/_common.sh"
+[ -f "$COMMON" ] || { echo "agentfeedback-triage: _common.sh not found at $COMMON" >&2; exit 1; }
+# shellcheck source=_common.sh
 . "$COMMON"
 
 OUT="" FAMILY="friction"

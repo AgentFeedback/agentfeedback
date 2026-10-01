@@ -20,7 +20,7 @@ Two parts:
 
 | You want to | Read |
 |---|---|
-| Install the skill and file feedback from an agent | [`skills/agentfeedback/scripts/README.md`](skills/agentfeedback/scripts/README.md) (the bash client of the current release) |
+| Install the skill and file feedback from an agent | [`skills/agentfeedback` at v3.0.0](https://github.com/AgentFeedback/agentfeedback/tree/v3.0.0/skills/agentfeedback) (the bash client of the running v3.0.0 release) |
 | Triage the queue | [`skills/agentfeedback-triage/SKILL.md`](skills/agentfeedback-triage/SKILL.md) |
 | Call the API directly | [`docs/api.md`](docs/api.md) |
 | Run, deploy, back up, migrate | [`docs/operate.md`](docs/operate.md) |
@@ -33,7 +33,7 @@ Two parts:
 
 ```bash
 git clone https://github.com/AgentFeedback/agentfeedback.git && cd agentfeedback
-git checkout "$(git describe --tags --abbrev=0 --exclude '*-*')"   # latest stable release, not a pre-release
+git checkout v3.0.0   # the running release; its bash client is skills/agentfeedback/scripts/
 cd infra/agentfeedback && test ! -e .env && umask 077 && printf 'API_KEY=%s\n' "$(openssl rand -hex 32)" > .env
 docker compose up -d --build --wait
 export AGENT_FEEDBACK_URL=http://127.0.0.1:8090 AGENT_FEEDBACK_API_KEY=$(sed -n 's/^API_KEY=//p' .env)

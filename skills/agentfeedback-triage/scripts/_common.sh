@@ -11,7 +11,7 @@
 #   AGENT_FEEDBACK_MODEL       optional — overrides coordinator-model detection
 #   AGENT_FEEDBACK_SESSION_ID  optional — overrides session-id detection
 #   AGENT_FEEDBACK_REVIEW_DIRS optional — colon-separated review run-dir bases
-#                              swept by submit-review.sh --sweep
+#                              swept by the review sweep
 # The overrides make attribution exact from ANY harness: set them in the
 # harness's profile/hook and detection below never matters.
 #

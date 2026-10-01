@@ -104,11 +104,12 @@ ci:
     go test -race -count=1 ./...
     just fuzz
     just e2e
-    (cd skills/agentfeedback/scripts && shellcheck -x ./*.sh)
+    shellcheck -x skills/agentfeedback/scripts/install.sh
     if ls skills/agentfeedback-triage/scripts/*.sh >/dev/null 2>&1; then
         (cd skills/agentfeedback-triage/scripts && shellcheck -x ./*.sh)
     fi
     bash tests/skill/run-tests.sh
+    bash tests/skill/triage-tests.sh
     shellcheck -x scripts/*.sh
     just contract
 

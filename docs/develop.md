@@ -21,9 +21,9 @@ infra/agentfeedback/            compose stacks (local build, image-based deploy)
 scripts/                        e2e.sh (live v1 contract suite: every openapi.yaml operation, fails on an uncovered one), gate-e2e.sh, deploy.sh, release.sh (the release step behind
                                 `just release`), eval-cluster.py (live cluster.py calibration; discloses report text)
 .goreleaser.yaml                release build: six archives, SHA256SUMS, install.sh asset (docs/releases.md)
-skills/agentfeedback/           submission skill: SKILL.md generated from internal/skillgen/source; scripts/ is the bash client of the running service, documented in scripts/README.md (copied as-is into a harness; no tests inside)
-skills/agentfeedback-triage/    processor skill (SKILL.md, digest.sh; optional cluster.py + reference/clustering.md)
-tests/skill/                    hermetic tests for both skills' scripts (mock server, isolated HOME)
+skills/agentfeedback/           submission skill: SKILL.md generated from internal/skillgen/source, and scripts/install.sh, which installs the release binary (copied as-is into a harness; no tests inside)
+skills/agentfeedback-triage/    processor skill (SKILL.md, digest.sh, and _common.sh and process.sh from the v3 service's bash client until triage moves to the CLI; optional cluster.py + reference/clustering.md)
+tests/skill/                    hermetic tests: run-tests.sh for install.sh (offline fixture release), triage-tests.sh for the triage scripts (mock server, isolated HOME)
 docs/                           api.md (contract of the running service), openapi.yaml (v1 contract of the next major release; embed.go makes it a Go package for internal/api), operate.md, develop.md, security.md, releases.md
 schemas/                        JSON Schema 2020-12: the submission envelope and the kind schemas (friction, review); embed.go makes them a Go package for pkg/schema
 conformance/                    the executable contract: decode fixtures, hash vectors, the warning list, a Python reference implementation (README inside)
@@ -50,12 +50,13 @@ just image-push <tag>...                      # multi-arch image to ghcr.io/agen
 just release-check <tag> <title> <notes.md>   # every release precondition and a snapshot build; publishes nothing
 just release <tag> <title> <notes.md>         # publish a release (maintainers; releases.md)
 bash scripts/e2e.sh <API_KEY> [BASE_URL]      # live v1 contract suite against a running service; creates rows
-bash tests/skill/run-tests.sh                 # hermetic client tests (mock server, needs python3)
+bash tests/skill/run-tests.sh                 # install.sh against an offline fixture release
+bash tests/skill/triage-tests.sh              # triage scripts against a mock server (needs python3)
 just contract                                 # contract gate: the two commands below
 uv run --locked --script scripts/contract-check.py   # schemas valid 2020-12, every example validates, fixtures agree with conformance/reference
 npx --yes @redocly/cli@2.54.2 lint docs/openapi.yaml # OpenAPI lint (recommended ruleset, redocly.yaml)
 python3 conformance/reference/fixtures.py     # the fixtures alone, no dependencies
-shellcheck -x -P SCRIPTDIR skills/*/scripts/*.sh tests/skill/run-tests.sh
+shellcheck -x -P SCRIPTDIR skills/*/scripts/*.sh tests/skill/*.sh
 shellcheck -x scripts/*.sh                    # the repository scripts, release.sh included
 python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remote>... [--live]   # cluster.py calibration
 ```
@@ -63,9 +64,11 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
 ## Rules that are not visible in the code
 
 - **An API change is a five-artifact change**, in one commit: `internal/`
-  code (with `cmd/agentfeedback/coverage.toml`), the contract files,
-  `scripts/e2e.sh`, the client scripts in `skills/agentfeedback/scripts/`,
-  and `tests/skill/`. Producers build their calls from the contract without
+  code, the contract files, `scripts/e2e.sh`, the CLI in
+  `cmd/agentfeedback/` (with `coverage.toml`), and the skill: its source in
+  `internal/skillgen/source/` when the commands an agent runs change, and
+  `skills/agentfeedback/scripts/install.sh` with `tests/skill/run-tests.sh`
+  when the release assets change. Producers build their calls from the contract without
   reading the code. `scripts/e2e.sh` fails on any `docs/openapi.yaml`
   operation it does not exercise, so a new route needs its check in the same
   commit.
@@ -141,8 +144,8 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
 6. API touched: `just e2e` green (builds, serves on a temp database, runs
    `scripts/e2e.sh`, which also fails on an uncovered operation), and
    `cmd/agentfeedback/coverage.toml` updated (`just test` fails otherwise).
-7. Skill scripts touched: the shellcheck command above and `bash tests/skill/run-tests.sh`
-   all green.
+7. Skill scripts touched: the shellcheck command above, `bash tests/skill/run-tests.sh`
+   and `bash tests/skill/triage-tests.sh` all green.
 8. `shellcheck -x scripts/*.sh` clean.
 9. Docs touched: every relative link resolves.
 10. Contract files touched (`schemas/`, `docs/openapi.yaml`, `conformance/`):

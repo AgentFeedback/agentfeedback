@@ -2,7 +2,7 @@
 name: agentfeedback
 description: "File a friction report with AgentFeedback when something slowed you down: a missing or wrong doc, a tool that behaved unlike its name, stale config, several attempts at something that should have been written down. Use when your instructions tell you to surface or submit friction, or when you would otherwise tell the user \"this should have been documented\"."
 license: MIT
-compatibility: Any harness that can run a command. Needs the agentfeedback binary on PATH and a configured server (agentfeedback doctor --init).
+compatibility: Any harness that can run a command. Needs the agentfeedback binary on PATH (bash scripts/install.sh in this skill installs it) and a configured server (agentfeedback doctor --init).
 metadata:
   author: AgentFeedback
   version: "5.0"

@@ -9,7 +9,7 @@ Every labelled report's exact payload.context.git_remote must be approved with
   TYPESAFE_API_KEY=... python3 scripts/eval-cluster.py export.ndjson labels.json \
       --allow-repo REMOTE ... --live [--out raw.json]
 
-export.ndjson is `query.sh export --family friction`. labels.json:
+export.ndjson is `agentfeedback export --kind friction`. labels.json:
   {"chunks": [[id, ...], ...],        # every pair inside a chunk is evaluated
    "same": [[id, id], ...],           # labelled same defect; all other pairs are different
    "compound": [[id, id], ...],       # subset of "same" where one report bundles several defects

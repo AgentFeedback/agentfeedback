@@ -1,8 +1,8 @@
 ---
 name: agentfeedback-triage
-description: Process the AgentFeedback queue end to end - pull every unprocessed friction, cluster by root cause, verify each cluster read-only, present one consolidated summary, interview the user with recommended actions first, then act and mark rows processed with a resolution. EXPLICIT INVOCATION ONLY - run only when the user invokes /agentfeedback-triage or names this skill; never load it on your own from phrasing about the queue. Requires the agentfeedback skill installed beside this one, in a sibling directory named `agentfeedback`, plus AGENT_FEEDBACK_URL + AGENT_FEEDBACK_API_KEY.
+description: Process the AgentFeedback queue end to end - pull every unprocessed friction, cluster by root cause, verify each cluster read-only, present one consolidated summary, interview the user with recommended actions first, then act and mark rows processed with a resolution. EXPLICIT INVOCATION ONLY - run only when the user invokes /agentfeedback-triage or names this skill; never load it on your own from phrasing about the queue. Requires AGENT_FEEDBACK_URL + AGENT_FEEDBACK_API_KEY.
 license: MIT
-compatibility: Any harness that can run bash. Needs curl, jq, git and the sibling agentfeedback skill installed beside this one. Optional advisory clustering needs Python 3.9+ and a machine-local TYPESAFE_API_KEY. Uses a structured multi-select question tool when the harness has one; falls back to a numbered list otherwise.
+compatibility: Any harness that can run bash. Needs curl, jq and git. Optional advisory clustering needs Python 3.9+ and a machine-local TYPESAFE_API_KEY. Uses a structured multi-select question tool when the harness has one; falls back to a numbered list otherwise.
 disable-model-invocation: true
 metadata:
   author: AgentFeedback
@@ -161,7 +161,7 @@ you are changing without telling the user first.
   That trailer is what phase 1 of the next run reads.
 - If two fixes touch the same repository, run them sequentially or with
   disjoint file sets.
-- A new defect discovered while fixing gets filed with `submit-friction.sh`,
+- A new defect discovered while fixing gets filed as a friction with the agentfeedback skill,
   not silently fixed.
 - Follow the repository's own commit and merge rules; do not push, merge or
   open pull requests unless the user selected that.
@@ -172,10 +172,10 @@ Marking is the **last** action, after the final commit, because the queue
 moves while you work.
 
 ```bash
-bash <skill-dir>/../agentfeedback/scripts/process.sh list --family friction      # anything new since the pull?
-bash <skill-dir>/../agentfeedback/scripts/process.sh done 43 44 --resolution "FIXED: example@1a2b3c4"
-bash <skill-dir>/../agentfeedback/scripts/process.sh done 42 --resolution "INVALID: flag exists since v1.4"
-bash <skill-dir>/../agentfeedback/scripts/process.sh done 41 --resolution "DUPLICATE-OF-43"
+bash <skill-dir>/scripts/process.sh list --family friction      # anything new since the pull?
+bash <skill-dir>/scripts/process.sh done 43 44 --resolution "FIXED: example@1a2b3c4"
+bash <skill-dir>/scripts/process.sh done 42 --resolution "INVALID: flag exists since v1.4"
+bash <skill-dir>/scripts/process.sh done 41 --resolution "DUPLICATE-OF-43"
 ```
 
 One `done` call per distinct resolution. Start each resolution with its
