@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func openTest(t *testing.T) *DB {
@@ -226,6 +227,97 @@ func TestOpenResumesAfterAnInterruptedFirstOpen(t *testing.T) {
 	defer func() { _ = db.Close() }()
 	if v, err := db.SchemaVersion(ctx); err != nil || v != 1 {
 		t.Fatalf("schema version %d, %v; want 1", v, err)
+	}
+}
+
+func TestOpenOfACurrentDatabaseTakesNoWriteLock(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "busy.db")
+	first, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = first.Close() }()
+
+	// A writer holding the lock (serve mid-insert) must not stall a second
+	// open of a database that needs no migration (a backup, an import).
+	tx, err := first.writer.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	openCtx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	second, err := Open(openCtx, path)
+	if err != nil {
+		t.Fatalf("open beside a held write lock: %v", err)
+	}
+	_ = second.Close()
+}
+
+func TestApplyMigrationRechecksTheVersionUnderTheLock(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	db := openTest(t)
+	migs, err := loadMigrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	known := migs[len(migs)-1].version
+
+	// Another opener applied the migration after this one read version 0:
+	// applying it again must be a no-op, not "table already exists".
+	if err := db.applyMigration(ctx, migs[0], known); err != nil {
+		t.Fatalf("re-applying an applied migration: %v", err)
+	}
+
+	// A newer binary migrated the file in that window: refuse it.
+	if err := db.Write(ctx, func(q Querier) error {
+		_, err := q.ExecContext(ctx, "UPDATE schema_version SET version = ?", known+1)
+
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.applyMigration(ctx, migs[0], known); !errors.Is(err, ErrSchemaTooNew) {
+		t.Fatalf("expected ErrSchemaTooNew, got %v", err)
+	}
+}
+
+func TestPingWhileBusyReportsCancellation(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "locked.db")
+	holder, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = holder.Close() }()
+	holder.SetMaxOpenConns(1)
+	// An exclusive lock keeps every other connection busy, the WAL switch
+	// of a new one included.
+	if _, err := holder.ExecContext(ctx, "PRAGMA locking_mode = EXCLUSIVE"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := holder.ExecContext(ctx, "CREATE TABLE t (x)"); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=journal_mode(WAL)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	cctx, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
+	defer cancel()
+	err = pingWhileBusy(cctx, db)
+	if !errors.Is(err, context.DeadlineExceeded) || !IsBusy(err) {
+		t.Fatalf("expected the deadline wrapping the busy error, got %v", err)
 	}
 }
 

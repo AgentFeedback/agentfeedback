@@ -22,7 +22,7 @@ generated and teaches the binary of the next major release.
 | Task | Go to |
 |---|---|
 | Change service code | [`docs/develop.md`](docs/develop.md): layout, commands, invisible rules, verification |
-| Change the API | [`docs/api.md`](docs/api.md) is the contract; five artifacts move in one commit (see develop.md) |
+| Change the API | [`docs/api.md`](docs/api.md) is the contract; six artifacts move in one commit (see develop.md) |
 | Change a skill's scripts | `skills/<name>/scripts/`, then the skill gates in [`docs/develop.md`](docs/develop.md#verification-before-you-are-done) |
 | Change docs | Keep the [README](README.md) route table true; one doc per task, no duplicated facts |
 | Run, deploy, back up, migrate | [`docs/operate.md`](docs/operate.md) |

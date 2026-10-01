@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	sqlitedrv "modernc.org/sqlite" // database/sql driver "sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
@@ -91,10 +92,14 @@ type DB struct {
 
 const readerMaxConns = 4
 
+// busyTimeout is SQLite's busy_timeout on every connection, and the time Open
+// keeps starting new attempts at its first connection.
+const busyTimeout = 5 * time.Second
+
 func dsn(path string, immediate bool) string {
 	q := url.Values{}
 	q.Add("_pragma", "journal_mode(WAL)")
-	q.Add("_pragma", "busy_timeout(5000)")
+	q.Add("_pragma", "busy_timeout("+strconv.FormatInt(busyTimeout.Milliseconds(), 10)+")")
 	q.Add("_pragma", "synchronous(NORMAL)")
 	q.Add("_pragma", "foreign_keys(ON)")
 	if immediate {
@@ -123,7 +128,7 @@ func Open(ctx context.Context, path string) (*DB, error) {
 
 	db := &DB{writer: writer, reader: reader, path: path}
 
-	if err := writer.PingContext(ctx); err != nil {
+	if err := pingWhileBusy(ctx, writer); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("open sqlite database at %s: %w", path, err)
 	}
@@ -133,6 +138,26 @@ func Open(ctx context.Context, path string) (*DB, error) {
 	}
 
 	return db, nil
+}
+
+// pingWhileBusy opens the first connection, retrying while it fails with
+// SQLITE_BUSY. Switching a fresh file to WAL can fail that way without
+// consulting the busy handler when another process opens the same file at
+// the same moment. No attempt starts after busyTimeout; one already running
+// may itself wait up to busyTimeout.
+func pingWhileBusy(ctx context.Context, db *sql.DB) error {
+	deadline := time.Now().Add(busyTimeout)
+	for {
+		err := db.PingContext(ctx)
+		if err == nil || !IsBusy(err) || time.Now().After(deadline) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("%w (last attempt: %w)", ctx.Err(), err)
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
 }
 
 // Close releases both pools.
@@ -374,7 +399,7 @@ func (db *DB) migrate(ctx context.Context) error {
 		if m.version <= current {
 			continue
 		}
-		if err := db.applyMigration(ctx, m); err != nil {
+		if err := db.applyMigration(ctx, m, known); err != nil {
 			return err
 		}
 	}
@@ -382,11 +407,21 @@ func (db *DB) migrate(ctx context.Context) error {
 	return nil
 }
 
-// bootstrap checks the stamp and reads or creates the schema_version row,
-// all inside one IMMEDIATE transaction: two processes opening the same fresh
-// file at once (serve and a restore, say) serialise on the write lock, and
-// the second sees the first one's row instead of inserting its own.
+// bootstrap checks the stamp and reads or creates the schema_version row.
+// Without both it does so inside one IMMEDIATE transaction: two processes
+// opening the same fresh file at once (serve and a restore, say) serialise on
+// the write lock, and the second sees the first one's row instead of
+// inserting its own.
+//
+// A database that already carries the stamp and a schema_version row is read
+// without the write lock, so opening it beside a busy writer (a backup next to
+// serve) does not wait on that writer; applyMigration re-reads the version
+// under the lock before it changes anything.
 func (db *DB) bootstrap(ctx context.Context) (int, error) {
+	if current, ok := db.stampedVersion(ctx); ok {
+		return current, nil
+	}
+
 	tx, err := db.writer.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("begin bootstrap of %s: %w", db.path, err)
@@ -416,6 +451,21 @@ func (db *DB) bootstrap(ctx context.Context) (int, error) {
 	}
 
 	return current, nil
+}
+
+// stampedVersion reads the schema version on the reader pool when the file
+// already carries this service's stamp; ok is false when anything is missing
+// or unreadable, and bootstrap then takes the locked path.
+func (db *DB) stampedVersion(ctx context.Context) (version int, ok bool) {
+	var stamp int64
+	if err := db.reader.QueryRowContext(ctx, "PRAGMA application_id").Scan(&stamp); err != nil || stamp != applicationID {
+		return 0, false
+	}
+	if err := db.reader.QueryRowContext(ctx, "SELECT version FROM schema_version").Scan(&version); err != nil {
+		return 0, false
+	}
+
+	return version, true
 }
 
 // checkStamp verifies the application_id stamp, writing it on a database that
@@ -449,12 +499,26 @@ func checkStamp(ctx context.Context, q Querier, path string) error {
 	return nil
 }
 
-func (db *DB) applyMigration(ctx context.Context, m migration) error {
+func (db *DB) applyMigration(ctx context.Context, m migration, known int) error {
 	tx, err := db.writer.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin migration %s: %w", m.name, err)
 	}
 	defer func() { _ = tx.Rollback() }()
+
+	// Another opener may have migrated the file since bootstrap read its
+	// version, possibly a newer binary; the write lock makes this read
+	// authoritative.
+	var current int
+	if err := tx.QueryRowContext(ctx, "SELECT version FROM schema_version").Scan(&current); err != nil {
+		return fmt.Errorf("read schema version before %s: %w", m.name, err)
+	}
+	if current > known {
+		return fmt.Errorf("%w: database at version %d, binary knows %d", ErrSchemaTooNew, current, known)
+	}
+	if current >= m.version {
+		return nil
+	}
 
 	if _, err := tx.ExecContext(ctx, m.sql); err != nil {
 		return fmt.Errorf("apply migration %s: %w", m.name, err)

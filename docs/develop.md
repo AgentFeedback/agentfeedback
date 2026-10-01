@@ -21,6 +21,7 @@ infra/agentfeedback/            compose stacks (local build, image-based deploy)
 scripts/                        e2e.sh (live v1 contract suite: every openapi.yaml operation, fails on an uncovered one), gate-e2e.sh, deploy.sh, release.sh (the release step behind
                                 `just release`), eval-cluster.py (live cluster.py calibration; discloses report text)
 .goreleaser.yaml                release build: six archives, SHA256SUMS, install.sh asset (docs/releases.md)
+AGENT-INSTALL.md                client install playbook for agents: one command, one verification, one JSON outcome per step
 skills/agentfeedback/           submission skill: SKILL.md generated from internal/skillgen/source, and scripts/install.sh, which installs the release binary (copied as-is into a harness; no tests inside)
 skills/agentfeedback-triage/    processor skill (SKILL.md, digest.sh, and _common.sh and process.sh from the v3 service's bash client until triage moves to the CLI; optional cluster.py + reference/clustering.md)
 tests/skill/                    hermetic tests: run-tests.sh for install.sh (offline fixture release), triage-tests.sh for the triage scripts (mock server, isolated HOME)
@@ -63,15 +64,18 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
 
 ## Rules that are not visible in the code
 
-- **An API change is a five-artifact change**, in one commit: `internal/`
+- **An API change is a six-artifact change**, in one commit: `internal/`
   code, the contract files, `scripts/e2e.sh`, the CLI in
-  `cmd/agentfeedback/` (with `coverage.toml`), and the skill: its source in
+  `cmd/agentfeedback/` (with `coverage.toml`), the skill (its source in
   `internal/skillgen/source/` when the commands an agent runs change, and
   `skills/agentfeedback/scripts/install.sh` with `tests/skill/run-tests.sh`
-  when the release assets change. Producers build their calls from the contract without
-  reading the code. `scripts/e2e.sh` fails on any `docs/openapi.yaml`
-  operation it does not exercise, so a new route needs its check in the same
-  commit.
+  when the release assets change), and `AGENT-INSTALL.md` when a command,
+  flag, route or outcome it quotes changes. Any other change that alters
+  one of those (the CLI, `internal/harness`, `install.sh`, the release
+  assets) updates `AGENT-INSTALL.md` in the same commit too. Producers
+  build their calls from the contract without reading the code.
+  `scripts/e2e.sh` fails on any `docs/openapi.yaml` operation it does not
+  exercise, so a new route needs its check in the same commit.
 - **Write-once payloads.** After insert only the processing fields
   (`processed_at`, `verdict`, `resolution`, `ref`, `processed_by`) change,
   and a redaction replaces the payload with its tombstone. Never add an
