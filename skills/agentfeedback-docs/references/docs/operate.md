@@ -19,7 +19,7 @@ Needs Docker with Compose. From the repository root:
 cd infra/agentfeedback
 test -e .env || (umask 077 && printf 'API_KEY=%s\n' "$(openssl rand -hex 32)" > .env)   # keeps an existing key
 docker compose up -d --build --wait
-curl --fail --silent --show-error http://127.0.0.1:8090/ready
+curl --fail --silent --show-error --retry 60 --retry-all-errors --retry-delay 1 http://127.0.0.1:8090/ready
 ```
 
 The service listens on `127.0.0.1:8090` and stores its database in the named
@@ -262,11 +262,24 @@ covers the archives.
 
 ## Deploy to a host
 
-Prerequisites on the host: Docker with Compose, `curl`, `openssl`, SSH access. The
-image is published at release time ([releases.md](releases.md)) to
-`ghcr.io/agentfeedback/agentfeedback` tagged with the version and the commit
-SHA, plus `latest` for a stable release (pre-releases never move it). The package must be publicly pullable (GitHub package
-settings) or the host must be logged in to GHCR.
+Prerequisites on the host: Docker with Compose, `curl` 7.71 or newer, `openssl`, SSH access. The
+image `ghcr.io/agentfeedback/agentfeedback` is published by each release
+([releases.md](releases.md)) for `linux/amd64` and `linux/arm64`, under three
+tags:
+
+| Tag | Example | Pin it |
+|---|---|---|
+| the version, without the `v` | `4.0.0`, `4.0.0-rc.1` | yes |
+| the full commit SHA of the release | `df87a9c…` (40 hex digits); a stable release cut from the same commit as its last rc moves it to the stable build | yes |
+| `latest` | stable releases only; pre-releases never move it | never |
+
+The image is distroless: the binary `/opt/agentfeedback` (the entrypoint;
+`CMD ["serve"]`, so a container started with no arguments serves), CA roots
+and timezone data, and no shell, package manager or `curl`, so it carries no
+healthcheck; check readiness from the host with `GET /ready`. It runs as uid
+10001 with the database at `/data/agentfeedback.db` on the `/data` volume.
+The package must be publicly pullable (GitHub package settings) or the host
+must be logged in to GHCR.
 
 ```bash
 DEPLOY_REMOTE=user@host bash scripts/deploy.sh <commit-sha>
@@ -282,7 +295,7 @@ DEPLOY_REMOTE=user@host bash scripts/deploy.sh <commit-sha>
    `.env` so the pinned image survives later `docker compose up` calls;
 4. runs `docker compose pull && docker compose up -d --wait` and checks `/ready`.
 
-Always deploy a commit SHA or a version tag, never `latest`, so the host pins
+Always deploy a version or a commit SHA, never `latest`, so the host pins
 what it runs. `DEPLOY_REMOTE`, `DEPLOY_IMAGE` and `DEPLOY_DIR`
 (remote directory, default `~/agentfeedback`, which the sections below
 assume) can live in the gitignored `.private/deploy.env`.
@@ -316,11 +329,14 @@ Two complementary forms.
 
 ```bash
 cd ~/agentfeedback
-docker compose exec agentfeedback /opt/agentfeedback backup /data/backup-$(date -u +%Y%m%dT%H%M%SZ).db
+docker compose exec agentfeedback /opt/agentfeedback backup /tmp/backup-$(date -u +%Y%m%dT%H%M%SZ).db
 mkdir -p backups
-docker compose cp agentfeedback:/data/backup-<stamp>.db ./backups/
-docker compose exec agentfeedback rm /data/backup-<stamp>.db
+docker compose cp agentfeedback:/tmp/backup-<stamp>.db ./backups/
 ```
+
+The copy goes to the container's `/tmp`, not the database volume, and is
+gone when the container is recreated (the image has no `rm` to delete it
+sooner).
 
 `agentfeedback backup <dest.db>` uses SQLite's `VACUUM INTO`, which is safe on
 a live database in WAL mode, so the service keeps running. It refuses an
@@ -343,9 +359,16 @@ restrict them: they contain everything agents reported.
 
 ## Restore and migration
 
-**Restore a physical backup**: stop the stack, replace `/data/agentfeedback.db` in
-the volume (remove any `-wal`/`-shm` files beside it), start the stack, check
-`/ready`.
+**Restore a physical backup**: stop the service, replace `/data/agentfeedback.db`
+in the volume and remove the `-wal`/`-shm` files beside it, from a throwaway
+container (the image has no shell), then start it and check `/ready`:
+
+```bash
+docker compose stop agentfeedback
+docker run --rm --volumes-from "$(docker compose ps -aq agentfeedback)" -v "$PWD/backups:/backups:ro" alpine:3.24.1 \
+  sh -c 'rm -f /data/agentfeedback.db-wal /data/agentfeedback.db-shm && cp /backups/backup-<stamp>.db /data/agentfeedback.db && chown 10001:10001 /data/agentfeedback.db'
+docker compose start agentfeedback
+```
 
 **Restore a logical export** (format 2) into the service's database:
 
@@ -419,13 +442,14 @@ producers retry with the new key on their next call.
 ## Retention
 
 Nothing is deleted automatically. `processed` means acted on, not removed.
-To purge, export first, then delete inside the container with an explicit
-predicate, as root because the image runs unprivileged (the `sqlite` package
-lasts until the container is recreated), for example rows processed more than
-a year ago:
+To purge, export first, then delete with an explicit predicate from a
+throwaway container that mounts the service's volume (the image has no shell
+and no `sqlite3`), for example rows processed more than a year ago. It is
+safe while the service runs (WAL mode, a 5 s busy timeout); the final
+`chown` keeps any file it created writable by the service's uid:
 
 ```bash
-docker compose exec -u root agentfeedback sh -c 'apk add --no-cache sqlite >/dev/null && sqlite3 /data/agentfeedback.db "DELETE FROM submissions WHERE processed_at < (strftime(\"%s\",\"now\")-31536000)*1000000"'
+docker run --rm --volumes-from "$(docker compose ps -q agentfeedback)" alpine:3.24.1 sh -c 'apk add --no-cache sqlite >/dev/null && sqlite3 -cmd ".timeout 5000" /data/agentfeedback.db "DELETE FROM submissions WHERE processed_at < (unixepoch() - 31536000) * 1000000"; s=$?; chown 10001:10001 /data/agentfeedback.db*; exit $s'
 ```
 
 Client spools live in `~/.cache/agentfeedback/spool/` on each producer and

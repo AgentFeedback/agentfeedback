@@ -38,8 +38,9 @@ conformance/                    the executable contract: decode fixtures, hash v
 
 Go toolchain and module versions are pinned in `go.mod`. Tools: `just`,
 `shellcheck`, `python3`, `uv` and `npx` (contract gate), Docker with buildx
-(compose stack, image, `just image-push`); GoReleaser at the version
-[releases.md](releases.md) pins, for the release step only.
+(compose stack, image); GoReleaser at the version
+[releases.md](releases.md) pins, for the release step only, which also builds
+and pushes the image.
 
 ## Commands
 
@@ -54,7 +55,7 @@ just skills         # regenerate the checked-in skill renders: skills/agentfeedb
 just e2e            # live contract suite against a fresh `serve` on a temporary database (scripts/gate-e2e.sh, port 18080, E2E_ADDR overrides)
 just run-local      # serve on 127.0.0.1:8090 with a database in ./local/
 just playbooks <tag> [github|tree|<release-dir>]  # both install playbooks in a clean Linux container (Docker, privileged for systemd); `just release` runs it
-just image-push <tag>...                      # multi-arch image to ghcr.io/agentfeedback/agentfeedback; release step only
+just docker-build                             # the image from source, tagged agentfeedback (the published image comes from the release step)
 just release-check <tag> <title> <notes.md>   # every release precondition and a snapshot build; publishes nothing
 just release <tag> <title> <notes.md>         # publish a release (maintainers; releases.md)
 bash scripts/e2e.sh <API_KEY> [BASE_URL]      # live v1 contract suite against a running service; creates rows

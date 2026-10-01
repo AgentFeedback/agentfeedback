@@ -50,5 +50,5 @@ docker compose up -d --wait --remove-orphans
 REMOTE
 
 echo "==> Readiness"
-ssh -- "$DEPLOY_REMOTE" 'curl --fail --silent --show-error --retry 10 --retry-connrefused --retry-delay 1 --max-time 5 http://127.0.0.1:8090/ready' \
+ssh -- "$DEPLOY_REMOTE" 'curl --fail --silent --show-error --retry 60 --retry-all-errors --retry-delay 1 --max-time 5 http://127.0.0.1:8090/ready' \
   && echo && echo "==> Deployed $IMAGE"

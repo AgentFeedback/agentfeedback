@@ -1,12 +1,20 @@
 # syntax=docker/dockerfile:1
+# One Dockerfile, two sources for the binary, one runtime stage. By default the
+# binary is compiled from source (the local Compose stack, `just docker-build`).
+# The release step builds the image through GoReleaser (.goreleaser.yaml), which
+# passes BINARY_FROM=prebuilt and a build context holding its own binaries at
+# linux/<arch>/agentfeedback, so the published image carries the release
+# archive's binary byte for byte. BuildKit builds only the stage selected.
+ARG BINARY_FROM=source
+
 # Build on the BuildKit builder platform and cross-compile the static binary for
 # the target image platform. CGO stays off: the SQLite driver is pure Go.
-FROM --platform=$BUILDPLATFORM golang:1.27.1-bookworm AS build
+FROM --platform=$BUILDPLATFORM golang:1.27.1-bookworm AS source
 
 ARG TARGETOS
 ARG TARGETARCH
-# VERSION and COMMIT come from `just docker-build` and `just image-push`
-# (git describe and git rev-parse); `agentfeedback version` reports them.
+# VERSION and COMMIT come from `just docker-build` (git describe without the
+# leading v, and git rev-parse); `agentfeedback version` reports them.
 ARG VERSION
 ARG COMMIT
 
@@ -18,27 +26,28 @@ RUN go mod download
 COPY ./ ./
 
 RUN GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
-    go build -trimpath -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT}" -o /opt/agentfeedback ./cmd/agentfeedback
+    go build -trimpath -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT}" -o /out/agentfeedback ./cmd/agentfeedback
 
-# Alpine supplies the runtime curl used by the Compose readiness healthcheck,
-# CA roots, timezone data, and a non-root service account.
-FROM alpine:3.24.1
+FROM scratch AS prebuilt
+ARG TARGETPLATFORM
+COPY $TARGETPLATFORM/agentfeedback /out/agentfeedback
 
-RUN apk add --no-cache ca-certificates curl tzdata \
-    && addgroup -S -g 10001 agentfeedback \
-    && adduser -S -u 10001 -G agentfeedback agentfeedback \
-    && mkdir -p /data \
-    && chown agentfeedback:agentfeedback /data
+FROM ${BINARY_FROM} AS binary
 
-COPY --from=build /opt/agentfeedback /opt/agentfeedback
+# Distroless static: CA roots, timezone data, no shell and no package manager.
+# Pinned by the digest of the multi-platform index.
+FROM gcr.io/distroless/static-debian13@sha256:58133991db06659feaabe0f4e97a35cebf15ef4ea08f8a4c6d2ee5f75e4aa6a0
 
-# The database lives on a volume. /data is owned by the service account so a
-# freshly created named volume (which inherits the image's ownership) is
-# writable without any host-side chown.
+COPY --from=binary /out/agentfeedback /opt/agentfeedback
+
+# The service runs as uid 10001, as every earlier image did, so an existing
+# named volume stays writable. WORKDIR after USER creates /data owned by that
+# uid, and a freshly created named volume inherits the ownership.
+USER 10001:10001
+WORKDIR /data
 VOLUME /data
 ENV DATABASE_PATH=/data/agentfeedback.db
 
-USER agentfeedback
 EXPOSE 8080
 ENTRYPOINT ["/opt/agentfeedback"]
 CMD ["serve"]

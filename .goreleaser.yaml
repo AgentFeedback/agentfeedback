@@ -55,6 +55,42 @@ checksum:
   algorithm: sha256
   ids: [agentfeedback]
 
+# The container image: the linux binaries above copied into the runtime stage
+# of the repository's Dockerfile (BINARY_FROM=prebuilt). dockers_v2 builds and
+# pushes in the publish phase only, before the GitHub release is created; a
+# snapshot builds one local image per platform, its tags suffixed -amd64 and
+# -arm64. Tags: the version without the v, the full commit SHA, and latest for
+# a stable release.
+dockers_v2:
+  - id: agentfeedback
+    ids: [agentfeedback]
+    dockerfile: Dockerfile
+    images:
+      - ghcr.io/agentfeedback/agentfeedback
+    tags:
+      - "{{ .Version }}"
+      - "{{ .FullCommit }}"
+      - "{{ if and (not .Prerelease) (not .IsSnapshot) }}latest{{ end }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    build_args:
+      BINARY_FROM: prebuilt
+    # Image attestations (SBOM, signature) are a follow-up; buildx adds its
+    # default provenance only.
+    sbom: false
+    labels:
+      org.opencontainers.image.title: "{{ .ProjectName }}"
+      org.opencontainers.image.source: https://github.com/AgentFeedback/agentfeedback
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.licenses: MIT
+    annotations:
+      "index,manifest:org.opencontainers.image.source": https://github.com/AgentFeedback/agentfeedback
+      "index,manifest:org.opencontainers.image.version": "{{ .Version }}"
+      "index,manifest:org.opencontainers.image.revision": "{{ .FullCommit }}"
+      "index,manifest:org.opencontainers.image.licenses": MIT
+
 changelog:
   disable: true
 

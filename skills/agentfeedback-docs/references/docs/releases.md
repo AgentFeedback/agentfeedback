@@ -24,17 +24,23 @@ GoReleaser 2.18.2 exactly (the `v2.18.2` archive from
 github.com/goreleaser/goreleaser/releases, or `brew install goreleaser` while
 2.18.2 is Homebrew's version; `just release` refuses any other version,
 because the archives are only reproducible with the same one), Docker with
-buildx logged in to `ghcr.io` and allowed to run a privileged container (the
-playbook gate runs systemd in one), and an authenticated GitHub CLI (`gh`) with
-write access to the repository and its tags. There is no hosted CI: every
+buildx logged in to `ghcr.io` (push access to the
+`agentfeedback/agentfeedback` package), able to build and run `linux/amd64`
+and `linux/arm64` images (on a machine of the other architecture, QEMU
+emulation: `docker run --privileged --rm tonistiigi/binfmt --install all`;
+`docker buildx ls` lists the platforms) and allowed to run a privileged
+container (the playbook gate runs systemd in one), `curl`, and an
+authenticated GitHub CLI (`gh`) with write access to the repository and its
+tags. There is no hosted CI: every
 check runs on the releasing machine.
 
 ### Tags
 
 - `vX.Y.Z`: a stable release, marked `latest` on GitHub, image tags
-  `X.Y.Z`, the commit SHA and `latest`.
+  `X.Y.Z`, the full commit SHA and `latest`.
 - `vX.Y.Z-rc.N`: a pre-release, published as a public GitHub release flagged
-  pre-release and never `latest`, image tags `X.Y.Z-rc.N` and the commit SHA.
+  pre-release and never `latest`, image tags `X.Y.Z-rc.N` and the full commit
+  SHA.
   It exists to verify the release assets, the installer and the install
   playbooks before the stable tag: `just playbooks vX.Y.Z-rc.N` runs both
   playbooks against the published pre-release, downloaded as an agent
@@ -78,24 +84,30 @@ flags.
    exists, that `origin` is this repository, a clean `main` equal to
    `origin/main`, that the tag exists neither locally nor on `origin`, that
    `gh` can push, `goreleaser check`, and `just ci`. The preflight then builds
-   a snapshot of all six targets into `dist/release/`, verifies its checksums
-   and stops. `just release` instead builds the release against a local tag
+   a snapshot of all six targets into `dist/release/`, verifies its checksums,
+   builds the two snapshot images and smoke-tests them (each platform's binary
+   prints the snapshot version, and the image started with no arguments
+   answers `/ready`), and stops. `just release` instead builds the release against a local tag
    (`goreleaser release --skip=publish`), checks it and runs both install
    playbooks against it in a clean container (`just playbooks <tag>
    dist/release`, [develop.md](develop.md#verification-before-you-are-done),
    with every `AF_PLAYBOOK_*` answer unset: no exposure, the default
    harness; run `AF_PLAYBOOK_ADDRESS=0.0.0.0 just playbooks <tag> tree`
-   beforehand to cover the exposure branch);
+   beforehand to cover the exposure branch), then builds and smoke-tests the
+   snapshot images as the preflight does, because GoReleaser builds the
+   published images only while publishing;
    only then does it push the annotated tag with an absence lease, so a
    build or playbook defect leaves nothing public and the local tag is
-   removed. GoReleaser then rebuilds and uploads
-   the release, which stays a draft until every asset is up. The script
+   removed. GoReleaser then rebuilds, pushes the
+   image (one multi-platform index under every tag above) and uploads the
+   release, which stays a draft until every asset is up. The script
    verifies it as a downloader sees it: not a draft, flagged pre-release
    exactly when the tag is one, `latest` exactly when it is stable, exactly
    the assets above, `SHA256SUMS` byte-identical to the local build's,
    `install.sh` identical to the committed one, and every downloaded archive
-   matching `SHA256SUMS`. Last, it pushes the image (`just image-push`, tags
-   as above) and prints the release URL. Deploy the SHA or the version tag,
+   matching `SHA256SUMS`; then the image as a puller sees it: every tag names
+   the same index, which holds `linux/amd64` and `linux/arm64`, and each
+   platform's binary prints the version. Last, it prints the release URL. Deploy the SHA or the version tag,
    never `latest`.
 
 ### Verifying a release
@@ -138,23 +150,39 @@ the cause and run it again. After the push, inspect the remote tag, the
 GitHub release and the image tags on GHCR before doing anything, and never
 force-move or delete the published tag:
 
-- **No release, or a draft** (GoReleaser failed before publishing): on a
+- **No release, or a draft** (GoReleaser failed before publishing, the
+  image push included; it runs before the release is created): on a
   clean checkout of the tagged commit, rerun GoReleaser with the same title.
   It finds the draft by its name, `vX.Y.Z: <title>`, keeps its notes and
-  replaces any asset already uploaded with its byte-identical rebuild:
+  replaces any asset already uploaded with its byte-identical rebuild, and
+  pushes the image tags again:
 
   ```bash
   export GOTOOLCHAIN=$(awk '$1 == "toolchain" { print $2 }' go.mod) GORELEASER_CURRENT_TAG=vX.Y.Z RELEASE_TITLE='Release name'
   GITHUB_TOKEN=$(gh auth token) goreleaser release --clean --release-notes /path/to/notes.md
   ```
 
-- **A published release** (a later check or the image push failed): do not
-  run GoReleaser again; it would try to create a second release. Run the
-  checks of [Verifying a release](#verifying-a-release), confirm the state
-  with `gh release view vX.Y.Z --json isDraft,isPrerelease,assets`, and fix
-  the release on GitHub by hand if a check failed.
-- **No image**: `just image-push X.Y.Z <sha>` from the tagged commit, adding
-  `latest` for a stable release.
+- **A published release** (a later check failed): do not run GoReleaser
+  again; it would try to create a second release. Run the checks of
+  [Verifying a release](#verifying-a-release), confirm the state with
+  `gh release view vX.Y.Z --json isDraft,isPrerelease,assets` and the image
+  with `docker buildx imagetools inspect ghcr.io/agentfeedback/agentfeedback:X.Y.Z`,
+  and fix the release on GitHub by hand if a check failed.
+- **A published release whose image check failed**: GoReleaser pushed the
+  image before it created the release, so the image exists. A tag that is
+  missing or names another index is repointed at the version's index, which
+  holds the release's binaries:
+
+  ```bash
+  docker buildx imagetools create -t ghcr.io/agentfeedback/agentfeedback:<sha> ghcr.io/agentfeedback/agentfeedback:X.Y.Z
+  docker buildx imagetools create -t ghcr.io/agentfeedback/agentfeedback:latest ghcr.io/agentfeedback/agentfeedback:X.Y.Z   # stable only
+  ```
+
+  Then repeat the checks: `imagetools inspect` on each tag shows one digest
+  with `linux/amd64` and `linux/arm64`, and
+  `docker run --rm --pull always --platform linux/<arch> ghcr.io/agentfeedback/agentfeedback:X.Y.Z version`
+  prints `X.Y.Z` on both. A version index that lacks a platform or whose
+  binary fails is a defect of the release: cut a new version.
 
 The notes file from step 3 is uncommitted, so it does not exist on another
 machine: recovering there means rebuilding it from this file's section for

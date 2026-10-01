@@ -1,5 +1,7 @@
 # Local stack: one service, one volume. The database is a file on the
 # agentfeedback-data volume; there is nothing else to run.
+# The image is distroless (no shell, no curl), so it carries no healthcheck:
+# check readiness from the host with GET /ready on the published port.
 services:
   agentfeedback:
     build:
@@ -16,12 +18,6 @@ services:
       DATABASE_PATH: /data/agentfeedback.db
     volumes:
       - agentfeedback-data:/data
-    healthcheck:
-      test: ["CMD-SHELL", "curl --fail --silent --show-error http://127.0.0.1:8080/ready >/dev/null"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-      start_period: 10s
 
 volumes:
   agentfeedback-data:

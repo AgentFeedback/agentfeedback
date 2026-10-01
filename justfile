@@ -125,27 +125,17 @@ ci:
     shellcheck -x scripts/*.sh
     just contract
 
-# Build the Docker image tagged agentfeedback.
+# Build the Docker image tagged agentfeedback from source. The published image is built by the release step (GoReleaser).
 docker-build:
     #!/usr/bin/env bash
     set -euo pipefail
+    version=$(git describe --tags --match 'v[0-9]*' --dirty --always)
     docker build \
-        --build-arg VERSION="$(git describe --tags --match 'v[0-9]*' --dirty --always)" \
+        --build-arg VERSION="${version#v}" \
         --build-arg COMMIT="$(git rev-parse HEAD)" \
         -t agentfeedback .
 
-# Build the multi-arch image and push it to GHCR under every tag given. Release step only; needs `docker login ghcr.io`.
-image-push +tags:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    args=()
-    for t in {{tags}}; do args+=(-t "ghcr.io/agentfeedback/agentfeedback:$t"); done
-    docker buildx build --platform linux/amd64,linux/arm64 \
-        --build-arg VERSION="$(git describe --tags --match 'v[0-9]*' --dirty --always)" \
-        --build-arg COMMIT="$(git rev-parse HEAD)" \
-        --push "${args[@]}" .
-
-# Publish a release of the pushed main: gates, tag, GoReleaser upload, verification, image. Maintainers only; docs/releases.md.
+# Publish a release of the pushed main: gates, tag, GoReleaser upload of the release and the image, verification. Maintainers only; docs/releases.md.
 [positional-arguments]
 [no-cd]
 release tag title notes:
