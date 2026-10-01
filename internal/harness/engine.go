@@ -58,6 +58,7 @@ func (a Item) same(b Item) bool {
 type HarnessRecord struct {
 	Mode     string `json:"mode"`
 	Reminder bool   `json:"reminder"`
+	Docs     bool   `json:"docs"`
 	Items    []Item `json:"items"`
 }
 
@@ -231,7 +232,7 @@ func (p *plan) load(path string) (*fileState, error) {
 	case err != nil:
 		return nil, &FileError{Path: path, Err: err}
 	case info.Mode()&fs.ModeSymlink != 0:
-		return nil, symlinkRefusal(path)
+		return nil, p.symlinkRefusal(path)
 	case !info.Mode().IsRegular():
 		return nil, &Refusal{Problem: path + " is not a regular file", Next: "replace it with a regular file or remove it"}
 	default:
@@ -249,10 +250,13 @@ func (p *plan) load(path string) (*fileState, error) {
 
 // symlinkRefusal refuses a symbolic link: a linked skill is removed, a
 // linked configuration file is wired by hand or replaced by its target.
-func symlinkRefusal(path string) error {
+func (p *plan) symlinkRefusal(path string) error {
 	next := "wire this harness by hand from the table in docs/operate.md, or replace the link with the file it points to"
 	switch filepath.Base(path) {
-	case "SKILL.md", "agentfeedback", "agentfeedback.js", "agentfeedback.ts":
+	case "SKILL.md", "agentfeedback", "agentfeedback-docs", "agentfeedback.js", "agentfeedback.ts":
+		next = "remove it, then run agentfeedback install again"
+	}
+	if p.env.skillRootOf(path) != "" {
 		next = "remove it, then run agentfeedback install again"
 	}
 
@@ -279,6 +283,9 @@ func (p *plan) present(it Item) (bool, error) {
 		known, url, exists := p.claudeEntry()
 
 		return !known || (exists && (it.URL == "" || url == it.URL)), nil
+	}
+	if it.Kind == KindSkillFile && p.env.symlinkedAncestor(it.File) != "" {
+		return false, nil
 	}
 	f, err := p.load(it.File)
 	if err != nil || !f.present {
@@ -402,6 +409,16 @@ func (p *plan) remove(s *step, it Item, uninstall bool) error {
 
 		return nil
 	}
+	if it.Kind == KindSkillFile {
+		if link := p.env.symlinkedAncestor(it.File); link != "" {
+			if !uninstall {
+				return p.symlinkRefusal(link)
+			}
+			p.notes[s.name] = append(p.notes[s.name], link+" is a symbolic link; "+it.File+" is left in place")
+
+			return nil
+		}
+	}
 	f, err := p.load(it.File)
 	if err != nil {
 		return err
@@ -518,14 +535,16 @@ func (p *plan) add(s *step, it *Item) error {
 	case KindSkillFile, KindPluginFile:
 		dir := it.File
 		what := "a file named " + filepath.Base(it.File)
+		ours := p.owned[it.File]
 		if it.Kind == KindSkillFile {
-			dir = filepath.Dir(it.File)
-			what = "an agentfeedback skill directory"
+			dir = p.skillRoot(s.name, it.File)
+			what = "an " + filepath.Base(dir) + " skill directory"
+			if link := p.env.symlinkedAncestor(it.File); link != "" {
+				return p.symlinkRefusal(link)
+			}
+			ours = p.ownsBelow(dir)
 		}
-		if info, err := os.Lstat(dir); err == nil && it.Kind == KindSkillFile && info.Mode()&fs.ModeSymlink != 0 {
-			return symlinkRefusal(dir)
-		}
-		if _, err := os.Lstat(dir); err == nil && !p.owned[it.File] && !p.ourEmptyDir(dir) {
+		if _, err := os.Lstat(dir); err == nil && !ours && !p.ourEmptyDir(dir) {
 			return foreign(dir, what)
 		}
 		if f.present && !p.owned[it.File] {
@@ -595,6 +614,64 @@ func (p *plan) add(s *step, it *Item) error {
 	f.cur, f.present = out, true
 
 	return nil
+}
+
+// skillRoot is the skill directory holding file: the entry of the harness's
+// skills directory that file lies beneath (agentfeedback for SKILL.md,
+// agentfeedback-docs for the docs skill's files).
+func (p *plan) skillRoot(harness, file string) string {
+	skills := p.env.skillsDir(harness)
+	rel, err := filepath.Rel(skills, file)
+	if err != nil || rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return filepath.Dir(file)
+	}
+	first, _, _ := strings.Cut(rel, string(filepath.Separator))
+
+	return filepath.Join(skills, first)
+}
+
+// skillRootOf is the skill directory path is or lies beneath: the entry of
+// any harness's skills directory holding it, or "" outside every one.
+func (e Env) skillRootOf(path string) string {
+	sep := string(filepath.Separator)
+	for _, n := range names {
+		skills := e.skillsDir(n)
+		if rel, ok := strings.CutPrefix(path, skills+sep); ok && rel != "" {
+			first, _, _ := strings.Cut(rel, sep)
+
+			return filepath.Join(skills, first)
+		}
+	}
+
+	return ""
+}
+
+// symlinkedAncestor is the first symbolic link among file's directories,
+// from its parent up to and including its skill root, or "".
+func (e Env) symlinkedAncestor(file string) string {
+	root := e.skillRootOf(file)
+	if root == "" {
+		root = filepath.Dir(file)
+	}
+	for d := filepath.Dir(file); ; d = filepath.Dir(d) {
+		if info, err := os.Lstat(d); err == nil && info.Mode()&fs.ModeSymlink != 0 {
+			return d
+		}
+		if d == root || filepath.Dir(d) == d {
+			return ""
+		}
+	}
+}
+
+// ownsBelow reports whether the manifest records a file beneath dir.
+func (p *plan) ownsBelow(dir string) bool {
+	for f := range p.owned {
+		if strings.HasPrefix(f, dir+string(filepath.Separator)) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // ourEmptyDir reports whether dir is an empty directory the manifest
@@ -680,7 +757,7 @@ func (p *plan) install(name string, o Options) error {
 		}
 		final[i] = it
 	}
-	s.record = &HarnessRecord{Mode: o.Mode, Reminder: o.Reminder && o.Mode == ModeCLI, Items: final}
+	s.record = &HarnessRecord{Mode: o.Mode, Reminder: o.Reminder && o.Mode == ModeCLI, Docs: o.Docs, Items: final}
 	p.man.Harnesses[name] = s.record
 
 	return nil
@@ -704,6 +781,12 @@ func (p *plan) uninstall(name string) error {
 	// are all gone already, so no file record or backup outlives them.
 	for _, it := range old.Items {
 		if it.File == "" || p.man.Files[it.File] == nil {
+			continue
+		}
+		// A file reached through a link is left in place and forgotten.
+		if it.Kind == KindSkillFile && p.env.symlinkedAncestor(it.File) != "" {
+			delete(p.man.Files, it.File)
+
 			continue
 		}
 		f, err := p.load(it.File)
@@ -844,6 +927,7 @@ type HarnessStatus struct {
 	MCP      string   `json:"mcp"`
 	Hook     string   `json:"hook"`
 	Reminder string   `json:"reminder"`
+	Docs     string   `json:"docs"`
 	Notes    []string `json:"notes,omitempty"`
 }
 
@@ -1043,9 +1127,9 @@ func (e Env) apply(p *plan, applied *Manifest, mpath string, req Request, w *wri
 		rec := applied.Harnesses[s.name]
 		if rec != nil {
 			oldItems = slices.Clone(rec.Items)
-			rec = &HarnessRecord{Mode: rec.Mode, Reminder: rec.Reminder, Items: slices.Clone(rec.Items)}
+			rec = &HarnessRecord{Mode: rec.Mode, Reminder: rec.Reminder, Docs: rec.Docs, Items: slices.Clone(rec.Items)}
 		} else if s.record != nil {
-			rec = &HarnessRecord{Mode: s.record.Mode, Reminder: s.record.Reminder}
+			rec = &HarnessRecord{Mode: s.record.Mode, Reminder: s.record.Reminder, Docs: s.record.Docs}
 		} else {
 			rec = &HarnessRecord{}
 		}
@@ -1379,13 +1463,13 @@ func (p *plan) statuses(namesWanted []string) []HarnessStatus {
 }
 
 func (p *plan) status(name string) HarnessStatus {
-	hs := HarnessStatus{Name: name, Mode: "-", Skill: "-", MCP: "-", Hook: "-", Reminder: "-"}
+	hs := HarnessStatus{Name: name, Mode: "-", Skill: "-", MCP: "-", Hook: "-", Reminder: "-", Docs: "-"}
 	rec := p.man.Harnesses[name]
 	if rec == nil {
 		return hs
 	}
 	hs.Mode = rec.Mode
-	col := map[string]*string{RoleSkill: &hs.Skill, RoleMCP: &hs.MCP, RoleHook: &hs.Hook, RoleReminder: &hs.Reminder}
+	col := map[string]*string{RoleSkill: &hs.Skill, RoleMCP: &hs.MCP, RoleHook: &hs.Hook, RoleReminder: &hs.Reminder, RoleDocs: &hs.Docs}
 	for _, it := range rec.Items {
 		c := col[it.Role]
 		ok, err := p.present(it)

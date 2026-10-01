@@ -351,6 +351,30 @@ func errSkillForm(form string, known []string) error {
 		"run agentfeedback skill -h to list them")
 }
 
+func errSkillDocsNeedsOut() error {
+	return usageErr("skill render docs writes a directory and needs --out", "pass --out with a new or empty directory")
+}
+
+func errSkillDocsServer() error {
+	return usageErr("--server does not apply to skill render docs", "remove --server and run it again")
+}
+
+func errSkillOutOnlyDocs() error {
+	return usageErr("--out only applies to skill render docs; the other forms print on stdout", "remove --out and redirect stdout to a file")
+}
+
+func errSkillOutNotEmpty(dir string) error {
+	return failErr(fmt.Sprintf("--out %s exists and is not an empty directory", dir), "give a new or empty --out directory")
+}
+
+func errSkillOutDir(dir string, err error) error {
+	return failErr(fmt.Sprintf("cannot create %s: %v", dir, err), "check the directory is writable")
+}
+
+func errSkillOutWrite(path string, err error) error {
+	return failErr(fmt.Sprintf("cannot write %s: %v", path, err), "check the directory is writable")
+}
+
 func errSkillVerb(verb string) error {
 	return usageErr(fmt.Sprintf("unknown skill subcommand %q; the subcommands are render and reminder", verb),
 		"use agentfeedback "+skillSynopsis)
@@ -604,10 +628,6 @@ func errInstallWindows(command string) error {
 func errInstallHarness(name string, known []string) error {
 	return usageErr(fmt.Sprintf("unknown harness %q; the harnesses are %s", name, strings.Join(known, ", ")),
 		"pass all or one of those names")
-}
-
-func errInstallDocs() error {
-	return usageErr("the docs skill is not available in this release yet", "run agentfeedback install without --docs")
 }
 
 func errInstallNoneDetected() error {

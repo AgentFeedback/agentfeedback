@@ -5,6 +5,7 @@ bin/
 docs/
 !docs/embed.go
 !docs/openapi.yaml
+!docs/*.md
 infra/
 scripts/
 skills/

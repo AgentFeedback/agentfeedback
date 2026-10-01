@@ -48,16 +48,20 @@ fuzz:
     go test -run='^$' -fuzz='^FuzzDecode$' -fuzztime=30s ./pkg/envelope
 
 # The checked-in skill renders: `just skills` writes them, `just ci` checks them.
-skill_renders := "skills/agentfeedback/SKILL.md"
+skill_renders := "skills/agentfeedback/SKILL.md skills/agentfeedback-docs"
 
-# Regenerate every checked-in skill render from internal/skillgen/source. Never edit a render by hand.
+# Regenerate every checked-in skill render from internal/skillgen/source and the embedded reference files. Never edit a render by hand.
 skills: build
     #!/usr/bin/env bash
     set -euo pipefail
     tmp=$(mktemp)
-    trap 'rm -f "$tmp"' EXIT
+    tmpd=$(mktemp -d)
+    trap 'rm -f "$tmp"; rm -rf "$tmpd"' EXIT
     ./bin/agentfeedback skill render skill-md > "$tmp"
+    ./bin/agentfeedback skill render docs --out "$tmpd/out"
     cp "$tmp" skills/agentfeedback/SKILL.md
+    rm -rf skills/agentfeedback-docs
+    cp -R "$tmpd/out" skills/agentfeedback-docs
 
 # Run locally against a database in ./local (created on demand).
 run-local: build
@@ -91,13 +95,14 @@ ci:
     fi
     just staticcheck
     just build-all
-    if ! git diff --quiet -- {{skill_renders}}; then
+    if [ -n "$(git status --porcelain -- {{skill_renders}})" ]; then
         echo "just ci: a generated skill render has uncommitted edits; renders are never edited by hand: move the change into internal/skillgen/source" >&2
-        git diff --stat -- {{skill_renders}} >&2
+        git status --short -- {{skill_renders}} >&2
         exit 1
     fi
     just skills
-    if ! git diff --exit-code --stat -- {{skill_renders}}; then
+    if [ -n "$(git status --porcelain -- {{skill_renders}})" ]; then
+        git status --short -- {{skill_renders}} >&2
         echo "just ci: a checked-in skill render differs from its source; edit internal/skillgen/source, run just skills and commit both" >&2
         exit 1
     fi

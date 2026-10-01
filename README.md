@@ -14,7 +14,7 @@ Two parts:
 | Part | What it is | Where |
 |---|---|---|
 | **The service** | HTTP API that stores write-once submissions (frictions, review runs, events) and a processed mark | this repository, one binary |
-| **Two skills** | `agentfeedback`: submit and read, installed for every harness on every machine. `agentfeedback-triage`: process the queue, only when the user invokes it (`/agentfeedback-triage`) | [`skills/`](skills/) |
+| **Three skills** | `agentfeedback`: submit and read, installed for every harness on every machine. `agentfeedback-triage`: process the queue, only when the user invokes it (`/agentfeedback-triage`). `agentfeedback-docs`: the reference docs, schemas and OpenAPI document, generated, for agents that integrate with or operate the service | [`skills/`](skills/) |
 
 ## Start here
 
@@ -23,6 +23,7 @@ Two parts:
 | Install the skill and file feedback from an agent | [`skills/agentfeedback` at v3.0.0](https://github.com/AgentFeedback/agentfeedback/tree/v3.0.0/skills/agentfeedback) (the bash client of the running v3.0.0 release) |
 | Triage the queue | [`skills/agentfeedback-triage/SKILL.md`](skills/agentfeedback-triage/SKILL.md) |
 | Call the API directly | [`docs/api.md`](docs/api.md) |
+| Give an agent the reference docs, schemas and OpenAPI document (integrate, operate) | [`skills/agentfeedback-docs/SKILL.md`](skills/agentfeedback-docs/SKILL.md) (installed by `agentfeedback install --docs`) |
 | Run, deploy, back up, migrate | [`docs/operate.md`](docs/operate.md) |
 | Uninstall the skills or the service | [`docs/operate.md#uninstall`](docs/operate.md#uninstall) |
 | Change the code | [`AGENTS.md`](AGENTS.md) then [`docs/develop.md`](docs/develop.md) |

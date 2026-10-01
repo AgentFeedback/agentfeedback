@@ -1,9 +1,11 @@
 # AgentFeedback: working in this repo
 
 Go + SQLite HTTP service that stores write-once feedback from AI coding agents
-(frictions, review runs, events) plus two skills: `agentfeedback`
-(submit/read, Bash, installed everywhere) and `agentfeedback-triage` (process
-the queue, Bash plus an optional Python helper; user-invoked only).
+(frictions, review runs, events) plus three skills: `agentfeedback`
+(submit/read, Bash, installed everywhere), `agentfeedback-triage` (process
+the queue, Bash plus an optional Python helper; user-invoked only) and
+`agentfeedback-docs` (generated reference docs, schemas and OpenAPI document
+for integrators and operators; `skill render docs`).
 Harness-neutral: this is the only agent instructions file (no `CLAUDE.md` or
 `GEMINI.md`); Claude Code loads it when no `CLAUDE.md` exists.
 

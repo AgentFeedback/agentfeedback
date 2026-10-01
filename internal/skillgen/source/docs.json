@@ -1,0 +1,7 @@
+{
+  "name": "agentfeedback-docs",
+  "title": "AgentFeedback reference docs",
+  "description": "Reference docs, JSON Schemas and the OpenAPI document of AgentFeedback. Load when integrating with the AgentFeedback HTTP API, writing a producer or client, validating submissions against the schemas or the OpenAPI document, operating, deploying or backing up the server, or installing the client. To file a friction report, use the agentfeedback skill instead.",
+  "version": "1.0",
+  "license": "MIT"
+}

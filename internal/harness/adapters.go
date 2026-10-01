@@ -39,6 +39,7 @@ const (
 	RoleMCP      = "mcp"
 	RoleHook     = "hook"
 	RoleReminder = "reminder"
+	RoleDocs     = "docs"
 )
 
 // Env is everything the package reads from the machine; tests replace each
@@ -199,8 +200,8 @@ func (e Env) Detect(name string) string {
 	return "no"
 }
 
-// SkillPath is the SKILL.md install writes for the harness.
-func (e Env) SkillPath(name string) string {
+// skillsDir is the directory the harness reads skills from.
+func (e Env) skillsDir(name string) string {
 	var dir string
 	switch name {
 	case "claude-code":
@@ -217,8 +218,23 @@ func (e Env) SkillPath(name string) string {
 		dir = filepath.Join(e.Home, ".pi", "agent", "skills")
 	}
 
-	return filepath.Join(dir, "agentfeedback", "SKILL.md")
+	return dir
 }
+
+// SkillPath is the SKILL.md install writes for the harness.
+func (e Env) SkillPath(name string) string {
+	return filepath.Join(e.skillsDir(name), "agentfeedback", "SKILL.md")
+}
+
+// DocsDir is the agentfeedback-docs skill directory install --docs writes
+// for the harness.
+func (e Env) DocsDir(name string) string {
+	return filepath.Join(e.skillsDir(name), "agentfeedback-docs")
+}
+
+// docsFiles is the docs skill tree; a variable so tests can stand in for
+// another binary's version of it.
+var docsFiles = skillgen.Docs
 
 func jsonString(s string) []byte {
 	var buf bytes.Buffer
@@ -264,13 +280,32 @@ type desire struct {
 type Options struct {
 	Mode     string
 	Reminder bool
-	Server   string
-	Binary   string
+	// Docs adds the agentfeedback-docs skill, in either mode.
+	Docs   bool
+	Server string
+	Binary string
 }
 
 // desired computes the items for name; files are read through p so the
 // choice of an OpenCode config file sees the planned state.
 func (p *plan) desired(name string, o Options) (desire, error) {
+	d, err := p.wiring(name, o)
+	if err != nil || !o.Docs {
+		return d, err
+	}
+	files, err := docsFiles()
+	if err != nil {
+		return d, err
+	}
+	for _, f := range files {
+		d.items = append(d.items, fileItem(KindSkillFile, RoleDocs, filepath.Join(p.env.DocsDir(name), filepath.FromSlash(f.Path)), f.Data))
+	}
+
+	return d, nil
+}
+
+// wiring is the skill and hook, or the MCP entry, of the mode.
+func (p *plan) wiring(name string, o Options) (desire, error) {
 	e := p.env
 	var d desire
 	flush := o.Binary + " flush --hook"
@@ -501,6 +536,29 @@ func (e Env) validateManifest(m *Manifest, mpath string) error {
 	for _, d := range ancestors(mpath, e.Home) {
 		dirs[d] = true
 	}
+	// The docs skill's files follow the binary's version, so any clean path
+	// beneath a docs directory is accepted, and so are its directories.
+	var docsDirs []string
+	for _, n := range names {
+		dd := e.DocsDir(n)
+		docsDirs = append(docsDirs, dd)
+		dirs[dd] = true
+		for _, d := range ancestors(dd, e.Home) {
+			dirs[d] = true
+		}
+	}
+	underDocs := func(x string) bool {
+		if !filepath.IsAbs(x) || filepath.Clean(x) != x {
+			return false
+		}
+		for _, dd := range docsDirs {
+			if strings.HasPrefix(x, dd+string(filepath.Separator)) {
+				return true
+			}
+		}
+
+		return false
+	}
 	bad := func(x string) error {
 		return &Refusal{
 			Problem: "the install manifest " + mpath + " names " + x + ", which agentfeedback install does not write under this environment",
@@ -509,21 +567,25 @@ func (e Env) validateManifest(m *Manifest, mpath string) error {
 	}
 	for _, n := range sortedKeys(m.Harnesses) {
 		for _, it := range m.Harnesses[n].Items {
-			if it.File != "" && !files[it.File] {
+			if it.File == "" || files[it.File] {
+				continue
+			}
+			// Only the docs skill's own files lie beneath a docs directory.
+			if !underDocs(it.File) || it.Kind != KindSkillFile || it.Role != RoleDocs {
 				return bad(it.File)
 			}
 		}
 	}
 	for _, path := range sortedKeys(m.Files) {
-		if !files[path] {
+		if !files[path] && !underDocs(path) {
 			return bad(path)
 		}
-		if b := m.Files[path].Backup; b != "" && !backups[b] {
+		if b := m.Files[path].Backup; b != "" && !backups[b] && (b != path+BackupSuffix || !underDocs(path)) {
 			return bad(b)
 		}
 	}
 	for _, d := range m.DirsCreated {
-		if !dirs[d] {
+		if !dirs[d] && !underDocs(d) {
 			return bad(d)
 		}
 	}

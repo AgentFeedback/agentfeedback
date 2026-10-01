@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	installSynopsis   = "install [all|<harness>...] [--server cloud|URL] [--mcp] [--with-reminder] [--dry-run] [--list] [--json]"
+	installSynopsis   = "install [all|<harness>...] [--server cloud|URL] [--mcp] [--with-reminder] [--docs] [--dry-run] [--list] [--json]"
 	uninstallSynopsis = "uninstall all|<harness>... [--dry-run] [--json]"
 )
 
@@ -116,7 +116,7 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 	fs := newFlagSet("install")
 	server := fs.String("server", "", "server the MCP entries point at: cloud or a base URL (default: url in config.toml, then the one recorded at the last install)")
 	mcp := fs.Bool("mcp", false, "add an MCP entry instead of the skill and the Stop hook")
-	docs := fs.Bool("docs", false, "also install the docs skill (not available in this release)")
+	docs := fs.Bool("docs", false, "also install the agentfeedback-docs skill (reference docs for integrators and operators)")
 	reminder := fs.Bool("with-reminder", false, "also add a session-start hook that prints a one-line reminder, where the harness supports one")
 	dryRun := fs.Bool("dry-run", false, "print what would change and change nothing")
 	list := fs.Bool("list", false, "list the harnesses and how they are wired, and change nothing")
@@ -136,9 +136,6 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 	}
 	if err := checkInstallSupported("install"); err != nil {
 		return printInstallOutcome(stdout, installOutcome{}, err)
-	}
-	if *docs {
-		return printInstallOutcome(stdout, installOutcome{}, errInstallDocs())
 	}
 	if err := checkHarnessNames(pos); err != nil {
 		return printInstallOutcome(stdout, installOutcome{}, err)
@@ -200,7 +197,7 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 	}
 	res, err := env.Run(harness.Request{
 		Harnesses: names,
-		Options:   harness.Options{Mode: mode, Reminder: *reminder, Server: srv, Binary: bin},
+		Options:   harness.Options{Mode: mode, Reminder: *reminder, Docs: *docs, Server: srv, Binary: bin},
 		DryRun:    *dryRun,
 	})
 	out := installOutcome{Status: res.Status, Harnesses: res.Harnesses, Changed: res.Changed, Backups: res.Backups}
@@ -367,9 +364,9 @@ func listHarnesses(env harness.Env, asJSON bool, stdout io.Writer) error {
 		return writeJSON(stdout, map[string][]harness.HarnessStatus{"harnesses": st})
 	}
 	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "HARNESS\tDETECTED\tMODE\tSKILL\tMCP\tHOOK\tREMINDER")
+	fmt.Fprintln(tw, "HARNESS\tDETECTED\tMODE\tSKILL\tMCP\tHOOK\tREMINDER\tDOCS")
 	for _, h := range st {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", h.Name, h.Detected, h.Mode, h.Skill, h.MCP, h.Hook, h.Reminder)
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", h.Name, h.Detected, h.Mode, h.Skill, h.MCP, h.Hook, h.Reminder, h.Docs)
 	}
 
 	return tw.Flush()

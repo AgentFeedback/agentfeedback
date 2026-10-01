@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -579,7 +580,6 @@ func TestInstall_CommandLine(t *testing.T) {
 		want string
 	}{
 		{[]string{"install", "vim"}, 2, `unknown harness "vim"`},
-		{[]string{"install", "pi", "--docs"}, 2, "the docs skill is not available in this release yet"},
 		{[]string{"uninstall"}, 2, "wrong number of arguments for uninstall"},
 		{[]string{"uninstall", "emacs"}, 2, `unknown harness "emacs"`},
 		{[]string{"install", "all", "--server", "cloud"}, 1, "no harness was detected"},
@@ -1383,5 +1383,181 @@ func TestInstall_SymlinkedPluginFile(t *testing.T) {
 	r, out := installRun(t, "install", "pi")
 	if r.code != 1 || fmt.Sprint(out["message"]) != link+" is a symbolic link; agentfeedback install edits only regular files; remove it, then run agentfeedback install again." {
 		t.Fatalf("%+v", r)
+	}
+}
+
+// docsTree is the docs skill as install --docs writes it, relative to its
+// directory, with the directories it holds.
+func docsTree(t *testing.T) map[string]string {
+	t.Helper()
+	files, err := skillgen.Docs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]string{}
+	for _, f := range files {
+		p := filepath.FromSlash(f.Path)
+		out[p] = string(f.Data)
+		for d := filepath.Dir(p); d != "."; d = filepath.Dir(d) {
+			out[d+"/"] = ""
+		}
+	}
+
+	return out
+}
+
+func harnessField(t *testing.T, out map[string]any, name, field string) any {
+	t.Helper()
+	hs, _ := out["harnesses"].([]any)
+	for _, h := range hs {
+		if m := h.(map[string]any); m["name"] == name {
+			return m[field]
+		}
+	}
+	t.Fatalf("no harness %s in %v", name, out)
+
+	return nil
+}
+
+func TestInstall_Docs(t *testing.T) {
+	dirs := map[string]string{"claude-code": filepath.Join(".claude", "skills", "agentfeedback-docs"), "codex": filepath.Join(".agents", "skills", "agentfeedback-docs")}
+	for _, name := range []string{"claude-code", "codex"} {
+		for _, mode := range []string{"cli", "mcp"} {
+			t.Run(name+"/"+mode, func(t *testing.T) {
+				e := newInstallEnv(t)
+				e.fakeClaude(t)
+				before := snapshot(t, e.home)
+				dir := filepath.Join(e.home, dirs[name])
+				args := []string{"install", name, "--server", "https://feedback.example.test"}
+				if mode == "mcp" {
+					args = append(args, "--mcp")
+				}
+				withDocs := append(slices.Clone(args), "--docs")
+
+				r, out := installRun(t, withDocs...)
+				if r.code != 0 || out["status"] != "installed" || harnessField(t, out, name, "docs") != "wired" {
+					t.Fatalf("install --docs: %+v", r)
+				}
+				got := snapshot(t, dir)
+				delete(got, "./")
+				sameTree(t, "docs skill", got, docsTree(t))
+				if m := readManifest(t, e); !m.Harnesses[name].Docs {
+					t.Error("the manifest does not record docs")
+				}
+				r = runCLI(t, "", "install", "--list", "--json")
+				var list map[string]any
+				if err := json.Unmarshal([]byte(lastLine(r.stdout)), &list); err != nil || harnessField(t, list, name, "docs") != "wired" {
+					t.Fatalf("list --json: %+v", r)
+				}
+				if r := runCLI(t, "", "install", "--list"); !strings.Contains(r.stdout, "REMINDER  DOCS") {
+					t.Errorf("list table: %q", r.stdout)
+				}
+				installed := snapshot(t, e.home)
+
+				r, out = installRun(t, withDocs...)
+				if r.code != 0 || out["status"] != "unchanged" {
+					t.Fatalf("second install: %+v", r)
+				}
+				sameTree(t, "second install", snapshot(t, e.home), installed)
+
+				// Without --docs the docs skill goes, directories and all.
+				r, out = installRun(t, args...)
+				if r.code != 0 || out["status"] != "installed" || harnessField(t, out, name, "docs") != "-" {
+					t.Fatalf("install without --docs: %+v", r)
+				}
+				if !strings.Contains(r.stderr, "changed "+filepath.Join(dir, "SKILL.md")) {
+					t.Errorf("the removal is not reported: %q", r.stderr)
+				}
+				if _, err := os.Stat(dir); !os.IsNotExist(err) {
+					t.Fatalf("docs skill left: %v", err)
+				}
+
+				if r, _ := installRun(t, withDocs...); r.code != 0 {
+					t.Fatalf("%+v", r)
+				}
+				if r, out := installRun(t, "uninstall", name); r.code != 0 || out["status"] != "uninstalled" {
+					t.Fatalf("uninstall: %+v", r)
+				}
+				sameTree(t, "after uninstall", snapshot(t, e.home), before)
+			})
+		}
+	}
+}
+
+func TestInstall_DocsForeignAndModified(t *testing.T) {
+	e := newInstallEnv(t)
+	e.seed(t)
+	dir := filepath.Join(e.home, ".claude", "skills", "agentfeedback-docs")
+	putFile(t, filepath.Join(dir, "SKILL.md"), "an older copy\n", 0o644)
+	before := snapshot(t, e.home)
+	r, out := installRun(t, "install", "claude-code", "--docs")
+	if r.code != 1 || fmt.Sprint(out["message"]) != dir+" already holds an agentfeedback-docs skill directory, which agentfeedback install did not write; remove or rename it, then run agentfeedback install again." {
+		t.Fatalf("%+v", r)
+	}
+	sameTree(t, "after a refusal", snapshot(t, e.home), before)
+
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	if r, _ := installRun(t, "install", "claude-code", "--docs"); r.code != 0 {
+		t.Fatalf("%+v", r)
+	}
+	edited := filepath.Join(dir, "references", "docs", "api.md")
+	putFile(t, edited, "my notes\n", 0o644)
+	before = snapshot(t, e.home)
+	r, out = installRun(t, "install", "claude-code")
+	if r.code != 1 || !strings.Contains(fmt.Sprint(out["message"]), edited+" was modified since install") {
+		t.Fatalf("%+v", r)
+	}
+	sameTree(t, "after a refused removal", snapshot(t, e.home), before)
+	r, _ = installRun(t, "uninstall", "claude-code")
+	if r.code != 0 || !strings.Contains(r.stdout, edited+" was modified since install and is left in place") {
+		t.Fatalf("%+v", r)
+	}
+	if data, _ := os.ReadFile(edited); string(data) != "my notes\n" {
+		t.Fatal("uninstall removed an edited docs file")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "SKILL.md")); !os.IsNotExist(err) {
+		t.Errorf("uninstall left the unedited docs files: %v", err)
+	}
+}
+
+// A manifest written by another version names docs files this binary does
+// not have; it is still valid, and its files are removed.
+func TestInstall_ManifestValidationDocs(t *testing.T) {
+	e := newInstallEnv(t)
+	e.seed(t)
+	if r, _ := installRun(t, "install", "pi", "--docs"); r.code != 0 {
+		t.Fatalf("%+v", r)
+	}
+	mpath := filepath.Join(e.home, ".config", "agentfeedback", "install.json")
+	dir := filepath.Join(e.home, ".pi", "agent", "skills", "agentfeedback-docs")
+	data, _ := os.ReadFile(mpath)
+	gone := filepath.Join(dir, "references", "docs", "gone.md")
+	renamed := strings.Replace(string(data), filepath.Join(dir, "references", "docs", "api.md"), gone, -1)
+	if renamed == string(data) {
+		t.Fatal("the manifest does not name api.md")
+	}
+	putFile(t, mpath, renamed, 0o600)
+	if err := os.Rename(filepath.Join(dir, "references", "docs", "api.md"), gone); err != nil {
+		t.Fatal(err)
+	}
+	if r, _ := installRun(t, "install", "pi", "--docs"); r.code != 0 {
+		t.Fatalf("a recorded docs file of another version was refused: %+v", r)
+	}
+	if _, err := os.Stat(gone); !os.IsNotExist(err) {
+		t.Errorf("the old docs file is left: %v", err)
+	}
+
+	data, _ = os.ReadFile(mpath)
+	for _, victim := range []string{dir + "/../../../../notes.txt", "/etc/passwd"} {
+		bad := strings.Replace(string(data), filepath.Join(dir, "SKILL.md"), victim, -1)
+		putFile(t, mpath, bad, 0o600)
+		before := snapshot(t, e.home)
+		r, out := installRun(t, "uninstall", "pi")
+		if r.code != 1 || !strings.Contains(fmt.Sprint(out["message"]), "names "+victim+", which agentfeedback install does not write") {
+			t.Fatalf("%s: %+v", victim, r)
+		}
+		sameTree(t, "after a refused manifest", snapshot(t, e.home), before)
 	}
 }

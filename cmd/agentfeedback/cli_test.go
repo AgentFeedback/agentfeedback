@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -775,7 +776,10 @@ func TestSkillRender(t *testing.T) {
 		{[]string{"skill", "list"}, `unknown skill subcommand "list"`},
 		{[]string{"skill", "render"}, "wrong number of arguments for skill"},
 		{[]string{"skill", "render", "prompt", "mcp"}, "wrong number of arguments for skill"},
-		{[]string{"skill", "render", "docs"}, `no skill form "docs"; the forms are skill-md, agents-md, cursor, prompt, mcp`},
+		{[]string{"skill", "render", "pdf"}, `no skill form "pdf"; the forms are skill-md, agents-md, cursor, prompt, mcp, docs`},
+		{[]string{"skill", "render", "docs"}, "skill render docs writes a directory and needs --out"},
+		{[]string{"skill", "render", "docs", "--out", "x", "--server", "https://feedback.example.com"}, "--server does not apply to skill render docs"},
+		{[]string{"skill", "render", "skill-md", "--out", "x"}, "--out only applies to skill render docs"},
 		{[]string{"skill", "render", "prompt", "--server", "ftp://x"}, "the scheme is not http or https"},
 		{[]string{"skill", "render", "mcp", "--server", "https://user:s3cret@x"}, "carries credentials"},
 		{[]string{"skill", "render", "prompt", "--server", "http://x/\n"}, `"http://x/\n"`},
@@ -797,8 +801,101 @@ func TestSkillRender(t *testing.T) {
 		t.Errorf("skill-md with an unused --server: %+v", r.code)
 	}
 	for _, args := range [][]string{{"skill", "-h"}, {"skill", "render", "-h"}} {
-		if r := runCLI(t, "", args...); r.code != 0 || !strings.Contains(r.stderr, "skill render <form>") {
+		if r := runCLI(t, "", args...); r.code != 0 || !strings.Contains(r.stderr, "skill render <form>") ||
+			!strings.Contains(r.stderr, "skill render docs --out DIR") {
 			t.Errorf("%v: %+v", args, r)
 		}
+	}
+}
+
+func TestSkillRenderDocs(t *testing.T) {
+	isolate(t)
+	files, err := skillgen.Docs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{}
+	for _, f := range files {
+		want[filepath.FromSlash(f.Path)] = string(f.Data)
+		for d := filepath.Dir(filepath.FromSlash(f.Path)); d != "."; d = filepath.Dir(d) {
+			want[d+"/"] = ""
+		}
+	}
+	want["./"] = ""
+	empty := t.TempDir()
+	for _, out := range []string{filepath.Join(t.TempDir(), "new", "docs"), empty} {
+		r := runCLI(t, "", "skill", "render", "docs", "--out", out)
+		if r.code != 0 || r.stdout != "" || r.stderr != "" {
+			t.Fatalf("%s: %+v", out, r)
+		}
+		got := map[string]string{}
+		err := filepath.WalkDir(out, func(p string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			rel, _ := filepath.Rel(out, p)
+			if d.IsDir() {
+				got[rel+"/"] = ""
+
+				return nil
+			}
+			data, err := os.ReadFile(p)
+			got[rel] = string(data)
+
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != len(want) {
+			t.Errorf("%s: %d entries, want %d", out, len(got), len(want))
+		}
+		for k, v := range want {
+			if got[k] != v {
+				t.Errorf("%s: %s missing or differs", out, k)
+			}
+		}
+		if info, err := os.Stat(filepath.Join(out, "SKILL.md")); err != nil || info.Mode().Perm() != 0o644 {
+			t.Errorf("SKILL.md mode: %v %v", info, err)
+		}
+		if info, err := os.Stat(out); err != nil || info.Mode().Perm() != 0o755 {
+			t.Errorf("%s mode: %v %v", out, info, err)
+		}
+		if tmps, _ := filepath.Glob(filepath.Join(filepath.Dir(out), "*.tmp-*")); len(tmps) != 0 {
+			t.Errorf("temporary directories left: %v", tmps)
+		}
+	}
+
+	if os.Geteuid() != 0 {
+		locked := t.TempDir()
+		if err := os.Chmod(locked, 0o555); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+		r := runCLI(t, "", "skill", "render", "docs", "--out", filepath.Join(locked, "docs"))
+		if r.code != 1 || r.stdout != "" {
+			t.Errorf("unwritable parent: %+v", r)
+		}
+		if entries, _ := os.ReadDir(locked); len(entries) != 0 {
+			t.Errorf("a failed render left %v", entries)
+		}
+	}
+
+	full := t.TempDir()
+	if err := os.WriteFile(filepath.Join(full, "keep.txt"), []byte("mine\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, out := range []string{full, file} {
+		r := runCLI(t, "", "skill", "render", "docs", "--out", out)
+		if r.code != 1 || r.stdout != "" || !strings.Contains(r.stderr, "exists and is not an empty directory") {
+			t.Errorf("%s: %+v", out, r)
+		}
+	}
+	if entries, _ := os.ReadDir(full); len(entries) != 1 {
+		t.Errorf("a refused --out was written to: %v", entries)
 	}
 }
