@@ -21,10 +21,11 @@ type MetaLimits struct {
 	SummaryBytes       int `json:"summary_bytes"`
 }
 
-// ClientMinVersion is the oldest client release that speaks API 1.0. It is
-// not the server version: raise it only when a server change breaks older
+// ClientMinVersion is the oldest client release that speaks API 1.0, the
+// first 4.0.0 pre-release included: semver ranks 4.0.0-rc.N below 4.0.0. It
+// is not the server version: raise it only when a server change breaks older
 // clients.
-const ClientMinVersion = "4.0.0"
+const ClientMinVersion = "4.0.0-rc.0"
 
 // MetaClient tells a client which versions the server expects.
 type MetaClient struct {

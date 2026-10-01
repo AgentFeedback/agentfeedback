@@ -14,6 +14,10 @@ Placeholders: `<URL>` is the server base URL the human gives you in step 1,
 `<binary>` is the binary's absolute path from step 2.1, `<harness>` is a name
 from step 2.3's list. Replace them before you run a command. Without `curl`,
 fetch the same URL with your own fetch tool and read the status code from it.
+The repository's playbook gate (`just playbooks`) answers for the human from
+`AF_PLAYBOOK_*` environment variables named after the placeholders and
+decisions (`AF_PLAYBOOK_HARNESS` for `<harness>`), unset meaning no or a
+default; they are test inputs you never read, so always ask the human.
 
 ## Safety rules
 

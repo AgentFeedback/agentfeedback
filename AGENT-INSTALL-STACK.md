@@ -20,7 +20,10 @@ machine; other machines join later with the client playbook.
 Placeholders, beyond the client playbook's: `<key_file>`,
 `<env_file>` and `<listen>` come from step S1's outcome, `<port>` is the
 port of `<listen>`, `<path>` and `next` come from step S2's outcome, and
-`<URL>` is set in step S5. Replace them before you run a command.
+`<URL>` is set in step S5. Replace them before you run a command. The
+playbook gate answers step S4's exposure (`AF_PLAYBOOK_ADDRESS` for
+`<address>`) as the client playbook describes; never read that variable,
+ask the human.
 
 ## Safety rules
 
@@ -54,15 +57,15 @@ Run client step 0. Then:
 Then check who you run as, and whether Docker Compose is usable, for step S2:
 
 ```sh
-id -un; docker compose version && docker info --format '{{.ServerVersion}}'
+id -un; docker compose version && docker info --format '{{.ServerVersion}}' || echo 'compose: not usable'
 ```
 
 **Verify:** client steps 0 and 2.1 report `"status": "ok"`. The first line
 is the user the server will belong to; `root` means stop and ask the human
 to run this file as the user who should own the server (a systemd user unit
 refuses root, and files written as root are unreadable to that user).
-Compose is usable when both later lines succeed; an error or `command not
-found` means it is not, which is not a failure.
+Compose is usable when both later lines succeed; a last line `compose: not
+usable` means it is not, which is not a failure.
 
 **Outcome:**
 

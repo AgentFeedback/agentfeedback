@@ -80,6 +80,11 @@ contract:
 e2e: build
     bash scripts/gate-e2e.sh
 
+# Run the install playbooks' fenced commands in a clean Linux container (Docker, privileged for systemd). source: github (the published tag), tree (the working tree built under the tag) or a release directory such as dist/release.
+[positional-arguments]
+playbooks tag source="github" *flags:
+    python3 scripts/playbooks.py run "$@"
+
 # Every gate in order. There is no hosted CI: this is the merge gate, run on the tree that merges.
 ci:
     #!/usr/bin/env bash
@@ -115,6 +120,8 @@ ci:
     fi
     bash tests/skill/run-tests.sh
     bash tests/skill/triage-tests.sh
+    python3 tests/playbooks/test_playbooks.py
+    python3 scripts/playbooks.py check
     shellcheck -x scripts/*.sh
     just contract
 

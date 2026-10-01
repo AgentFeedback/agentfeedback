@@ -24,7 +24,8 @@ GoReleaser 2.18.2 exactly (the `v2.18.2` archive from
 github.com/goreleaser/goreleaser/releases, or `brew install goreleaser` while
 2.18.2 is Homebrew's version; `just release` refuses any other version,
 because the archives are only reproducible with the same one), Docker with
-buildx logged in to `ghcr.io`, and an authenticated GitHub CLI (`gh`) with
+buildx logged in to `ghcr.io` and allowed to run a privileged container (the
+playbook gate runs systemd in one), and an authenticated GitHub CLI (`gh`) with
 write access to the repository and its tags. There is no hosted CI: every
 check runs on the releasing machine.
 
@@ -35,7 +36,9 @@ check runs on the releasing machine.
 - `vX.Y.Z-rc.N`: a pre-release, published as a public GitHub release flagged
   pre-release and never `latest`, image tags `X.Y.Z-rc.N` and the commit SHA.
   It exists to verify the release assets, the installer and the install
-  playbooks before the stable tag. No other suffix is accepted.
+  playbooks before the stable tag: `just playbooks vX.Y.Z-rc.N` runs both
+  playbooks against the published pre-release, downloaded as an agent
+  downloads it. No other suffix is accepted.
 
 ### Assets
 
@@ -77,9 +80,15 @@ flags.
    `gh` can push, `goreleaser check`, and `just ci`. The preflight then builds
    a snapshot of all six targets into `dist/release/`, verifies its checksums
    and stops. `just release` instead builds the release against a local tag
-   (`goreleaser release --skip=publish`) and checks it; only then does it push
-   the annotated tag with an absence lease, so a build defect leaves nothing
-   public and the local tag is removed. GoReleaser then rebuilds and uploads
+   (`goreleaser release --skip=publish`), checks it and runs both install
+   playbooks against it in a clean container (`just playbooks <tag>
+   dist/release`, [develop.md](develop.md#verification-before-you-are-done),
+   with every `AF_PLAYBOOK_*` answer unset: no exposure, the default
+   harness; run `AF_PLAYBOOK_ADDRESS=0.0.0.0 just playbooks <tag> tree`
+   beforehand to cover the exposure branch);
+   only then does it push the annotated tag with an absence lease, so a
+   build or playbook defect leaves nothing public and the local tag is
+   removed. GoReleaser then rebuilds and uploads
    the release, which stays a draft until every asset is up. The script
    verifies it as a downloader sees it: not a draft, flagged pre-release
    exactly when the tag is one, `latest` exactly when it is stable, exactly

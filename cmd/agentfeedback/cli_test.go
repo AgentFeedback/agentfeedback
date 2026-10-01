@@ -555,6 +555,12 @@ func TestCompareVersions(t *testing.T) {
 			t.Fatalf("%s vs %s: %d %v", tt.a, tt.b, cmp, ok)
 		}
 	}
+	// Every pre-release of the first API 1.0 release meets the floor.
+	for _, v := range []string{"4.0.0-rc.0", "4.0.0-rc.1", "4.0.0-rc.12", "4.0.0"} {
+		if cmp, ok := compareVersions(v, core.ClientMinVersion); !ok || cmp < 0 {
+			t.Errorf("%s is below ClientMinVersion %s", v, core.ClientMinVersion)
+		}
+	}
 }
 
 func TestSchemaCommand(t *testing.T) {

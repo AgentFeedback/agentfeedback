@@ -641,7 +641,7 @@ paths:
                   - {kind: friction, versions: [1]}
                   - {kind: review, versions: [1]}
                 features: [q, stats, export.after_id, export.limit, import, mcp, redaction]
-                client: {min_version: 4.0.0, latest_known: 4.0.0}
+                client: {min_version: 4.0.0-rc.0, latest_known: 4.0.0}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '405': {$ref: '#/components/responses/MethodNotAllowed'}
         '429': {$ref: '#/components/responses/RateLimited'}

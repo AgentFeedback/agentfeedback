@@ -1,0 +1,294 @@
+#!/usr/bin/env python3
+"""Tests for scripts/playbooks.py: the parser, the structure check, the
+placeholder and release rewrites. No Docker; the container run is
+`just playbooks`.
+
+Usage: python3 tests/playbooks/test_playbooks.py
+"""
+
+import importlib.util
+import sys
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+spec = importlib.util.spec_from_file_location("playbooks", ROOT / "scripts/playbooks.py")
+pb = importlib.util.module_from_spec(spec)
+sys.modules["playbooks"] = pb
+spec.loader.exec_module(pb)
+
+STUB = """# A stub playbook
+
+Intro text, belongs to no step.
+
+```text
+an example, not a command
+```
+
+## Step 0: First
+
+```sh
+echo zero
+```
+
+**Verify:** prints zero.
+
+**Outcome:**
+
+```json
+{"step": "0", "status": "ok"}
+```
+
+## Step 1: Branch
+
+### Step 1.1: Chosen
+
+```sh
+echo one
+```
+
+**Verify:** prints one.
+
+**Outcome:**
+
+```json
+{"step": "1.1", "status": "ok"}
+```
+
+### Step 1.2: For humans
+
+```text
+nothing to run
+```
+
+**Verify:** the human confirms.
+
+**Outcome:**
+
+```json
+{"step": "1.2", "status": "ok"}
+```
+"""
+
+ROUTES = {"stub": [pb.Entry("stub.md", "0", "u"), pb.Entry("stub.md", "1.1", "u")]}
+
+
+def problems(text, routes=ROUTES, excluded=None):
+    return pb.check({"stub.md": text}, routes, excluded or {})
+
+
+class Parse(unittest.TestCase):
+    def test_steps_blocks_and_outcomes(self):
+        steps = pb.parse(STUB)
+        self.assertEqual(list(steps), [pb.OUTSIDE, "0", "1", "1.1", "1.2"])
+        self.assertEqual(steps["0"].sh(), ["echo zero"])
+        self.assertEqual(steps["1"].sh(), [])
+        self.assertEqual(steps["1.1"].outcomes(), ['{"step": "1.1", "status": "ok"}'])
+        self.assertEqual(steps["1.2"].sh(), [])
+
+    def test_unterminated_fence(self):
+        with self.assertRaises(pb.GateError):
+            pb.parse("## Step 0: x\n\n```sh\necho\n")
+
+    def test_indented_fence(self):
+        with self.assertRaisesRegex(pb.GateError, "indented fence"):
+            pb.parse("## Step 0: x\n\n   ```sh\n   echo\n   ```\n")
+
+
+class Check(unittest.TestCase):
+    def test_stub_is_clean(self):
+        self.assertEqual(problems(STUB), [])
+
+    def test_removed_outcome_fails(self):
+        broken = STUB.replace('**Outcome:**\n\n```json\n{"step": "1.1", "status": "ok"}\n```\n', "")
+        self.assertNotEqual(broken, STUB)
+        self.assertTrue(any("step 1.1: no single **Outcome:**" in p for p in problems(broken)), problems(broken))
+
+    def test_removed_outcome_marker_fails(self):
+        broken = STUB.replace("**Verify:** prints one.\n\n**Outcome:**", "**Verify:** prints one.")
+        self.assertTrue(any("step 1.1: no single **Outcome:**" in p for p in problems(broken)), problems(broken))
+
+    def test_outcome_not_json_fails(self):
+        broken = STUB.replace('{"step": "0", "status": "ok"}', '{"step": "0", "status": ok}')
+        self.assertTrue(any("step 0: the outcome is not JSON" in p for p in problems(broken)))
+
+    def test_outcome_names_another_step_fails(self):
+        broken = STUB.replace('{"step": "0", "status": "ok"}', '{"step": "9", "status": "ok"}')
+        self.assertTrue(any('"step": "0"' in p for p in problems(broken)))
+
+    def test_missing_verify_fails(self):
+        broken = STUB.replace("**Verify:** prints zero.\n", "")
+        self.assertTrue(any("step 0: 0 **Verify:**" in p for p in problems(broken)))
+
+    def test_second_command_fails(self):
+        broken = STUB.replace("echo zero\n```", "echo zero\n```\n\n```sh\necho again\n```")
+        self.assertTrue(any("step 0: 2 sh blocks" in p for p in problems(broken)))
+
+    def test_unrouted_block_fails(self):
+        extra = STUB + "\n## Step 2: New\n\n```sh\necho two\n```\n"
+        self.assertTrue(any("step 2: an sh block no route runs" in p for p in problems(extra)))
+        self.assertFalse(any("no route runs" in p for p in problems(extra, excluded={("stub.md", "2"): "reason"})))
+
+    def test_sh_outside_every_step_fails(self):
+        broken = STUB.replace("```text\nan example", "```sh\nan example")
+        self.assertTrue(any("outside every step" in p for p in problems(broken)), problems(broken))
+        broken = STUB + "\n## Notes\n\n```sh\necho after\n```\n"
+        self.assertTrue(any("outside every step" in p for p in problems(broken)), problems(broken))
+
+    def test_excluded_step_structure_is_checked(self):
+        extra = STUB + "\n## Step 2: New\n\n```sh\necho two\n```\n"
+        found = problems(extra, excluded={("stub.md", "2"): "reason"})
+        self.assertTrue(any("step 2: 0 **Verify:**" in p for p in found), found)
+        self.assertTrue(any("step 2: no single **Outcome:**" in p for p in found), found)
+        # A human-only step needs no command.
+        self.assertEqual(problems(STUB, excluded={("stub.md", "1.2"): "for humans"}), [])
+
+    def test_route_names_missing_step(self):
+        routes = {"stub": ROUTES["stub"] + [pb.Entry("stub.md", "3", "u")]}
+        self.assertTrue(any("step 3, which the playbook does not have" in p for p in problems(STUB, routes)))
+
+    def test_real_playbooks_are_clean(self):
+        self.assertEqual(pb.check(pb.read_docs()), [])
+
+
+class Commands(unittest.TestCase):
+    INSTALL = pb.parse(pb.read_docs()[pb.CLIENT])["2.1"].sh()[0]
+
+    def test_substitute(self):
+        self.assertEqual(pb.substitute('"<binary>" x < \'<key_file>\'', {"binary": "/b", "key_file": "/k"}), "\"/b\" x < '/k'")
+        with self.assertRaisesRegex(pb.GateError, "<URL>"):
+            pb.substitute("curl <URL>", {})
+
+    def test_pin_published_tag(self):
+        cmd = pb.pin_release(self.INSTALL, "v4.0.0-rc.1", None)
+        self.assertIn(f"{pb.RELEASES}/download/v4.0.0-rc.1/install.sh", cmd)
+        self.assertIn('bash "$d/install.sh" --version v4.0.0-rc.1', cmd)
+        self.assertEqual(cmd.count("--version"), 1)
+        self.assertIn("--proto '=https'", cmd)
+
+    def test_pin_file_release(self):
+        cmd = pb.pin_release(self.INSTALL, "v4.0.0", "file:///release")
+        self.assertIn("file:///release/download/v4.0.0/install.sh", cmd)
+        self.assertIn("--proto '=file'", cmd)
+        self.assertNotIn("github.com", cmd)
+
+    def test_pin_refuses_other_shape(self):
+        with self.assertRaises(pb.GateError):
+            pb.pin_release("curl https://example.com/install.sh | sh", "v4.0.0", None)
+
+    def skipped(self, route, environ):
+        docs = pb.read_docs()
+        return {(e.doc, e.step) for e, _, reason in pb.commands(docs, route, pb.answers(environ), "v4.0.0", None) if reason}
+
+    def test_answers_skip_steps(self):
+        self.assertEqual(self.skipped(pb.STACK_ROUTE, {}), {(pb.STACK, "S4")})
+        self.assertEqual(self.skipped(pb.STACK_ROUTE, {"AF_PLAYBOOK_ADDRESS": "0.0.0.0"}), set())
+        self.assertEqual(self.skipped(pb.CLIENT_ROUTE, {}), {(pb.CLIENT, "2.6"), (pb.CLIENT, "2.7")})
+        self.assertEqual(self.skipped(pb.CLIENT_ROUTE, {"AF_PLAYBOOK_NO_BINARY": "yes"}), set())
+
+    def test_answers_are_validated(self):
+        self.assertEqual(pb.answers({"AF_PLAYBOOK_HARNESS": ""}).values["harness"], "claude-code")
+        self.assertEqual(pb.answers({"AF_PLAYBOOK_HARNESS": "codex"}).values["harness"], "codex")
+        for bad in ({"AF_PLAYBOOK_HARNESS": "all"}, {"AF_PLAYBOOK_HARNESS": "x; rm -rf ~"},
+                    {"AF_PLAYBOOK_ADDRESS": "10.0.0.1'; id; '"}, {"AF_PLAYBOOK_ADDRESS": "::1"},
+                    {"AF_PLAYBOOK_AGENT": "gemini-cli"}):
+            with self.assertRaises(pb.GateError, msg=bad):
+                pb.answers(bad)
+
+
+class Verify(unittest.TestCase):
+    def ctx(self, **values):
+        return pb.Ctx(values, {})
+
+    def test_unauthorized(self):
+        pb.x_unauthorized('{"error":"unauthorized","message":"send X-Api-Key"}\n401\n', self.ctx())
+        with self.assertRaises(pb.GateError):
+            pb.x_unauthorized("<html>login</html>\n200\n", self.ctx())
+
+    def test_server_init_derives_and_refuses_the_key(self):
+        c = self.ctx()
+        out = '{"status":"written","dir":"/d","key_file":"/d/api-key","env_file":"/d/serve.env","database":"/x.db","listen":"127.0.0.1:8090"}\n'
+        pb.x_server_init(out, c)
+        self.assertEqual((c.values["key_file"], c.values["port"]), ("/d/api-key", "8090"))
+        with self.assertRaises(pb.GateError):
+            pb.x_server_init(out.replace('"status"', '"api_key":"k","status"'), c)
+
+    def test_e2e_needs_three_steps_one_id(self):
+        ok = '{"step":"submit","outcome":"ok","id":3}\n{"step":"list","outcome":"ok","id":3}\n{"step":"mark","outcome":"ok","id":3}\n'
+        pb.x_e2e(ok, self.ctx())
+        with self.assertRaises(pb.GateError):
+            pb.x_e2e(ok.replace('"id":3}\n{"step":"mark"', '"id":4}\n{"step":"mark"'), self.ctx())
+
+    def test_binary(self):
+        c = self.ctx()
+        pb.x_binary("/home/u/.local/bin/agentfeedback\n", c)
+        self.assertEqual(c.values["binary"], "/home/u/.local/bin/agentfeedback")
+        with self.assertRaises(pb.GateError):
+            pb.x_binary("installed\n", c)
+
+    def test_install_and_list(self):
+        c = self.ctx(harness="claude-code")
+        h = '{"name":"claude-code","mode":"cli","skill":"wired","hook":"wired"}'
+        pb.x_install('{"status":"installed","harnesses":[' + h + ']}', c)
+        pb.x_list('{"harnesses":[' + h + ']}', c)
+        with self.assertRaises(pb.GateError):
+            pb.x_install('{"status":"installed","harnesses":[' + h.replace('"hook":"wired"', '"hook":"missing"') + ']}', c)
+        with self.assertRaises(pb.GateError):
+            pb.x_list('{"harnesses":[' + h.replace('"cli"', '"-"') + ']}', c)
+        with self.assertRaises(pb.GateError):
+            pb.x_install('{"status":"refused","harnesses":[]}', c)
+
+    def test_doctor(self):
+        c = self.ctx(URL="http://127.0.0.1:8090")
+        ok = {"status": "ok", "problems": [], "meta": {"ok": True}, "url": {"value": "http://127.0.0.1:8090", "source": "config"}, "api_key": {"set": True, "source": "config"}}
+        pb.x_doctor(pb.json.dumps(ok), c)
+        for change in ({"status": "error"}, {"problems": ["too old"]}, {"url": {"value": "http://127.0.0.1:8090", "source": "env"}},
+                       {"api_key": {"set": True, "source": "env"}}, {"meta": None}):
+            with self.assertRaises(Exception, msg=change):
+                pb.x_doctor(pb.json.dumps({**ok, **change}), c)
+
+    def test_service_and_exposure(self):
+        c = self.ctx(port="8090", address="0.0.0.0")
+        pb.x_service('{"status":"written","mode":"systemd","path":"/u.service","next":["a","b","c","d","e","f"]}', c)
+        self.assertEqual(c.values["path"], "/u.service")
+        with self.assertRaises(pb.GateError):
+            pb.x_service('{"status":"written","mode":"systemd","path":"/u.service","next":[]}', c)
+        pb.x_exposed("HTTP_LISTEN_ADDR=0.0.0.0:8090\n", c)
+        self.assertEqual((c.values["listen"], c.values["probe"]), ("0.0.0.0:8090", "127.0.0.1:8090"))
+        with self.assertRaises(pb.GateError):
+            pb.x_exposed("HTTP_LISTEN_ADDR=127.0.0.1:8090\n", c)
+
+    def test_redact(self):
+        self.assertEqual(pb.redact("k=" + "a" * 64), "k=[REDACTED]")
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=1)
+
+
+class Staging(unittest.TestCase):
+    def test_release_directory(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "dist"
+            src.mkdir()
+            (src / "SHA256SUMS").write_text("x  agentfeedback_4.0.0_linux_amd64.tar.gz\n")
+            (src / "agentfeedback_4.0.0_linux_amd64.tar.gz").write_bytes(b"a")
+            (src / "agentfeedback_4.0.0_darwin_arm64.tar.gz").write_bytes(b"b")
+            work = Path(tmp) / "work"
+            work.mkdir()
+            self.assertEqual(pb.stage_release("v4.0.0", str(src), work), "file:///release")
+            got = sorted(p.name for p in (work / "release/download/v4.0.0").iterdir())
+            self.assertEqual(got, ["SHA256SUMS", "agentfeedback_4.0.0_linux_amd64.tar.gz", "install.sh"])
+            mode = (work / "release/download/v4.0.0/install.sh").stat().st_mode & 0o777
+            self.assertEqual(mode, 0o644)
+
+    def test_release_directory_without_the_tag(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp)
+            (src / "SHA256SUMS").write_text("")
+            work = src / "work"
+            work.mkdir()
+            with self.assertRaisesRegex(pb.GateError, "no linux archive"):
+                pb.stage_release("v4.0.1", str(src), work)

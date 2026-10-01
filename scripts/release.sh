@@ -43,11 +43,11 @@ notes=$(cd "$(dirname "$notes")" && pwd)/$(basename "$notes")
 
 cd "$(git rev-parse --show-toplevel)"
 
-for tool in git gh goreleaser just; do
+for tool in git gh goreleaser just python3; do
     command -v "$tool" >/dev/null || die "$tool is not on PATH; docs/releases.md lists the tools"
 done
 if [ "$check" = false ]; then
-    docker buildx version >/dev/null || die "docker with buildx is required for the image push"
+    docker buildx version >/dev/null || die "docker with buildx is required for the playbook gate and the image push"
 fi
 have=$(goreleaser --version | awk '$1 == "GitVersion:" { print $2 }')
 [ "$have" = "$goreleaser_version" ] ||
@@ -120,6 +120,10 @@ goreleaser release --clean --skip=publish
     die "the local build's SHA256SUMS does not list exactly the six archives"
 verify_sums dist/release
 cp dist/release/SHA256SUMS "$work/SHA256SUMS.local"
+# Both install playbooks, run in a clean container against the local build:
+# a playbook that fails on these assets stops the release before the tag is
+# public.
+just playbooks "$tag" dist/release
 
 git push --force-with-lease="refs/tags/$tag:" origin "refs/tags/$tag"
 tag_pushed=true

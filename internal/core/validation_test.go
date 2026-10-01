@@ -141,7 +141,7 @@ func TestMeta(t *testing.T) {
 		`"processed_ids_max":500,"context_entries":32,"context_value_bytes":2000,"identifier_bytes":200,"summary_bytes":2000},` +
 		`"kinds":[{"kind":"friction","versions":[1]},{"kind":"review","versions":[1]}],` +
 		`"features":["q","stats","export.after_id","export.limit","import","mcp","redaction"],` +
-		`"client":{"min_version":"4.0.0","latest_known":"4.0.0"}}`
+		`"client":{"min_version":"4.0.0-rc.0","latest_known":"4.0.0"}}`
 	if string(out) != want {
 		t.Errorf("meta\n got %s\nwant %s", out, want)
 	}
@@ -159,7 +159,7 @@ func TestMetaClientVersions(t *testing.T) {
 	t.Parallel()
 	_, db, _ := newTestService(t)
 	got := New(db, Config{Version: "4.0.1"}).Meta().Client
-	if got != (MetaClient{MinVersion: "4.0.0", LatestKnown: "4.0.1"}) || ClientMinVersion != "4.0.0" {
+	if got != (MetaClient{MinVersion: "4.0.0-rc.0", LatestKnown: "4.0.1"}) || ClientMinVersion != "4.0.0-rc.0" {
 		t.Errorf("client %+v, ClientMinVersion %s", got, ClientMinVersion)
 	}
 }
