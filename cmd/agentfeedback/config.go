@@ -1,7 +1,10 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -64,8 +67,20 @@ func loadConfig(requireAPIKey bool) (config, error) {
 	}
 	cfg.ShutdownTimeout = timeout
 
-	if requireAPIKey && cfg.APIKey == "" {
-		return config{}, errAPIKeyUnset()
+	if requireAPIKey {
+		if path := os.Getenv("API_KEY_FILE"); path != "" {
+			if cfg.APIKey != "" {
+				return config{}, errAPIKeyBoth()
+			}
+			key, err := readKeyFile(path)
+			if err != nil {
+				return config{}, err
+			}
+			cfg.APIKey = key
+		}
+		if cfg.APIKey == "" {
+			return config{}, errAPIKeyUnset()
+		}
 	}
 	switch cfg.LogLevel {
 	case "debug", "info":
@@ -77,6 +92,42 @@ func loadConfig(requireAPIKey bool) (config, error) {
 	}
 
 	return cfg, nil
+}
+
+// readKeyFile reads the key API_KEY_FILE names, with the rules of a key read
+// from stdin. Errors name the path, never the content.
+func readKeyFile(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", errAPIKeyFile(path, "cannot be read: "+pathCause(err))
+	}
+	defer func() { _ = f.Close() }()
+	data, err := io.ReadAll(io.LimitReader(f, keyReadLimit+1))
+	if err != nil {
+		return "", errAPIKeyFile(path, "cannot be read: "+pathCause(err))
+	}
+	if len(data) > keyReadLimit {
+		return "", errAPIKeyFile(path, "is longer than 64 KiB")
+	}
+	key, ok := parseKey(data)
+	switch {
+	case key == "":
+		return "", errAPIKeyFile(path, "is empty")
+	case !ok:
+		return "", errAPIKeyFile(path, "holds whitespace or control characters inside the key")
+	}
+
+	return key, nil
+}
+
+// pathCause is err without the path a *fs.PathError repeats.
+func pathCause(err error) string {
+	var pe *fs.PathError
+	if errors.As(err, &pe) {
+		err = pe.Err
+	}
+
+	return err.Error()
 }
 
 // checkWritableDir verifies the database's directory exists and accepts writes,

@@ -3,7 +3,8 @@
 Install, run, back up, upgrade and migrate the service. One container, one
 SQLite file, one API key. Every step is a command an agent can run.
 
-Contents: [Run locally](#run-locally) · [Build from source](#build-from-source) ·
+Contents: [Run locally](#run-locally) · [Bare binary (no Docker)](#bare-binary-no-docker) ·
+[Build from source](#build-from-source) ·
 [Deploy to a host](#deploy-to-a-host) ·
 [Configuration](#configuration) · [Backups](#backups) ·
 [Restore and migration](#restore-and-migration) · [Upgrade](#upgrade) ·
@@ -39,6 +40,59 @@ Tear down with `docker compose down -v` (deletes the database volume; `.env`
 stays).
 
 Without Docker: `go build -o bin/agentfeedback ./cmd/agentfeedback && API_KEY=dev DATABASE_PATH=/tmp/agentfeedback.db HTTP_LISTEN_ADDR=127.0.0.1:8090 bin/agentfeedback serve`.
+
+## Bare binary (no Docker)
+
+With an installed `agentfeedback` binary, on the machine that runs the server:
+
+```bash
+agentfeedback serve --init                       # [--dir D] [--db PATH] [--port N] [--force]
+agentfeedback server install --systemd           # Linux user unit; or --launchd (macOS), or --compose [--image REF]
+```
+
+`serve --init` writes two files, both `0600`, into
+`${XDG_CONFIG_HOME:-~/.config}/agentfeedback/server` (`--dir`): `api-key`, a
+new random key, and `serve.env`, the three variables `serve` reads
+(`API_KEY_FILE`, `DATABASE_PATH`, default
+`${XDG_DATA_HOME:-~/.local/share}/agentfeedback/agentfeedback.db`, and
+`HTTP_LISTEN_ADDR=127.0.0.1:<port>`, port 8090 by default). Its last stdout
+line is a JSON outcome, the only place the key is printed. An existing file
+is refused; `--force` replaces both and rotates the key. Paths may hold only
+letters, digits and `/ . _ - + @ , =`; `serve --init` and `server install`
+are not supported on Windows.
+Run it in the foreground with `set -a; . <dir>/serve.env; set +a; agentfeedback serve`.
+
+`server install` reads `serve.env` and writes exactly one file; it starts,
+enables and reloads nothing and prints the commands to do so (the JSON
+outcome's `next`). An existing file is refused without `--force`.
+
+| Mode | Writes | Next commands |
+|---|---|---|
+| `--systemd` (refused as root) | `${XDG_CONFIG_HOME:-~/.config}/systemd/user/agentfeedback.service` | `systemctl --user daemon-reload`, `systemctl --user enable --now agentfeedback.service`, `systemctl --user status agentfeedback.service`; `loginctl enable-linger "$USER"` keeps it running without a login session |
+| `--launchd` | `~/Library/LaunchAgents/dev.agentfeedback.serve.plist`, logs in `~/Library/Logs/agentfeedback/serve.log` | `launchctl bootstrap gui/$(id -u) <plist>`, `launchctl kickstart -k gui/$(id -u)/dev.agentfeedback.serve`, `launchctl print gui/$(id -u)/dev.agentfeedback.serve`; the plist copies `serve.env`, so after editing it rerun with `--force`, then `launchctl bootout` and `bootstrap` |
+| `--compose` | `<dir>/compose.yaml`: the image (`--image`, default the release's own tag), run as your uid:gid, the key as a file secret, the database directory as `/data`, published on `127.0.0.1:<port>` | `docker compose -f <dir>/compose.yaml up -d`, `... ps`, `... logs -f agentfeedback` |
+
+Backup for systemd and launchd: `set -a; . <dir>/serve.env; set +a; agentfeedback backup <db dir>/agentfeedback-$(date -u +%Y%m%dT%H%M%SZ).db`;
+for compose, the [physical backup](#backups) with `-f <dir>/compose.yaml`.
+Exposing the server beyond `127.0.0.1` is your decision ([security.md](security.md)).
+The compose form runs the container as your uid:gid, which rootless Docker or
+userns-remap may not map to the owner of the key file and database directory;
+there, use the root-based stack of [Run locally](#run-locally).
+Rotate the key with `agentfeedback serve --init --force`, then the restart command
+for your form (`server install` lists it in `next`).
+
+Wire a client on the same machine and verify the whole path:
+
+```bash
+agentfeedback doctor --init --url http://127.0.0.1:8090 --key-from-stdin < ~/.config/agentfeedback/server/api-key
+agentfeedback doctor --e2e          # submit, list and mark one install-check row; --json for one line per step
+```
+
+`doctor --e2e` sends straight to the server (no spool, no client log line),
+stops at the first failing step and exits 1. Its row has kind
+`install-check`, which `list`, `stats`, `digest` and `migrate` leave out
+unless `--kind` or `--include-kind` names it, and is marked processed with
+verdict `install-check`.
 
 ## Build from source
 
@@ -107,6 +161,7 @@ Environment variables read by the binary:
 | Variable | Default | Meaning |
 |---|---|---|
 | `API_KEY` | required | the shared key every client sends |
+| `API_KEY_FILE` | unset | `serve` reads the key from this file instead (trimmed; exactly one key); setting both is an error |
 | `DATABASE_PATH` | `/data/agentfeedback.db` | SQLite file; its directory must be writable |
 | `HTTP_LISTEN_ADDR` | `0.0.0.0:8080` | inside the container; Compose maps it to `127.0.0.1:8090` |
 | `GRACEFUL_SHUTDOWN_TIMEOUT` | `30s` | drain time for in-flight requests |

@@ -36,24 +36,33 @@ var nowFunc = time.Now
 // apiClient builds the client from the config file and the environment; the
 // read commands take no --url flag.
 func apiClient(getenv func(string) string, stderr io.Writer) (*client.Client, error) {
+	c, _, err := newAPIClient(getenv, "", errURLUnsetNoFlag, stderr)
+
+	return c, err
+}
+
+// newAPIClient resolves the settings with urlFlag on top and builds the
+// client; noURL is the error for a missing URL, which names --url only for
+// a command that takes it.
+func newAPIClient(getenv func(string) string, urlFlag string, noURL func() error, stderr io.Writer) (*client.Client, clientSettings, error) {
 	path, err := configPath(getenv)
 	if err != nil {
-		return nil, err
+		return nil, clientSettings{}, err
 	}
 	file, _, err := loadFileConfig(path)
 	if err != nil {
-		return nil, err
+		return nil, clientSettings{}, err
 	}
-	settings := resolveClient(flagConfig{}, getenv, file)
+	settings := resolveClient(flagConfig{URL: urlFlag}, getenv, file)
 	if settings.URL.Value == "" {
-		return nil, errURLUnsetNoFlag()
+		return nil, settings, noURL()
 	}
 	if settings.APIKey.Value == "" {
-		return nil, errKeyUnset()
+		return nil, settings, errKeyUnset()
 	}
 	cache, err := cacheDir(getenv)
 	if err != nil {
-		return nil, err
+		return nil, settings, err
 	}
 	c, err := client.New(client.Config{
 		URL:      settings.URL.Value,
@@ -64,10 +73,10 @@ func apiClient(getenv func(string) string, stderr io.Writer) (*client.Client, er
 		Version:  clientVersion().Version,
 	})
 	if err != nil {
-		return nil, errClientSetup(err)
+		return nil, settings, errClientSetup(err)
 	}
 
-	return c, nil
+	return c, settings, nil
 }
 
 // apiErr maps a failed request to a userError. A 400's details go to stderr

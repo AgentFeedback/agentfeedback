@@ -106,25 +106,51 @@ func readKey(stdin io.Reader, command string) (string, error) {
 	if len(data) > keyReadLimit {
 		return "", errInitKeyTooLong()
 	}
-	key := strings.TrimSpace(string(data))
-	if key == "" {
+	key, ok := parseKey(data)
+	switch {
+	case key == "":
 		return "", errInitKeyEmpty(command)
-	}
-	if strings.ContainsFunc(key, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) {
+	case !ok:
 		return "", errInitKeyInvalid()
 	}
 
 	return key, nil
 }
 
-func writeConfigFile(path string, data []byte, force bool) (err error) {
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+// parseKey trims surrounding whitespace from data; ok is false when the key
+// left is empty or holds whitespace or a control character.
+func parseKey(data []byte) (key string, ok bool) {
+	key = strings.TrimSpace(string(data))
+	if key == "" {
+		return "", false
+	}
+
+	return key, !strings.ContainsFunc(key, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) })
+}
+
+func writeConfigFile(path string, data []byte, force bool) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return errInitWrite(path, err)
 	}
-	tmp, err := os.CreateTemp(dir, ".config-*.toml")
-	if err != nil {
+	err := placeFile(path, data, force)
+	switch {
+	case errors.Is(err, os.ErrExist):
+		return errInitExists(path)
+	case err != nil:
 		return errInitWrite(path, err)
+	}
+
+	return nil
+}
+
+// placeFile writes data to path, 0600 from creation, through a temporary file
+// in the same directory. Without force an existing file is never touched: the
+// new file is linked into place, which fails with os.ErrExist when the name
+// exists. With force it is renamed over the old one.
+func placeFile(path string, data []byte, force bool) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+"-*")
+	if err != nil {
+		return err
 	}
 	tmpName := tmp.Name()
 	// The temporary name never outlives this call: after a link it is a second
@@ -134,31 +160,19 @@ func writeConfigFile(path string, data []byte, force bool) (err error) {
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
 
-		return errInitWrite(path, err)
+		return err
 	}
 	if err := tmp.Sync(); err != nil {
 		_ = tmp.Close()
 
-		return errInitWrite(path, err)
+		return err
 	}
 	if err := tmp.Close(); err != nil {
-		return errInitWrite(path, err)
+		return err
 	}
-
 	if force {
-		if err := os.Rename(tmpName, path); err != nil {
-			return errInitWrite(path, err)
-		}
-
-		return nil
-	}
-	if err := os.Link(tmpName, path); err != nil {
-		if errors.Is(err, os.ErrExist) {
-			return errInitExists(path)
-		}
-
-		return errInitWrite(path, err)
+		return os.Rename(tmpName, path)
 	}
 
-	return nil
+	return os.Link(tmpName, path)
 }

@@ -1,5 +1,6 @@
 // Command agentfeedback is the AgentFeedback server and client: serve runs the
-// API, import and backup maintain its database, and doctor, submit (friction,
+// API (serve --init and server install set it up), import and backup maintain
+// its database, and doctor, submit (friction,
 // review or any kind), flush, version, schema, skill and the read and
 // processing commands (list, get, stats, done, undo, redact, rekind, export,
 // digest) and migrate are client commands. A bare invocation prints help.
@@ -37,10 +38,11 @@ type command struct {
 // commands is the command table in help order. Nothing listens unless serve
 // is named: a bare invocation prints help.
 var commands = []command{
-	{"serve", "serve the HTTP API", serveCommand},
+	{"serve", "serve the HTTP API | " + serveInitSynopsis + ": write the server's key file and serve.env, start nothing", serveCommand},
+	{"server", serverSynopsis + ": write a service definition from serve.env, start nothing", runServer},
 	{"import", "import [--dry-run] <export.ndjson>: restore an export (format 2) into the database, keeping ids", runImport},
 	{"backup", "backup <dest.db>: write a consistent copy of the database", runBackup},
-	{"doctor", "check the client configuration and the server connection", runDoctor},
+	{"doctor", "check the client configuration and the server connection; doctor --e2e [--json]: submit, list and mark one install-check row", runDoctor},
 	{"submit", "submit friction --summary S [...] | submit <kind> --stdin [...] | submit review <run_dir> [--include-outputs] | submit review --sweep [<base>...]; --dry-run sends nothing: file a submission, the outcome is the last line", runSubmit},
 	{"flush", "flush: send the spooled submissions that are due and print the counts", runFlush},
 	{"list", "list [filters] [--limit N] [--before-id N | --after-id N] [--include payload] [--all] [--json | --tsv]: list submissions, newest first", runList},
@@ -74,8 +76,9 @@ client config file: %s
   tables: [collect] deny_paths, opt_in_only, opt_in_paths, disabled; [context] cwd, drop, app, workspace, url, channel, task_id, workflow
   a repository .agentfeedback.toml may only narrow (collect.disabled, collect.deny_paths, context.drop)
 
-server environment: API_KEY (serve only), DATABASE_PATH, HTTP_LISTEN_ADDR,
-GRACEFUL_SHUTDOWN_TIMEOUT, SERVICE_VERSION, LOG_LEVEL
+server environment: API_KEY or API_KEY_FILE (serve only, not both), DATABASE_PATH,
+HTTP_LISTEN_ADDR, GRACEFUL_SHUTDOWN_TIMEOUT, SERVICE_VERSION, LOG_LEVEL
+First server setup: agentfeedback serve --init, then agentfeedback server install --systemd|--launchd|--compose
 `
 
 func main() {
@@ -199,12 +202,34 @@ func parseFlags(fs *flag.FlagSet, args []string, stderr io.Writer) error {
 	return err
 }
 
-// serveCommand takes no flags or arguments; checking them here means a
-// mistyped command line never starts a listener.
-func serveCommand(args []string, _ io.Reader, _, stderr io.Writer) error {
+// serveCommand runs the server, configured by the environment alone, or with
+// --init writes its files. Checking the command line first means a mistyped
+// one never starts a listener.
+func serveCommand(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := newFlagSet("serve")
+	doInit := fs.Bool("init", false, "write the server's API key file and serve.env, then exit; serve itself takes no flags")
+	dir := fs.String("dir", "", "with --init: directory for api-key and serve.env (default ${XDG_CONFIG_HOME:-~/.config}/agentfeedback/server)")
+	db := fs.String("db", "", "with --init: database path (default ${XDG_DATA_HOME:-~/.local/share}/agentfeedback/agentfeedback.db)")
+	port := fs.Int("port", defaultServePort, "with --init: port to listen on, on 127.0.0.1")
+	force := fs.Bool("force", false, "with --init: replace existing files, which rotates the API key")
 	if err := parseFlags(fs, args, stderr); err != nil {
-		return errFlags("serve", err)
+		err = errFlags("serve", err)
+		if slices.ContainsFunc(args, isInitArg) && !errors.Is(err, flag.ErrHelp) {
+			return printServeInitOutcome(stdout, serveInitOutcome{}, err)
+		}
+
+		return err
+	}
+	if *doInit {
+		if fs.NArg() != 0 {
+			return printServeInitOutcome(stdout, serveInitOutcome{}, errArgs("serve", serveInitSynopsis))
+		}
+		out, err := runServeInit(os.Getenv, serveInitOptions{dir: *dir, db: *db, port: *port, force: *force}, stderr)
+
+		return printServeInitOutcome(stdout, out, err)
+	}
+	if fs.NFlag() != 0 {
+		return errServeInitOnlyFlags()
 	}
 	if fs.NArg() != 0 {
 		return errArgs("serve", "serve (configured by the server environment variables)")

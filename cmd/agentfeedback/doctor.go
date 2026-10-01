@@ -81,7 +81,8 @@ type recentOutcomes struct {
 }
 
 // runDoctor checks the client setup and prints one line per check, or one
-// JSON object with --json. --init hands over to runDoctorInit.
+// JSON object with --json. --init hands over to runDoctorInit, --e2e to
+// runDoctorE2E.
 func runDoctor(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	fs := newFlagSet("doctor")
 	urlFlag := fs.String("url", "", "server base URL (overrides AGENT_FEEDBACK_URL and the config file)")
@@ -89,6 +90,7 @@ func runDoctor(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	doInit := fs.Bool("init", false, "write the config file from --url and the key on stdin; no network call")
 	keyFromStdin := fs.Bool("key-from-stdin", false, "with --init: read the API key from stdin")
 	force := fs.Bool("force", false, "with --init: replace an existing config file")
+	e2e := fs.Bool("e2e", false, "submit, list and mark one install-check row against the server; one line per step")
 	if err := parseFlags(fs, args, stderr); err != nil {
 		err = errFlags("doctor", err)
 		if slices.ContainsFunc(args, isInitArg) && !errors.Is(err, flag.ErrHelp) {
@@ -96,6 +98,16 @@ func runDoctor(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		}
 
 		return err
+	}
+	if *e2e {
+		if *doInit || *keyFromStdin || *force {
+			return errE2EOnlyFlags()
+		}
+		if fs.NArg() != 0 {
+			return errArgs("doctor", "doctor --e2e [--url URL] [--json]")
+		}
+
+		return runDoctorE2E(os.Getenv, *urlFlag, *asJSON, stdout, stderr)
 	}
 	if *doInit {
 		if fs.NArg() != 0 {

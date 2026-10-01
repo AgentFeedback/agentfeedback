@@ -66,6 +66,16 @@ func errAPIKeyUnset() error {
 	return failErr("API_KEY is not set", "export it before running agentfeedback serve")
 }
 
+func errAPIKeyBoth() error {
+	return failErr("API_KEY and API_KEY_FILE are both set", "set only one of them")
+}
+
+// errAPIKeyFile names the key file, never its content.
+func errAPIKeyFile(path, reason string) error {
+	return failErr(fmt.Sprintf("API_KEY_FILE %s %s", path, reason),
+		"fix the file so it holds exactly one key, or rerun agentfeedback serve --init --force")
+}
+
 func errLogLevel(got string) error {
 	return failErr(fmt.Sprintf("LOG_LEVEL must be debug or info, got %q", got), "set LOG_LEVEL to debug or info")
 }
@@ -226,6 +236,100 @@ func errInitExists(path string) error {
 
 func errInitWrite(path string, err error) error {
 	return failErr(fmt.Sprintf("cannot write config file %s: %v", path, err), "check the directory is writable")
+}
+
+// doctor --e2e errors.
+
+func errE2EOnlyFlags() error {
+	return usageErr("--e2e cannot be combined with --init, --key-from-stdin or --force", "run agentfeedback doctor --e2e on its own")
+}
+
+func errE2ECheck(step, reason string) error {
+	return failErr(fmt.Sprintf("the install check failed at %s: %s", step, reason), "run agentfeedback doctor to check the setup")
+}
+
+// serve --init and server install errors.
+
+func errServeInitOnlyFlags() error {
+	return usageErr("--dir, --db, --port and --force only apply to --init", "pass --init to write the server files, or run agentfeedback serve alone")
+}
+
+func errServeInitPort(port int) error {
+	return usageErr(fmt.Sprintf("--port %d is not a TCP port", port), "pass a port from 1 to 65535")
+}
+
+// errUnsafePath exists because the server files are written without escaping.
+func errUnsafePath(what, path, reason string) error {
+	return failErr(fmt.Sprintf("%s %q %s, which the server files cannot hold unescaped", what, path, reason),
+		"use a path made of letters, digits and / . _ - + @ , = only")
+}
+
+func errWindowsUnsupported(command string) error {
+	return usageErr(fmt.Sprintf("%s is not supported on Windows", command),
+		"set API_KEY_FILE, DATABASE_PATH and HTTP_LISTEN_ADDR for agentfeedback serve yourself")
+}
+
+func errServeInitDB(path, reason string) error {
+	return usageErr(fmt.Sprintf("--db %s %s", path, reason), "pass --db with a database file path of its own")
+}
+
+func errServerKeyFile(path, reason string) error {
+	return failErr(fmt.Sprintf("API_KEY_FILE %s %s", path, reason), "run agentfeedback serve --init first")
+}
+
+func errServeInitExists(path string) error {
+	return failErr(fmt.Sprintf("%s already exists", path),
+		"pass --force to replace the server files, which rotates the API key")
+}
+
+func errServeInitWrite(path string, err error) error {
+	return failErr(fmt.Sprintf("cannot write %s: %v", path, err), "check the directory is writable")
+}
+
+func errServeInitKey(err error) error {
+	return failErr(fmt.Sprintf("cannot generate the API key: %v", err), "run agentfeedback serve --init again")
+}
+
+func errServerVerb(verb string) error {
+	return usageErr(fmt.Sprintf("unknown server subcommand %q; the only one is install", verb), "use agentfeedback "+serverSynopsis)
+}
+
+func errServerMode() error {
+	return usageErr("server install needs exactly one of --systemd, --launchd or --compose", "use agentfeedback "+serverSynopsis)
+}
+
+func errServerImageFlag() error {
+	return usageErr("--image only applies to --compose", "pass --compose with --image")
+}
+
+func errServerImageUnknown(version string) error {
+	return failErr(fmt.Sprintf("this build (%s) is not a release, so there is no image tag to use", version),
+		"pass --image with the image reference to run")
+}
+
+func errServeEnvMissing(path string) error {
+	return failErr(fmt.Sprintf("%s does not exist", path), "run agentfeedback serve --init first")
+}
+
+func errServeEnvInvalid(path, reason string) error {
+	return failErr(fmt.Sprintf("%s is not valid: %s", path, reason), "fix the file or run agentfeedback serve --init --force")
+}
+
+func errServerRoot() error {
+	return failErr("server install --systemd writes a user unit and refuses to run as root",
+		"run it as the user the service runs as")
+}
+
+func errServerExists(path string) error {
+	return failErr(fmt.Sprintf("%s already exists", path), "pass --force to replace it")
+}
+
+func errServerWrite(path string, err error) error {
+	return failErr(fmt.Sprintf("cannot write %s: %v", path, err), "check the directory is writable")
+}
+
+func errServerBinary(err error) error {
+	return failErr(fmt.Sprintf("cannot resolve the agentfeedback binary path: %v", err), "run agentfeedback from its installed path")
 }
 
 // schema errors.
