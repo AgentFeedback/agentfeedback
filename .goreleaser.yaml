@@ -1,0 +1,78 @@
+# GoReleaser configuration for the release step. Run it through `just release`
+# (scripts/release.sh), which pins the GoReleaser version and the Go toolchain;
+# docs/releases.md describes the flow and the asset names.
+version: 2
+
+project_name: agentfeedback
+
+dist: dist/release
+
+builds:
+  - id: agentfeedback
+    main: ./cmd/agentfeedback
+    binary: agentfeedback
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    # Reproducible: no build date. docs/operate.md#build-from-source repeats
+    # this exact line; keep the two identical.
+    ldflags:
+      - -s -w -X main.version={{ .Version }} -X main.commit={{ .FullCommit }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: agentfeedback
+    ids: [agentfeedback]
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # Archives are reproducible too: fixed owner, mode and the commit date.
+    builds_info:
+      owner: root
+      group: root
+      mtime: "{{ .CommitDate }}"
+    files:
+      - src: LICENSE
+        info:
+          owner: root
+          group: root
+          mode: 0644
+          mtime: "{{ .CommitDate }}"
+      - src: README.md
+        info:
+          owner: root
+          group: root
+          mode: 0644
+          mtime: "{{ .CommitDate }}"
+
+checksum:
+  name_template: SHA256SUMS
+  algorithm: sha256
+  ids: [agentfeedback]
+
+changelog:
+  disable: true
+
+snapshot:
+  version_template: "{{ .Version }}-snapshot"
+
+release:
+  github:
+    owner: AgentFeedback
+    name: agentfeedback
+  name_template: "{{ .Tag }}: {{ .Env.RELEASE_TITLE }}"
+  prerelease: auto
+  make_latest: "{{ not .Prerelease }}"
+  mode: keep-existing
+  # A rerun after a failed upload finds the draft by its name (same title) and
+  # replaces assets with their byte-identical rebuilds (docs/releases.md,
+  # Recovery). GoReleaser keeps every release a draft until all assets are up.
+  use_existing_draft: true
+  replace_existing_artifacts: true
+  extra_files:
+    - glob: ./skills/agentfeedback/scripts/install.sh

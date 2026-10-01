@@ -33,7 +33,7 @@ Two parts:
 
 ```bash
 git clone https://github.com/AgentFeedback/agentfeedback.git && cd agentfeedback
-git checkout "$(git describe --tags --abbrev=0)"   # latest release
+git checkout "$(git describe --tags --abbrev=0 --exclude '*-*')"   # latest stable release, not a pre-release
 cd infra/agentfeedback && test ! -e .env && umask 077 && printf 'API_KEY=%s\n' "$(openssl rand -hex 32)" > .env
 docker compose up -d --build --wait
 export AGENT_FEEDBACK_URL=http://127.0.0.1:8090 AGENT_FEEDBACK_API_KEY=$(sed -n 's/^API_KEY=//p' .env)

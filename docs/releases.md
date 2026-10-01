@@ -2,7 +2,8 @@
 
 ## Versioning and publication
 
-Source releases are annotated, immutable `vMAJOR.MINOR.PATCH` tags: patch for
+Source releases are annotated, immutable `vMAJOR.MINOR.PATCH` tags, with
+`-rc.N` pre-releases before a stable one ([Tags](#tags)): patch for
 compatible fixes, docs and dependency updates; minor for compatible features;
 major for breaking API or operational contracts. Every delivered change belongs
 to a release. The two skills carry their own `version` in their `SKILL.md`;
@@ -18,39 +19,133 @@ ready; landed changes never trigger one. An agent pushes a `v*` tag, creates a
 GitHub release or pushes an image (the steps below, recovery included) only
 when a maintainer asks for that version.
 
-Maintainers need Git, Python 3, the tools `just ci` needs
-([develop.md](develop.md)), Docker with buildx logged in to `ghcr.io`, and an
-authenticated GitHub CLI (`gh`) with write access to the repository and its
-tags. There is no hosted CI: every check runs on the releasing machine.
+Maintainers need Git, the tools `just ci` needs ([develop.md](develop.md)),
+GoReleaser 2.18.2 exactly (the `v2.18.2` archive from
+github.com/goreleaser/goreleaser/releases, or `brew install goreleaser` while
+2.18.2 is Homebrew's version; `just release` refuses any other version,
+because the archives are only reproducible with the same one), Docker with
+buildx logged in to `ghcr.io`, and an authenticated GitHub CLI (`gh`) with
+write access to the repository and its tags. There is no hosted CI: every
+check runs on the releasing machine.
 
-1. Update the stable version link in `README.md` and add notes to this file.
-   The service version is the build version (`just docker-build` and
-   `just image-push` stamp it from the tag); nothing in the code holds it.
+### Tags
+
+- `vX.Y.Z`: a stable release, marked `latest` on GitHub, image tags
+  `X.Y.Z`, the commit SHA and `latest`.
+- `vX.Y.Z-rc.N`: a pre-release, published as a public GitHub release flagged
+  pre-release and never `latest`, image tags `X.Y.Z-rc.N` and the commit SHA.
+  It exists to verify the release assets, the installer and the install
+  playbooks before the stable tag. No other suffix is accepted.
+
+### Assets
+
+Every release carries exactly these assets, and `install.sh` and the install
+playbooks rely on the names:
+
+| Asset | Content |
+|---|---|
+| `agentfeedback_<version>_<os>_<arch>.tar.gz` | `os` `linux` or `darwin`, `arch` `amd64` or `arm64`: the binary `agentfeedback`, `LICENSE`, `README.md` |
+| `agentfeedback_<version>_windows_<arch>.zip` | the same with `agentfeedback.exe` |
+| `SHA256SUMS` | SHA-256 of the six archives, in `sha256sum` format |
+| `install.sh` | `skills/agentfeedback/scripts/install.sh` from the tagged commit |
+
+`<version>` is the tag without the `v`. The binaries are static
+(`CGO_ENABLED=0`), built with `-trimpath` and the toolchain named on the
+`toolchain` line of `go.mod`, and stamped with the version and commit that
+`agentfeedback version` prints. The exact build line is in
+[operate.md](operate.md#build-from-source); `.goreleaser.yaml` holds the same
+flags.
+
+### Cutting a release
+
+1. Update the stable version link in `README.md` (stable releases only) and
+   add notes to this file. The service version is the build version; nothing
+   in the code holds it.
 2. Run `just ci`, commit, push `main`.
 3. Write the release notes to a file outside the checkout or under the
    gitignored `.private/`.
-4. Run the release tool, first in preflight, then for real:
+4. Run the preflight, then publish:
 
    ```bash
-   python3 scripts/release.py vX.Y.Z 'Release name' /path/to/notes.md --check
-   python3 scripts/release.py vX.Y.Z 'Release name' /path/to/notes.md
+   just release-check vX.Y.Z 'Release name' /path/to/notes.md
+   just release vX.Y.Z 'Release name' /path/to/notes.md
    ```
 
-   It checks a clean `main` against `origin`, refuses an existing tag, runs
-   `just ci` on the checkout, pushes the annotated tag with an absence lease,
-   creates and verifies a stable release, then builds and pushes the image
-   with `just image-push X.Y.Z <sha> latest`. Deploy the SHA or the version
-   tag, never `latest`.
+   Both check the tag form, the GoReleaser version, that `install.sh`
+   exists, that `origin` is this repository, a clean `main` equal to
+   `origin/main`, that the tag exists neither locally nor on `origin`, that
+   `gh` can push, `goreleaser check`, and `just ci`. The preflight then builds
+   a snapshot of all six targets into `dist/release/`, verifies its checksums
+   and stops. `just release` instead builds the release against a local tag
+   (`goreleaser release --skip=publish`) and checks it; only then does it push
+   the annotated tag with an absence lease, so a build defect leaves nothing
+   public and the local tag is removed. GoReleaser then rebuilds and uploads
+   the release, which stays a draft until every asset is up. The script
+   verifies it as a downloader sees it: not a draft, flagged pre-release
+   exactly when the tag is one, `latest` exactly when it is stable, exactly
+   the assets above, `SHA256SUMS` byte-identical to the local build's,
+   `install.sh` identical to the committed one, and every downloaded archive
+   matching `SHA256SUMS`. Last, it pushes the image (`just image-push`, tags
+   as above) and prints the release URL. Deploy the SHA or the version tag,
+   never `latest`.
+
+### Verifying a release
+
+```bash
+gh release download vX.Y.Z --repo AgentFeedback/agentfeedback --pattern 'agentfeedback_*' --pattern SHA256SUMS
+sha256sum -c SHA256SUMS          # Linux
+shasum -a 256 -c SHA256SUMS      # macOS
+```
+
+Without `gh`, download from
+`https://github.com/AgentFeedback/agentfeedback/releases/download/vX.Y.Z/<asset>`.
+To check one archive only, feed its line to the same command:
+`grep ' agentfeedback_X.Y.Z_linux_amd64.tar.gz$' SHA256SUMS | sha256sum -c`.
+
+### Reproducing a release
+
+Two builds of the same tag produce identical binaries and identical
+archives. Check it after a release, from a clean checkout of the tag:
+
+```bash
+git checkout vX.Y.Z
+export GOTOOLCHAIN=$(awk '$1 == "toolchain" { print $2 }' go.mod) GORELEASER_CURRENT_TAG=vX.Y.Z RELEASE_TITLE=check
+goreleaser release --skip=publish --clean && cp dist/release/SHA256SUMS /tmp/SHA256SUMS.first
+goreleaser release --skip=publish --clean && diff /tmp/SHA256SUMS.first dist/release/SHA256SUMS
+gh release download vX.Y.Z --repo AgentFeedback/agentfeedback --pattern SHA256SUMS --output - | diff - dist/release/SHA256SUMS
+```
+
+No output from either `diff` means both local builds match each other and
+the published archives. The build line in
+[operate.md](operate.md#build-from-source) gives the same binary as the one
+in the archive: compare `sha256sum agentfeedback` with
+`tar -xOzf agentfeedback_X.Y.Z_linux_amd64.tar.gz agentfeedback | sha256sum`.
 
 ### Recovery
 
-If publication fails after tagging, inspect the local tag, the remote tag, the
-GitHub release and the image tags on GHCR before doing anything. Never
-force-move a published tag. Local tag only: push it with an absence lease.
-Remote tag without a release:
-`gh release create <tag> --verify-tag --latest --title '<name>' --notes-file <file>`.
-Release exists: inspect it rather than creating another. Release without an
-image: `just image-push X.Y.Z <sha> latest` from the tagged commit.
+When `just release` stops, it says whether the tag is already public. Before
+the tag push nothing is public and the script has removed its local tag: fix
+the cause and run it again. After the push, inspect the remote tag, the
+GitHub release and the image tags on GHCR before doing anything, and never
+force-move or delete the published tag:
+
+- **No release, or a draft** (GoReleaser failed before publishing): on a
+  clean checkout of the tagged commit, rerun GoReleaser with the same title.
+  It finds the draft by its name, `vX.Y.Z: <title>`, keeps its notes and
+  replaces any asset already uploaded with its byte-identical rebuild:
+
+  ```bash
+  export GOTOOLCHAIN=$(awk '$1 == "toolchain" { print $2 }' go.mod) GORELEASER_CURRENT_TAG=vX.Y.Z RELEASE_TITLE='Release name'
+  GITHUB_TOKEN=$(gh auth token) goreleaser release --clean --release-notes /path/to/notes.md
+  ```
+
+- **A published release** (a later check or the image push failed): do not
+  run GoReleaser again; it would try to create a second release. Run the
+  checks of [Verifying a release](#verifying-a-release), confirm the state
+  with `gh release view vX.Y.Z --json isDraft,isPrerelease,assets`, and fix
+  the release on GitHub by hand if a check failed.
+- **No image**: `just image-push X.Y.Z <sha>` from the tagged commit, adding
+  `latest` for a stable release.
 
 The notes file from step 3 is uncommitted, so it does not exist on another
 machine: recovering there means rebuilding it from this file's section for

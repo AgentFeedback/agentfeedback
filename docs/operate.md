@@ -3,7 +3,8 @@
 Install, run, back up, upgrade and migrate the service. One container, one
 SQLite file, one API key. Every step is a command an agent can run.
 
-Contents: [Run locally](#run-locally) · [Deploy to a host](#deploy-to-a-host) ·
+Contents: [Run locally](#run-locally) · [Build from source](#build-from-source) ·
+[Deploy to a host](#deploy-to-a-host) ·
 [Configuration](#configuration) · [Backups](#backups) ·
 [Restore and migration](#restore-and-migration) · [Upgrade](#upgrade) ·
 [Key rotation](#key-rotation) · [Retention](#retention) · [Monitoring](#monitoring) ·
@@ -39,12 +40,41 @@ stays).
 
 Without Docker: `go build -o bin/agentfeedback ./cmd/agentfeedback && API_KEY=dev DATABASE_PATH=/tmp/agentfeedback.db HTTP_LISTEN_ADDR=127.0.0.1:8090 bin/agentfeedback serve`.
 
+## Build from source
+
+The release binaries are built with exactly this line, so building a release
+tag yourself gives the same file, byte for byte, as the binary in that
+release's archive: what you compiled is what releases ship. Needs Git and Go
+1.21 or later; `GOTOOLCHAIN` fetches the toolchain the release pins.
+
+```bash
+git clone https://github.com/AgentFeedback/agentfeedback.git && cd agentfeedback
+git checkout vX.Y.Z
+GOTOOLCHAIN=$(awk '$1 == "toolchain" { print $2 }' go.mod) CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+  go build -trimpath -ldflags="-s -w -X main.version=X.Y.Z -X main.commit=$(git rev-parse HEAD)" \
+  -o agentfeedback ./cmd/agentfeedback
+./agentfeedback version
+```
+
+`X.Y.Z` is the tag without the `v`; `GOOS` is `linux`, `darwin` or `windows`
+(name the output `agentfeedback.exe`), `GOARCH` is `amd64` or `arm64`. The
+toolchain is the `toolchain` line of `go.mod`, downloaded from the Go module
+proxy and verified against the Go checksum database. The binary embeds the
+Git revision and whether the tree was modified, so the result is identical
+only from a Git checkout of the tag with no changed or untracked files (the
+output names above are ignored by Git); a source archive without `.git`
+builds a working but different binary. To compare with the release:
+`sha256sum agentfeedback` against
+`tar -xOzf agentfeedback_X.Y.Z_linux_amd64.tar.gz agentfeedback | sha256sum`
+(`shasum -a 256` on macOS). [releases.md](releases.md#reproducing-a-release)
+covers the archives.
+
 ## Deploy to a host
 
 Prerequisites on the host: Docker with Compose, `curl`, `openssl`, SSH access. The
 image is published at release time ([releases.md](releases.md)) to
-`ghcr.io/agentfeedback/agentfeedback` tagged with the version, the commit SHA
-and `latest`. The package must be publicly pullable (GitHub package
+`ghcr.io/agentfeedback/agentfeedback` tagged with the version and the commit
+SHA, plus `latest` for a stable release (pre-releases never move it). The package must be publicly pullable (GitHub package
 settings) or the host must be logged in to GHCR.
 
 ```bash

@@ -109,6 +109,7 @@ ci:
         (cd skills/agentfeedback-triage/scripts && shellcheck -x ./*.sh)
     fi
     bash tests/skill/run-tests.sh
+    shellcheck -x scripts/*.sh
     just contract
 
 # Build the Docker image tagged agentfeedback.
@@ -130,6 +131,18 @@ image-push +tags:
         --build-arg VERSION="$(git describe --tags --match 'v[0-9]*' --dirty --always)" \
         --build-arg COMMIT="$(git rev-parse HEAD)" \
         --push "${args[@]}" .
+
+# Publish a release of the pushed main: gates, tag, GoReleaser upload, verification, image. Maintainers only; docs/releases.md.
+[positional-arguments]
+[no-cd]
+release tag title notes:
+    bash "{{justfile_directory()}}/scripts/release.sh" "$@"
+
+# Every precondition of `just release` plus a snapshot build of the matrix; publishes nothing.
+[positional-arguments]
+[no-cd]
+release-check tag title notes:
+    bash "{{justfile_directory()}}/scripts/release.sh" --check "$@"
 
 # Remove build artifacts.
 clean:

@@ -17,8 +17,9 @@ pkg/canonjson/                  v1 canonical JSON writer on the write path's JSO
 pkg/client/                     v1 client transport: both auth headers, no redirects, the retry table, the spool (spool/, rejected/ beside it, retention), outcome lines and exit codes, the owner-only client.jsonl; `Do` and `Stream` for every other route (`APIError`, `TransportError`)
 pkg/collect/                    client context collection: project, machine and harness groups (git metadata with or without git, env allow-list looked up by name), deny_paths/opt-in narrowing, repository .agentfeedback.toml that may only narrow
 infra/agentfeedback/            compose stacks (local build, image-based deploy) and .env.example
-scripts/                        e2e.sh (live v1 contract suite: every openapi.yaml operation, fails on an uncovered one), gate-e2e.sh, deploy.sh, release.py,
-                                eval-cluster.py (live cluster.py calibration; discloses report text)
+scripts/                        e2e.sh (live v1 contract suite: every openapi.yaml operation, fails on an uncovered one), gate-e2e.sh, deploy.sh, release.sh (the release step behind
+                                `just release`), eval-cluster.py (live cluster.py calibration; discloses report text)
+.goreleaser.yaml                release build: six archives, SHA256SUMS, install.sh asset (docs/releases.md)
 skills/agentfeedback/           submission skill: SKILL.md generated from internal/skillgen/source; scripts/ is the bash client of the running service, documented in scripts/README.md (copied as-is into a harness; no tests inside)
 skills/agentfeedback-triage/    processor skill (SKILL.md, digest.sh; optional cluster.py + reference/clustering.md)
 tests/skill/                    hermetic tests for both skills' scripts (mock server, isolated HOME)
@@ -29,7 +30,8 @@ conformance/                    the executable contract: decode fixtures, hash v
 
 Go toolchain and module versions are pinned in `go.mod`. Tools: `just`,
 `shellcheck`, `python3`, `uv` and `npx` (contract gate), Docker with buildx
-(compose stack, image, `just image-push`).
+(compose stack, image, `just image-push`); GoReleaser at the version
+[releases.md](releases.md) pins, for the release step only.
 
 ## Commands
 
@@ -44,6 +46,8 @@ just skills         # regenerate the checked-in skill renders (skills/agentfeedb
 just e2e            # live contract suite against a fresh `serve` on a temporary database (scripts/gate-e2e.sh, port 18080, E2E_ADDR overrides)
 just run-local      # serve on 127.0.0.1:8090 with a database in ./local/
 just image-push <tag>...                      # multi-arch image to ghcr.io/agentfeedback/agentfeedback; release step only
+just release-check <tag> <title> <notes.md>   # every release precondition and a snapshot build; publishes nothing
+just release <tag> <title> <notes.md>         # publish a release (maintainers; releases.md)
 bash scripts/e2e.sh <API_KEY> [BASE_URL]      # live v1 contract suite against a running service; creates rows
 bash tests/skill/run-tests.sh                 # hermetic client tests (mock server, needs python3)
 just contract                                 # contract gate: the two commands below
@@ -51,6 +55,7 @@ uv run --locked --script scripts/contract-check.py   # schemas valid 2020-12, ev
 npx --yes @redocly/cli@2.54.2 lint docs/openapi.yaml # OpenAPI lint (recommended ruleset, redocly.yaml)
 python3 conformance/reference/fixtures.py     # the fixtures alone, no dependencies
 shellcheck -x -P SCRIPTDIR skills/*/scripts/*.sh tests/skill/run-tests.sh
+shellcheck -x scripts/*.sh                    # the repository scripts, release.sh included
 python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remote>... [--live]   # cluster.py calibration
 ```
 
@@ -137,9 +142,10 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
    `cmd/agentfeedback/coverage.toml` updated (`just test` fails otherwise).
 7. Skill scripts touched: the shellcheck command above and `bash tests/skill/run-tests.sh`
    all green.
-8. Docs touched: every relative link resolves.
-9. Contract files touched (`schemas/`, `docs/openapi.yaml`, `conformance/`):
-   `just contract` green.
+8. `shellcheck -x scripts/*.sh` clean.
+9. Docs touched: every relative link resolves.
+10. Contract files touched (`schemas/`, `docs/openapi.yaml`, `conformance/`):
+    `just contract` green.
 
 `just ci` runs all of the above in order and fails if `just check` rewrote a
 file. There is no hosted CI: `just ci` green on the tree that is merged is the
