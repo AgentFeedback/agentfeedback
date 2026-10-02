@@ -1,0 +1,187 @@
+# Contract coverage of the MCP tools: every operation of docs/openapi.yaml,
+# every parameter it takes (query, path, header, cookie; path-item parameters
+# included) and every property of its request-body schema is listed here.
+# coverage_test.go fails on anything missing, anything stale, any tool the
+# server does not register and any argument a tool's input schema lacks.
+#
+# Format (cmd/agentfeedback/coverage.toml's, with tool and argument in place
+# of command and flag):
+#   [operations.<operationId>]              exactly one of
+#     tool = "<tool name>"                  the tool that calls it
+#     reason = "<why no tool does>"
+#   [operations.<operationId>.parameters]   every parameter (query, path, header, cookie)
+#   [operations.<operationId>.body]         every request-body property
+#     <name> = { argument = "<name>" }      set by this tool argument
+#     <name> = { reason = "..." }           not set by the tool, and why
+# Operations listed with a reason still list their parameters and body.
+
+[operations.createSubmission]
+tool = "submit_feedback"
+
+# On /mcp/{project} the path sets project and the tool has no project argument.
+[operations.createSubmission.body]
+kind = { argument = "kind" }
+schema_version = { argument = "schema_version" }
+key = { argument = "key" }
+summary = { argument = "summary" }
+machine = { argument = "machine" }
+model = { argument = "model" }
+harness = { argument = "harness" }
+project = { argument = "project" }
+occurred_at = { argument = "occurred_at" }
+context = { argument = "context" }
+payload = { argument = "payload" }
+
+[operations.listSubmissions]
+tool = "list_submissions"
+
+[operations.listSubmissions.parameters]
+kind = { argument = "kind" }
+schema_version = { argument = "schema_version" }
+key = { argument = "key" }
+machine = { argument = "machine" }
+model = { argument = "model" }
+project = { argument = "project" }
+harness = { argument = "harness" }
+category = { argument = "category" }
+fix_status = { argument = "fix_status" }
+exclude_kind = { argument = "exclude_kind" }
+verdict = { argument = "verdict" }
+processed = { argument = "processed" }
+redacted = { argument = "redacted" }
+content_hash = { argument = "content_hash" }
+since = { argument = "since" }
+until = { argument = "until" }
+on = { argument = "on" }
+q = { argument = "q" }
+before_id = { argument = "before_id" }
+after_id = { argument = "after_id" }
+limit = { argument = "limit" }
+include = { argument = "include" }
+
+[operations.getSubmission]
+tool = "get_submission"
+
+[operations.getSubmission.parameters]
+id = { argument = "id" }
+
+[operations.markSubmission]
+reason = "mark_processed uses the bulk route; a single id is a one-element list"
+
+[operations.markSubmission.parameters]
+id = { reason = "mark_processed sends ids in the bulk body" }
+
+[operations.markSubmission.body]
+processed = { reason = "mark_processed uses the bulk route" }
+verdict = { reason = "mark_processed uses the bulk route" }
+resolution = { reason = "mark_processed uses the bulk route" }
+ref = { reason = "mark_processed uses the bulk route" }
+processed_by = { reason = "mark_processed uses the bulk route" }
+
+[operations.redactSubmission]
+reason = "redaction destroys a payload for good; it stays an operator action on the REST route"
+
+[operations.redactSubmission.parameters]
+id = { reason = "no redaction tool" }
+
+[operations.markSubmissions]
+tool = "mark_processed"
+
+[operations.markSubmissions.body]
+ids = { argument = "ids" }
+processed = { argument = "processed" }
+verdict = { argument = "verdict" }
+resolution = { argument = "resolution" }
+ref = { argument = "ref" }
+processed_by = { argument = "processed_by" }
+
+[operations.getStats]
+tool = "stats"
+
+[operations.getStats.parameters]
+kind = { argument = "kind" }
+schema_version = { argument = "schema_version" }
+key = { argument = "key" }
+machine = { argument = "machine" }
+model = { argument = "model" }
+project = { argument = "project" }
+harness = { argument = "harness" }
+category = { argument = "category" }
+fix_status = { argument = "fix_status" }
+exclude_kind = { argument = "exclude_kind" }
+verdict = { argument = "verdict" }
+processed = { argument = "processed" }
+redacted = { argument = "redacted" }
+content_hash = { argument = "content_hash" }
+since = { argument = "since" }
+until = { argument = "until" }
+on = { argument = "on" }
+q = { argument = "q" }
+by = { argument = "by" }
+top = { argument = "top" }
+bucket = { argument = "bucket" }
+
+[operations.exportSubmissions]
+reason = "a full NDJSON stream is a backup and migration format, not a tool result"
+
+[operations.exportSubmissions.parameters]
+kind = { reason = "no export tool" }
+since = { reason = "no export tool" }
+after_id = { reason = "no export tool" }
+limit = { reason = "no export tool" }
+
+[operations.exportSubmissionsHead]
+reason = "no export tool"
+
+[operations.exportSubmissionsHead.parameters]
+kind = { reason = "no export tool" }
+since = { reason = "no export tool" }
+after_id = { reason = "no export tool" }
+limit = { reason = "no export tool" }
+
+[operations.importSubmissions]
+reason = "restoring an export is an operator action on the REST route"
+
+# get_schema without arguments returns the list body.
+[operations.listSchemas]
+tool = "get_schema"
+
+[operations.getSchema]
+tool = "get_schema"
+
+[operations.getSchema.parameters]
+kind = { argument = "kind" }
+version = { argument = "version" }
+
+[operations.getMeta]
+reason = "the server instructions and the tool schemas carry what an MCP client needs"
+
+[operations.getOpenApi]
+reason = "the document is for API tooling; MCP clients read the tool schemas"
+
+[operations.postMcp]
+reason = "the transport itself"
+
+[operations.postMcpProject]
+reason = "the transport itself"
+
+[operations.postMcpProject.parameters]
+project = { reason = "the connection's preset, not a tool argument" }
+
+[operations.getSkill]
+reason = "the server instructions are the mcp form of the same guidance"
+
+[operations.getSkill.parameters]
+format = { reason = "the instructions have one form" }
+
+[operations.getDiscovery]
+reason = "an MCP client is already connected"
+
+[operations.getHealth]
+reason = "liveness probe for the deployment"
+
+[operations.getReady]
+reason = "readiness probe for the deployment"
+
+[operations.getMetrics]
+reason = "scraped by monitoring, not a client read"

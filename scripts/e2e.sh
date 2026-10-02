@@ -29,8 +29,9 @@ trap 'rm -rf "$TMP"' EXIT
 BODY="$TMP/body"
 HDRS="$TMP/headers"
 
-# Served by the MCP and discovery package; remove from this list when it lands.
-PENDING=(postMcp postMcpProject getSkill getDiscovery)
+# Operations the suite does not exercise yet; an exercised one listed here
+# fails as STALE.
+PENDING=()
 
 pass=0; fail=0
 COVFILE="$TMP/covered"; : >"$COVFILE"  # req runs in $(...) subshells, so it records to a file
@@ -299,6 +300,59 @@ sed '$s/"sha256":"[0-9a-f]/"sha256":"x/' "$EXP" >"$TMP/bad.ndjson"
 s=$(req importSubmissions "${X[@]}" "${NDJSON[@]}" --data-binary "@$TMP/bad.ndjson" "$BASE/api/v1/import")
 chk "import with corrupted digest -> 400 validation_error naming the line" 400 "$s" \
   "$( [ "$(problem validation_error)" = 1 ] && [ "$(j --arg l "line $lines" '.message|contains($l)')" = 1 ] && echo 1 || echo 0)"
+
+# --- discovery and guidance (public) ----------------------------------------
+s=$(req getDiscovery "$BASE/.well-known/agentfeedback.json")
+chk "GET discovery document -> 200, no Cache-Control" 200 "$s" \
+  "$( [ "$(j '.service=="agentfeedback" and .api_version=="1.0" and (.version|type)=="string" and .openapi=="/api/v1/openapi.json" and .schemas=="/api/v1/schemas" and .mcp=="/mcp" and .skill=="/skill" and .auth.modes==["bearer","x-api-key"] and .docs=="https://agentfeedback.dev/docs"')" = 1 ] && [ -z "$(hdr Cache-Control)" ] && echo 1 || echo 0)"
+s=$(req getSkill "$BASE/skill")
+chk "GET /skill -> 200 Markdown" 200 "$s" \
+  "$( [ "$(hdr Content-Type)" = "text/markdown; charset=utf-8" ] && grep -q '^name: agentfeedback' "$BODY" && echo 1 || echo 0)"
+s=$(req getSkill "$BASE/skill?format=prompt")
+chk "GET /skill?format=prompt names the API" 200 "$s" "$(grep -q '/api/v1' "$BODY" && echo 1 || echo 0)"
+s=$(req getSkill "$BASE/skill?format=cursor")
+chk "GET /skill?format=cursor -> 400" 400 "$s" "$(problem validation_error)"
+
+# --- MCP (Streamable HTTP, stateless) -----------------------------------------
+MCPH=(-H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream')
+NEWP=(-H 'Mcp-Protocol-Version: 2026-07-28')
+META='"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}'
+sse() { # the JSON-RPC message of a server-sent event stream body, written back to $BODY
+  if grep -q '^data: ' "$BODY"; then sed -n 's/^data: //p' "$BODY" | tail -n1 >"$TMP/rpc" && mv "$TMP/rpc" "$BODY"; fi
+}
+INIT='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"e2e","version":"1"}}}'
+s=$(req postMcp "${MCPH[@]}" -d "$INIT" "$BASE/mcp")
+chk "POST /mcp without key -> 401 Bearer" 401 "$s" \
+  "$( [ "$(problem unauthorized)" = 1 ] && [ "$(hdr WWW-Authenticate)" = Bearer ] && echo 1 || echo 0)"
+s=$(req postMcp -X GET "${A[@]}" "$BASE/mcp")
+chk "GET /mcp -> 405 Allow POST" 405 "$s" "$( [ "$(problem method_not_allowed)" = 1 ] && [ "$(hdr Allow)" = POST ] && echo 1 || echo 0)"
+s=$(req postMcp "${A[@]}" "${MCPH[@]}" -d "$INIT" "$BASE/mcp"); sse
+chk "initialize (2025-06-18) -> server info and instructions, no session" 200 "$s" \
+  "$( [ "$(j '.result.serverInfo.name=="agentfeedback" and .result.protocolVersion=="2025-06-18" and (.result.instructions|length)>0')" = 1 ] && [ -z "$(hdr Mcp-Session-Id)" ] && [ "$(hdr Cache-Control)" = no-store ] && echo 1 || echo 0)"
+s=$(req postMcp "${A[@]}" "${MCPH[@]}" "${NEWP[@]}" -H 'Mcp-Method: server/discover' \
+  -d '{"jsonrpc":"2.0","id":2,"method":"server/discover","params":{'"$META"'}}' "$BASE/mcp"); sse
+chk "server/discover (2026-07-28)" 200 "$s" \
+  "$(j '.result._meta["io.modelcontextprotocol/serverInfo"].name=="agentfeedback" and (.result.supportedVersions|index("2026-07-28"))!=null and (.result.instructions|length)>0')"
+s=$(req postMcp "${X[@]}" "${MCPH[@]}" -d '{"jsonrpc":"2.0","id":3,"method":"tools/list","params":{}}' "$BASE/mcp"); sse
+chk "tools/list -> the six tools" 200 "$s" \
+  "$(j '[.result.tools[].name]==["get_schema","get_submission","list_submissions","mark_processed","stats","submit_feedback"]')"
+call=$(jq -nc --arg s "mcp submit $RUN" --arg p "e2e-$RUN" \
+  '{jsonrpc:"2.0",id:4,method:"tools/call",params:{name:"submit_feedback",arguments:{kind:"friction",summary:$s,project:$p,payload:{category:"tooling",details:"d"}}}}')
+s=$(req postMcp "${A[@]}" "${MCPH[@]}" -d "$call" "$BASE/mcp"); sse
+chk "tools/call submit_feedback on /mcp -> stored" 200 "$s" \
+  "$(j --arg p "e2e-$RUN" '.result.isError!=true and .result.structuredContent.submission.project==$p and (.result.structuredContent.submission.id|type)=="number"')"
+pcall=$(jq -nc --arg s "mcp preset submit $RUN" \
+  '{jsonrpc:"2.0",id:5,method:"tools/call",params:{name:"submit_feedback",arguments:{summary:$s}}}')
+s=$(req postMcpProject "${A[@]}" "${MCPH[@]}" -d "$pcall" "$BASE/mcp/%20mcp-$RUN%20"); sse
+chk "tools/call submit_feedback on /mcp/{project} -> stored under the normalised preset" 200 "$s" \
+  "$(j --arg p "mcp-$RUN" '.result.isError!=true and .result.structuredContent.submission.project==$p')"
+s=$(req postMcpProject "${A[@]}" "${MCPH[@]}" -d '{"jsonrpc":"2.0","id":6,"method":"tools/list","params":{}}' "$BASE/mcp/p"); sse
+chk "tools/list on /mcp/{project}: no project argument to submit, list or stats" 200 "$s" \
+  "$(j '[.result.tools[] | select(.name=="submit_feedback" or .name=="list_submissions" or .name=="stats") | .inputSchema.properties | has("project")] == [false,false,false]')"
+s=$(req postMcpProject "${MCPH[@]}" -d "$pcall" "$BASE/mcp/p")
+chk "POST /mcp/{project} without key -> 401" 401 "$s" "$(problem unauthorized)"
+s=$(req postMcpProject "${A[@]}" "${MCPH[@]}" -d "$pcall" "$BASE/mcp/%20")
+chk "POST /mcp/{project} empty once normalised -> 400" 400 "$s" "$(problem validation_error)"
 
 # --- coverage of docs/openapi.yaml --------------------------------------------
 echo

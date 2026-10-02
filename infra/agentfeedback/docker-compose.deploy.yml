@@ -16,6 +16,8 @@ services:
     environment:
       API_KEY: ${API_KEY:?Set API_KEY in .env}
       DATABASE_PATH: /data/agentfeedback.db
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      MCP_INSTRUCTIONS: ${MCP_INSTRUCTIONS:-}
     volumes:
       - agentfeedback-data:/data
 

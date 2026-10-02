@@ -16,6 +16,7 @@ import (
 	"github.com/getkin/kin-openapi/routers/gorillamux"
 
 	"github.com/agentfeedback/agentfeedback/internal/core"
+	"github.com/agentfeedback/agentfeedback/internal/mcp"
 	"github.com/agentfeedback/agentfeedback/pkg/envelope"
 )
 
@@ -25,6 +26,13 @@ func init() {
 			b, err := io.ReadAll(r)
 			return string(b), err
 		})
+	for _, ct := range []string{"text/event-stream", "text/markdown"} {
+		openapi3filter.RegisterBodyDecoder(ct,
+			func(r io.Reader, _ http.Header, _ *openapi3.SchemaRef, _ openapi3filter.EncodingFn) (any, error) {
+				b, err := io.ReadAll(r)
+				return string(b), err
+			})
+	}
 	openapi3filter.RegisterBodyDecoder("application/schema+json",
 		func(r io.Reader, _ http.Header, _ *openapi3.SchemaRef, _ openapi3filter.EncodingFn) (any, error) {
 			var v any
@@ -109,14 +117,10 @@ func (c *conformance) callUnrouted(req *http.Request, wantStatus int) response {
 	return r
 }
 
-var publicPaths = []string{"/api/v1/openapi.json", "/api/v1/schemas", "/api/v1/schemas/"}
+var publicPaths = []string{"/api/v1/openapi.json", "/api/v1/schemas", "/api/v1/schemas/", "/skill", "/.well-known/agentfeedback.json"}
 
 // operationalPaths answer 2xx without Cache-Control; their errors carry it.
 var operationalPaths = []string{"/health", "/ready", "/metrics"}
-
-// notServedHere are the contract paths the MCP and discovery package serves,
-// not this transport.
-var notServedHere = []string{"/mcp", "/mcp/{project}", "/skill", "/.well-known/agentfeedback.json"}
 
 func (c *conformance) checkHeaders(req *http.Request, r response) {
 	c.t.Helper()
@@ -140,6 +144,9 @@ func (c *conformance) checkHeaders(req *http.Request, r response) {
 	}
 	if r.status >= 400 && req.Method != http.MethodHead {
 		var v map[string]any
+		if err := json.Unmarshal(r.body, &v); err == nil && v["jsonrpc"] != nil {
+			return // a JSON-RPC error of the MCP transport carries no request_id
+		}
 		if err := json.Unmarshal(r.body, &v); err != nil || v["request_id"] != r.header.Get("X-Request-Id") {
 			c.t.Errorf("%s %s: request_id %v vs X-Request-Id %q", req.Method, req.URL.Path, v["request_id"], r.header.Get("X-Request-Id"))
 		}
@@ -294,6 +301,51 @@ func TestConformance(t *testing.T) {
 	a.down.Store(false)
 	c.callUnrouted(req(a, "POST", "/health", "", false), 405)
 
+	// discovery and guidance
+	c.call(req(a, "GET", "/.well-known/agentfeedback.json", "", false), 200)
+	c.call(req(a, "GET", "/.well-known/agentfeedback.json?x=1", "", false), 200)
+	for _, q := range []string{"", "?format=skill-md", "?format=agents-md", "?format=prompt"} {
+		sk := c.call(req(a, "GET", "/skill"+q, "", false), 200)
+		if sk.header.Get("Content-Type") != "text/markdown; charset=utf-8" {
+			t.Errorf("skill Content-Type %q", sk.header.Get("Content-Type"))
+		}
+	}
+	c.call(req(a, "GET", "/skill?format=cursor", "", false), 400)
+	c.call(req(a, "GET", "/skill?x=1", "", false), 400)
+	c.callUnrouted(req(a, "POST", "/skill", "", false), 405)
+	c.callUnrouted(req(a, "POST", "/.well-known/agentfeedback.json", "", false), 405)
+
+	// MCP: the transport's answers and the Error shape around it
+	mcpReq := func(path, body string, auth bool, header ...string) *http.Request {
+		r := req(a, "POST", path, body, auth)
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("Accept", "application/json, text/event-stream")
+		for i := 0; i < len(header); i += 2 {
+			r.Header.Set(header[i], header[i+1])
+		}
+		return r
+	}
+	initialize := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"c","version":"1"}}}`
+	meta := `"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}`
+	for _, path := range []string{"/mcp", "/mcp/p1"} {
+		c.call(mcpReq(path, initialize, true), 200)
+		c.call(mcpReq(path, `{"jsonrpc":"2.0","method":"notifications/initialized"}`, true), 202)
+		c.call(mcpReq(path, `{"jsonrpc":"2.0","id":2,"method":"server/discover","params":{`+meta+`}}`, true,
+			"Mcp-Protocol-Version", "2026-07-28", "Mcp-Method", "server/discover"), 200)
+		c.call(mcpReq(path, `{"jsonrpc":"2.0","id":3,"method":"nope/x","params":{`+meta+`}}`, true,
+			"Mcp-Protocol-Version", "2026-07-28", "Mcp-Method", "nope/x"), 404)
+		c.call(mcpReq(path, `{"jsonrpc":"2.0","id":4,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2099-01-01","io.modelcontextprotocol/clientCapabilities":{}}}}`, true,
+			"Mcp-Protocol-Version", "2099-01-01", "Mcp-Method", "tools/list"), 400)
+		c.call(mcpReq(path, initialize, true, "Accept", "application/json"), 400)
+		c.call(mcpReq(path, initialize, true, "Content-Type", "text/plain"), 415)
+		c.call(mcpReq(path, strings.Repeat(" ", mcp.RequestLimit+1), true), 413)
+		c.call(mcpReq(path, initialize, false), 401)
+		c.callUnrouted(req(a, "GET", path, "", true), 405)
+	}
+	c.call(mcpReq("/mcp/%20", initialize, true), 400)
+	c.callUnrouted(mcpReq("/mcp/a/b", initialize, true), 404)
+	c.callUnrouted(mcpReq("/mcp/a/b", initialize, false), 401)
+
 	// unrouted errors
 	c.callUnrouted(req(a, "GET", "/api/v1/nope", "", true), 404)
 	c.callUnrouted(req(a, "PUT", "/api/v1/meta", "", true), 405)
@@ -301,10 +353,7 @@ func TestConformance(t *testing.T) {
 	c.callUnrouted(req(a, "GET", "/api/v1/nope", "", false), 401)
 
 	var missing []string
-	for path, item := range doc.Paths.Map() {
-		if slices.Contains(notServedHere, path) {
-			continue
-		}
+	for _, item := range doc.Paths.Map() {
 		for _, op := range item.Operations() {
 			if !c.exercised[op.OperationID] {
 				missing = append(missing, op.OperationID)

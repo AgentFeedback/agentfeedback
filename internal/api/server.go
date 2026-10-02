@@ -16,12 +16,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/agentfeedback/agentfeedback/internal/core"
+	"github.com/agentfeedback/agentfeedback/internal/mcp"
 	"github.com/agentfeedback/agentfeedback/internal/store"
 )
 
 // Features is the subset of core.Features this transport wires; the caller
 // passes it in core.Config.Features.
-var Features = []string{"q", "stats", "export.after_id", "export.limit", "import", "redaction"}
+var Features = []string{"q", "stats", "export.after_id", "export.limit", "import", "mcp", "redaction"}
 
 // Config wires a Server.
 type Config struct {
@@ -33,6 +34,12 @@ type Config struct {
 	// /ready reports 503 while in-flight requests drain.
 	ShuttingDown *atomic.Bool
 	Registry     *prometheus.Registry
+	// PublicURL is the normalised base URL the rendered guidance names; empty
+	// derives it from each request's scheme and Host.
+	PublicURL string
+	// MCPInstructions is operator text appended to the MCP server
+	// instructions.
+	MCPInstructions string
 }
 
 // Server serves the v1 HTTP API.
@@ -43,6 +50,8 @@ type Server struct {
 	shuttingDown *atomic.Bool
 	registry     *prometheus.Registry
 	metrics      *metrics
+	publicURL    string
+	mcp          *mcp.Handler
 }
 
 // New builds a Server and registers its metrics on the configured registry.
@@ -55,14 +64,18 @@ func New(cfg Config) *Server {
 	if shuttingDown == nil {
 		shuttingDown = &atomic.Bool{}
 	}
-	return &Server{
+	s := &Server{
 		svc:          cfg.Service,
 		db:           cfg.DB,
 		apiKey:       cfg.APIKey,
 		shuttingDown: shuttingDown,
 		registry:     registry,
 		metrics:      newMetrics(registry, cfg.Service, cfg.DB),
+		publicURL:    cfg.PublicURL,
 	}
+	s.mcp = mcp.New(mcp.Config{Service: cfg.Service, Instructions: cfg.MCPInstructions, ErrorBody: errorJSON,
+		ObserveCreate: s.observeCreate, BuildFailed: writeErr})
+	return s
 }
 
 // Handler returns the fully wired router.
@@ -92,14 +105,20 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /ready", s.handleReady)
 	mux.Handle("GET /metrics", promhttp.HandlerFor(s.registry, promhttp.HandlerOpts{}))
 	mux.Handle("/api/v1/", s.apiV1(public, onlyPostProcessed(jsonRouteErrors(api, nil))))
+	// Discovery: unauthenticated, no data.
+	mux.HandleFunc("GET /skill", s.handleSkill)
+	mux.HandleFunc("GET /.well-known/agentfeedback.json", s.handleDiscovery)
+	// MCP: every method reaches the handler, which checks the key first.
+	mux.Handle("/mcp", s.handleMCP(false))
+	mux.Handle("/mcp/{project}", s.handleMCP(true))
+	mux.Handle("/mcp/", keyedNotFound(s.apiKey))
 
 	// A path ServeMux would redirect (not in cleaned form, or bare /api/v1)
-	// is a 404; under /api/v1 the key is checked first, as for any other
-	// unknown path there.
+	// is a 404; under /api/v1 and /mcp the key is checked first, as for any
+	// other unknown path there.
 	notCanonical := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if p := cleanPath(r.URL.EscapedPath()); p == "/api/v1" || strings.HasPrefix(p, "/api/v1/") {
-			w.Header().Set("Cache-Control", "no-store")
-			requireAPIKey(s.apiKey)(http.HandlerFunc(notFound)).ServeHTTP(w, r)
+		if p := cleanPath(r.URL.EscapedPath()); underKey(p) {
+			keyedNotFound(s.apiKey).ServeHTTP(w, r)
 			return
 		}
 		notFound(w, r)
@@ -182,6 +201,26 @@ func redirected(r *http.Request, pattern string) bool {
 		pat = after
 	}
 	return strings.HasSuffix(pat, "/") && !strings.HasPrefix(p, pat)
+}
+
+// underKey reports a cleaned path in a key-protected route space.
+func underKey(p string) bool {
+	for _, root := range []string{"/api/v1", "/mcp"} {
+		if p == root || strings.HasPrefix(p, root+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// keyedNotFound answers an unknown path in a key-protected route space: 401
+// without the key, 404 with it, both no-store.
+func keyedNotFound(apiKey string) http.Handler {
+	nf := requireAPIKey(apiKey)(http.HandlerFunc(notFound))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		nf.ServeHTTP(w, r)
+	})
 }
 
 func notFound(w http.ResponseWriter, r *http.Request) {

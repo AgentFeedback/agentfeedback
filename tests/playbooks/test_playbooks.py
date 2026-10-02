@@ -183,15 +183,14 @@ class Commands(unittest.TestCase):
     def test_answers_skip_steps(self):
         self.assertEqual(self.skipped(pb.STACK_ROUTE, {}), {(pb.STACK, "S4")})
         self.assertEqual(self.skipped(pb.STACK_ROUTE, {"AF_PLAYBOOK_ADDRESS": "0.0.0.0"}), set())
-        self.assertEqual(self.skipped(pb.CLIENT_ROUTE, {}), {(pb.CLIENT, "2.6"), (pb.CLIENT, "2.7")})
-        self.assertEqual(self.skipped(pb.CLIENT_ROUTE, {"AF_PLAYBOOK_NO_BINARY": "yes"}), set())
+        self.assertEqual(self.skipped(pb.CLIENT_ROUTE, {}), set())
 
     def test_answers_are_validated(self):
         self.assertEqual(pb.answers({"AF_PLAYBOOK_HARNESS": ""}).values["harness"], "claude-code")
         self.assertEqual(pb.answers({"AF_PLAYBOOK_HARNESS": "codex"}).values["harness"], "codex")
         for bad in ({"AF_PLAYBOOK_HARNESS": "all"}, {"AF_PLAYBOOK_HARNESS": "x; rm -rf ~"},
                     {"AF_PLAYBOOK_ADDRESS": "10.0.0.1'; id; '"}, {"AF_PLAYBOOK_ADDRESS": "::1"},
-                    {"AF_PLAYBOOK_AGENT": "gemini-cli"}):
+                    {"AF_PLAYBOOK_AGENT": "gemini-cli"}, {"AF_PLAYBOOK_NO_BINARY": "yes"}):
             with self.assertRaises(pb.GateError, msg=bad):
                 pb.answers(bad)
 

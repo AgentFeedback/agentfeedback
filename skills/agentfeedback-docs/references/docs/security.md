@@ -12,8 +12,13 @@ is not multi-tenant and is not safe to expose directly to the internet.
   `AGENTFEEDBACK_BIND_ADDRESS=0.0.0.0` only inside a trusted private network or
   behind a reverse proxy that terminates TLS and authenticates.
 - `/health`, `/ready` and `/metrics` need no key; keep them inside the
-  deployment boundary. There is no rate limiting; the only server-side bound
-  is the 10 MiB body cap.
+  deployment boundary. `/skill`, `/.well-known/agentfeedback.json`,
+  `/api/v1/openapi.json` and `/api/v1/schemas` need no key and carry no
+  data. `/mcp` takes the same key as `/api/v1/*`; its DNS-rebinding
+  check is off because the key stands in for it. `/mcp/{project}` is a
+  convenience, not an access boundary: `get_submission` and
+  `mark_processed` take ids and are not scoped by the preset. There is no rate limiting; the only server-side bound
+  is the 10 MiB body cap (plus 64 KiB for the JSON-RPC message on `/mcp`).
 - Keep `infra/agentfeedback/.env`, the remote `.env`, backups and every
   producer's `AGENT_FEEDBACK_API_KEY` private. `.env` and `.private/` are
   gitignored; never force-add them.

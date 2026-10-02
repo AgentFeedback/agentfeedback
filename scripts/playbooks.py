@@ -67,7 +67,6 @@ SETUP_TIMEOUT = 900  # seconds for the image build
 HUMAN_INPUTS = {
     "AF_PLAYBOOK_HARNESS": "<harness> of client step 2.3, one of " + ", ".join(HARNESSES) + " (default claude-code)",
     "AF_PLAYBOOK_ADDRESS": "<address> of step S4: an explicit yes to exposure on that IPv4 address",
-    "AF_PLAYBOOK_NO_BINARY": "yes: also run client steps 2.6 and 2.7 against the server",
 }
 
 
@@ -338,8 +337,8 @@ CLIENT_ROUTE = [
     Entry(CLIENT, "2.1", "client", expect=x_binary),
     Entry(CLIENT, "2.2", "client", expect=x_written, stdin_key=True),
     *client_route("client"),
-    Entry(CLIENT, "2.6", "client", when=unless("NO_BINARY"), expect=lambda out, c: need(last(out) == "401", f"expected 401, got {last(out)!r}")),
-    Entry(CLIENT, "2.7", "client", when=unless("NO_BINARY"), expect=x_prompt),
+    Entry(CLIENT, "2.6", "client", expect=lambda out, c: need(last(out) == "401", f"expected 401, got {last(out)!r}")),
+    Entry(CLIENT, "2.7", "client", expect=x_prompt),
     Entry(CLIENT, "4", "client", expect=x_list),
 ]
 

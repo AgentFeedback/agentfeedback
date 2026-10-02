@@ -2,11 +2,15 @@ package main
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"go.yaml.in/yaml/v3"
 )
 
 // installSetup runs serve --init in an isolated home and stands in a binary
@@ -267,5 +271,95 @@ func TestServerInstall_Windows(t *testing.T) {
 	out, r := serverInstall(t, "--compose", "--image", "x")
 	if r.code != 2 || !strings.Contains(out.Message, "not supported on Windows") {
 		t.Fatalf("%+v", r)
+	}
+}
+
+func TestServerInstall_OptionalKeys(t *testing.T) {
+	si, _ := installSetup(t)
+	setVersion(t, "v4.1.0")
+	base, err := os.ReadFile(si.EnvFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := `Say "hi" & <b>100%</b> of $HOME, ${X} %h $(id) ` + "`id`"
+	writeFile(t, si.EnvFile, string(base)+"PUBLIC_URL=https://feedback.example.com/\nMCP_INSTRUCTIONS='"+text+"'\n", 0o600)
+
+	// The shell reads the single-quoted value literally, as systemd does.
+	out, err := exec.Command("sh", "-c", `set -a; . "$1"; set +a; printf '%s|%s' "$PUBLIC_URL" "$MCP_INSTRUCTIONS"`, "sh", si.EnvFile).Output()
+	if err != nil || string(out) != "https://feedback.example.com/|"+text {
+		t.Fatalf("sourced serve.env: %q %v", out, err)
+	}
+
+	if _, r := serverInstall(t, "--systemd"); r.code != 0 {
+		t.Fatalf("systemd: %+v", r)
+	}
+	unit, _ := os.ReadFile(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "systemd", "user", "agentfeedback.service"))
+	if !strings.Contains(string(unit), "\nEnvironmentFile="+si.EnvFile+"\n") || strings.Contains(string(unit), "MCP_INSTRUCTIONS") {
+		t.Fatalf("unit:\n%s", unit)
+	}
+
+	if _, r := serverInstall(t, "--launchd"); r.code != 0 {
+		t.Fatalf("launchd: %+v", r)
+	}
+	plist, _ := os.ReadFile(filepath.Join(os.Getenv("HOME"), "Library", "LaunchAgents", "dev.agentfeedback.serve.plist"))
+	var doc struct {
+		Dict struct {
+			Inner []struct {
+				Keys    []string `xml:"key"`
+				Strings []string `xml:"string"`
+			} `xml:"dict"`
+		} `xml:"dict"`
+	}
+	if err := xml.Unmarshal(plist, &doc); err != nil || len(doc.Dict.Inner) != 1 {
+		t.Fatalf("plist does not parse: %v\n%s", err, plist)
+	}
+	env := map[string]string{}
+	for i, k := range doc.Dict.Inner[0].Keys {
+		env[k] = doc.Dict.Inner[0].Strings[i]
+	}
+	if env["PUBLIC_URL"] != "https://feedback.example.com" || env["MCP_INSTRUCTIONS"] != text {
+		t.Fatalf("plist environment %q", env)
+	}
+
+	if _, r := serverInstall(t, "--compose"); r.code != 0 {
+		t.Fatalf("compose: %+v", r)
+	}
+	data, _ := os.ReadFile(filepath.Join(si.Dir, "compose.yaml"))
+	var compose struct {
+		Services map[string]struct {
+			Environment map[string]string `yaml:"environment"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(data, &compose); err != nil {
+		t.Fatalf("compose.yaml does not parse: %v\n%s", err, data)
+	}
+	got := compose.Services["agentfeedback"].Environment
+	// Compose turns $$ back into $ when it interpolates.
+	if got["PUBLIC_URL"] != "https://feedback.example.com" || strings.ReplaceAll(got["MCP_INSTRUCTIONS"], "$$", "$") != text {
+		t.Fatalf("compose environment %q", got)
+	}
+}
+
+func TestServerInstall_OptionalKeysRefused(t *testing.T) {
+	si, _ := installSetup(t)
+	base, err := os.ReadFile(si.EnvFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for line, want := range map[string]string{
+		"PUBLIC_URL=ftp://x.example":                 "PUBLIC_URL is not a usable base URL: the scheme is not http or https",
+		"PUBLIC_URL=https://user:secret@x.example":   "PUBLIC_URL is not a usable base URL: it carries credentials",
+		"MCP_INSTRUCTIONS=File one report":           "MCP_INSTRUCTIONS must be one line in single quotes",
+		"MCP_INSTRUCTIONS='it''s'":                   "MCP_INSTRUCTIONS must be one line in single quotes",
+		"MCP_INSTRUCTIONS=\"double\"":                "MCP_INSTRUCTIONS must be one line in single quotes",
+		"MCP_INSTRUCTIONS='tab\tinside'":             "MCP_INSTRUCTIONS must be one line in single quotes",
+		"MCP_INSTRUCTIONS='  '":                      "MCP_INSTRUCTIONS must be one line in single quotes",
+		"MCP_INSTRUCTIONS='a'\nMCP_INSTRUCTIONS='b'": "a second time",
+	} {
+		writeFile(t, si.EnvFile, string(base)+line+"\n", 0o600)
+		out, r := serverInstall(t, "--systemd")
+		if r.code != 1 || !strings.Contains(out.Message, want) || strings.Contains(out.Message, "secret") {
+			t.Errorf("%q: %+v", line, out)
+		}
 	}
 }

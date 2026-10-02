@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+
+	"github.com/agentfeedback/agentfeedback/internal/skillgen"
 )
 
 // userError is the one shape of every error a person or an agent reads from
@@ -78,6 +80,17 @@ func errAPIKeyFile(path, reason string) error {
 
 func errLogLevel(got string) error {
 	return failErr(fmt.Sprintf("LOG_LEVEL must be debug or info, got %q", got), "set LOG_LEVEL to debug or info")
+}
+
+// errPublicURL states why PUBLIC_URL was refused without repeating the
+// value, which may carry credentials.
+func errPublicURL(err error) error {
+	reason := err.Error()
+	var se *skillgen.ServerError
+	if errors.As(err, &se) {
+		reason = se.Reason
+	}
+	return failErr("PUBLIC_URL is not a usable base URL: "+reason, "set PUBLIC_URL to the server's public base URL, such as https://feedback.example.com, or unset it")
 }
 
 func errDuration(key, got string, err error) error {

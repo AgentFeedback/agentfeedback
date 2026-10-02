@@ -65,6 +65,17 @@ Run it in the foreground with `set -a; . <dir>/serve.env; set +a; agentfeedback 
 `server install` reads `serve.env` and writes exactly one file; it starts,
 enables and reloads nothing and prints the commands to do so (the JSON
 outcome's `next`). An existing file is refused without `--force`.
+`serve.env` may also set `PUBLIC_URL` and `MCP_INSTRUCTIONS` (see
+[Configuration](#configuration)); `serve --init` writes neither. Write
+`MCP_INSTRUCTIONS` as one line in single quotes with no single quote or
+backslash inside,
+such as `MCP_INSTRUCTIONS='File one report per task.'`: the shell and
+systemd both read `serve.env`, and only that form means the same to both.
+`PUBLIC_URL` must already be in normalised form (one trailing slash is
+allowed), since the shell reads it too. `server install` refuses any other
+key, an unusable or non-normalised `PUBLIC_URL` and any other form of
+`MCP_INSTRUCTIONS`; the systemd unit reads both through
+`serve.env`, and the plist and `compose.yaml` copy them when set.
 
 | Mode | Writes | Next commands |
 |---|---|---|
@@ -317,9 +328,35 @@ Environment variables read by the binary:
 | `GRACEFUL_SHUTDOWN_TIMEOUT` | `30s` | drain time for in-flight requests |
 | `SERVICE_VERSION` | build default | reported in logs |
 | `LOG_LEVEL` | `info` | `debug` or `info` |
+| `PUBLIC_URL` | unset | base URL that `/skill` and the MCP server instructions name, such as `https://feedback.example.com`; unset derives it per request from `Host` and `X-Forwarded-Proto`; an unusable value (not http or https, credentials, a query) stops `serve` at start |
+| `MCP_INSTRUCTIONS` | unset | text appended to the MCP server instructions after a blank line |
 
 Compose-level variables (`infra/agentfeedback/.env`): `API_KEY`,
-`AGENTFEEDBACK_IMAGE` (deploy stack only), `AGENTFEEDBACK_BIND_ADDRESS`.
+`AGENTFEEDBACK_IMAGE` (deploy stack only), `AGENTFEEDBACK_BIND_ADDRESS`,
+`PUBLIC_URL`, `MCP_INSTRUCTIONS`.
+
+### MCP and discovery
+
+- `POST /mcp`: remote MCP server over Streamable HTTP, stateless (no
+  `Mcp-Session-Id`; `GET` and `DELETE` answer 405). It takes the API key
+  header like `/api/v1/*` (`Authorization: Bearer <key>` or
+  `X-Api-Key: <key>`) and checks it before anything else. Six tools:
+  `submit_feedback`, `list_submissions`, `get_submission`, `stats`,
+  `mark_processed`, `get_schema`, each answering with the REST body of its
+  route.
+- `POST /mcp/{project}`: the same, with `project` preset for the
+  connection; `submit_feedback`, `list_submissions` and `stats` then take no
+  `project` argument. `get_submission` and `mark_processed` take ids and are
+  not scoped by the preset; `get_schema` neither.
+- An MCP request body may be up to 10551296 bytes (the 10 MiB create limit
+  plus 64 KiB for the JSON-RPC message); a larger one is 413
+  `request_too_large`. The tools apply the create and mark limits to their
+  arguments.
+- `GET /skill?format=skill-md|agents-md|prompt` and
+  `GET /.well-known/agentfeedback.json` need no key and carry no data.
+- Behind a reverse proxy, set `PUBLIC_URL`, or forward the public `Host` and
+  `X-Forwarded-Proto`, so `/skill` and the MCP instructions name the address
+  clients use.
 
 ## Backups
 

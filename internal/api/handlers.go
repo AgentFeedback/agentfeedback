@@ -30,19 +30,30 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res, err := s.svc.Create(r.Context(), body)
+	s.observeCreate(res.Created, err)
 	if err != nil {
-		s.metrics.observeCreateError(err)
 		writeErr(w, r, err)
 		return
 	}
 	status := http.StatusOK
-	outcome := outcomeExisting
 	if res.Created {
-		status, outcome = http.StatusCreated, outcomeCreated
+		status = http.StatusCreated
 	}
-	s.metrics.observeSubmission(outcome)
 	w.Header().Set("Location", "/api/v1/submissions/"+strconv.FormatInt(res.Record.ID, 10))
 	writeJSON(w, r, status, res)
+}
+
+// observeCreate records a create attempt on submissions_created_total, for
+// REST and MCP alike.
+func (s *Server) observeCreate(created bool, err error) {
+	switch {
+	case err != nil:
+		s.metrics.observeCreateError(err)
+	case created:
+		s.metrics.observeSubmission(outcomeCreated)
+	default:
+		s.metrics.observeSubmission(outcomeExisting)
+	}
 }
 
 func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {

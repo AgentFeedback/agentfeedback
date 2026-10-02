@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/agentfeedback/agentfeedback/internal/skillgen"
 )
 
 type config struct {
@@ -18,6 +20,8 @@ type config struct {
 	ShutdownTimeout time.Duration
 	ServiceVersion  string
 	LogLevel        string
+	PublicURL       string
+	MCPInstructions string
 }
 
 // defaultServiceVersion is the build version without a leading "v", the form
@@ -54,11 +58,19 @@ func envDurationOr(key string, fallback time.Duration) (time.Duration, error) {
 // surface later as a failed write.
 func loadConfig(requireAPIKey bool) (config, error) {
 	cfg := config{
-		APIKey:         os.Getenv("API_KEY"),
-		DatabasePath:   envOr("DATABASE_PATH", "/data/agentfeedback.db"),
-		HTTPListenAddr: envOr("HTTP_LISTEN_ADDR", "0.0.0.0:8080"),
-		ServiceVersion: envOr("SERVICE_VERSION", defaultServiceVersion()),
-		LogLevel:       envOr("LOG_LEVEL", "info"),
+		APIKey:          os.Getenv("API_KEY"),
+		DatabasePath:    envOr("DATABASE_PATH", "/data/agentfeedback.db"),
+		HTTPListenAddr:  envOr("HTTP_LISTEN_ADDR", "0.0.0.0:8080"),
+		ServiceVersion:  envOr("SERVICE_VERSION", defaultServiceVersion()),
+		LogLevel:        envOr("LOG_LEVEL", "info"),
+		MCPInstructions: os.Getenv("MCP_INSTRUCTIONS"),
+	}
+	if raw := os.Getenv("PUBLIC_URL"); raw != "" {
+		u, err := skillgen.NormalizeServer(raw)
+		if err != nil {
+			return config{}, errPublicURL(err)
+		}
+		cfg.PublicURL = u
 	}
 
 	timeout, err := envDurationOr("GRACEFUL_SHUTDOWN_TIMEOUT", 30*time.Second)

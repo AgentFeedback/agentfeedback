@@ -267,10 +267,12 @@ func runServe() error {
 
 	var shuttingDown atomic.Bool
 	srv := api.New(api.Config{
-		Service:      svc,
-		DB:           db,
-		APIKey:       cfg.APIKey,
-		ShuttingDown: &shuttingDown,
+		Service:         svc,
+		DB:              db,
+		APIKey:          cfg.APIKey,
+		ShuttingDown:    &shuttingDown,
+		PublicURL:       cfg.PublicURL,
+		MCPInstructions: cfg.MCPInstructions,
 	})
 
 	httpSrv := &http.Server{

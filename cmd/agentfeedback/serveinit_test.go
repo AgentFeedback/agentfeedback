@@ -20,6 +20,8 @@ func isolateServer(t *testing.T) (home string) {
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
 	t.Setenv("API_KEY", "")
 	t.Setenv("API_KEY_FILE", "")
+	t.Setenv("PUBLIC_URL", "")
+	t.Setenv("MCP_INSTRUCTIONS", "")
 
 	return home
 }
@@ -152,6 +154,24 @@ func TestServeInit_Refusals(t *testing.T) {
 		r := runCLI(t, "", append([]string{"serve"}, args...)...)
 		if r.code != 2 || !strings.Contains(r.stderr, "only apply to --init") {
 			t.Fatalf("%v: %+v", args, r)
+		}
+	}
+}
+
+func TestLoadConfig_PublicURLAndInstructions(t *testing.T) {
+	isolateServer(t)
+	t.Setenv("DATABASE_PATH", filepath.Join(t.TempDir(), "a.db"))
+	t.Setenv("API_KEY", "k")
+	t.Setenv("PUBLIC_URL", "https://feedback.example.com/")
+	t.Setenv("MCP_INSTRUCTIONS", "File one report per task.")
+	cfg, err := loadConfig(true)
+	if err != nil || cfg.PublicURL != "https://feedback.example.com" || cfg.MCPInstructions != "File one report per task." {
+		t.Fatalf("loadConfig: %+v %v", cfg, err)
+	}
+	for _, bad := range []string{"ftp://x.example", "https://x.example/?a=1", "https://u:p@x.example", "x.example"} {
+		t.Setenv("PUBLIC_URL", bad)
+		if _, err := loadConfig(true); err == nil || !strings.Contains(err.Error(), "PUBLIC_URL") {
+			t.Errorf("PUBLIC_URL %q: %v", bad, err)
 		}
 	}
 }

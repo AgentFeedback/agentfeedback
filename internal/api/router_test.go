@@ -2,7 +2,6 @@ package api
 
 import (
 	"net/http"
-	"slices"
 	"strings"
 	"testing"
 
@@ -29,14 +28,14 @@ func TestRouter_EveryContractOperationIsRouted(t *testing.T) {
 	doc := loadContract(t)
 	n := 0
 	for path, item := range doc.Paths.Map() {
-		if slices.Contains(notServedHere, path) {
-			continue
-		}
-		concrete := strings.NewReplacer("{id}", "1", "{kind}", "envelope", "{version}", "1").Replace(path)
+		concrete := strings.NewReplacer("{id}", "1", "{kind}", "envelope", "{version}", "1", "{project}", "p").Replace(path)
 		for method := range item.Operations() {
 			n++
 			var body string
-			if method == http.MethodPost || method == http.MethodPatch {
+			switch {
+			case strings.HasPrefix(path, "/mcp"):
+				body = `{"jsonrpc":"2.0","id":1,"method":"ping"}`
+			case method == http.MethodPost || method == http.MethodPatch:
 				body = "{}"
 			}
 			r := e.do(t, method, concrete, body, true)

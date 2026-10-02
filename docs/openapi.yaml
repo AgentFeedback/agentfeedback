@@ -687,10 +687,12 @@ paths:
           headers:
             X-Request-Id: {$ref: '#/components/headers/XRequestId'}
             Mcp-Session-Id: {$ref: '#/components/headers/McpSessionId'}
-        '400': {$ref: '#/components/responses/BadRequest'}
+        '400': {$ref: '#/components/responses/McpBadRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/McpNotFound'}
         '405': {$ref: '#/components/responses/MethodNotAllowed'}
-        '413': {$ref: '#/components/responses/TooLarge'}
+        '413': {$ref: '#/components/responses/McpTooLarge'}
+        '415': {$ref: '#/components/responses/McpUnsupportedMediaType'}
         '429': {$ref: '#/components/responses/RateLimited'}
         '500': {$ref: '#/components/responses/InternalError'}
         '503': {$ref: '#/components/responses/Unavailable'}
@@ -720,10 +722,12 @@ paths:
           headers:
             X-Request-Id: {$ref: '#/components/headers/XRequestId'}
             Mcp-Session-Id: {$ref: '#/components/headers/McpSessionId'}
-        '400': {$ref: '#/components/responses/BadRequest'}
+        '400': {$ref: '#/components/responses/McpBadRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/McpNotFound'}
         '405': {$ref: '#/components/responses/MethodNotAllowed'}
-        '413': {$ref: '#/components/responses/TooLarge'}
+        '413': {$ref: '#/components/responses/McpTooLarge'}
+        '415': {$ref: '#/components/responses/McpUnsupportedMediaType'}
         '429': {$ref: '#/components/responses/RateLimited'}
         '500': {$ref: '#/components/responses/InternalError'}
         '503': {$ref: '#/components/responses/Unavailable'}
@@ -1003,6 +1007,56 @@ components:
               The server may answer a request with a server-sent event stream
               carrying JSON-RPC messages when the client's `Accept` header
               allows it.
+    McpBadRequest:
+      description: >-
+        On protocol 2026-07-28 and later, a JSON-RPC error response when the
+        MCP transport requires one (an unsupported protocol version in
+        `_meta`, invalid params, an unknown tool). Otherwise the Error shape:
+        `bad_request` (a method the server does not handle on an earlier
+        protocol version, a protocol version header the server does not
+        support, an `Accept` header without both `application/json` and
+        `text/event-stream`, a body that is not a JSON-RPC message) or
+        `validation_error` (a `{project}` that is empty once normalised).
+      headers:
+        X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+        Cache-Control: {$ref: '#/components/headers/CacheControl'}
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: '#/components/schemas/Error'
+              - $ref: '#/components/schemas/JsonRpcError'
+    McpNotFound:
+      description: >-
+        JSON-RPC error `-32601` for a method the server does not handle, on
+        protocol 2026-07-28 and later. Earlier protocol versions get 400
+        `bad_request` in the Error shape instead.
+      headers:
+        X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+        Cache-Control: {$ref: '#/components/headers/CacheControl'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/JsonRpcError'}
+    McpTooLarge:
+      description: >-
+        `request_too_large`: the request body is over 10551296 bytes, the
+        create body limit (10485760) plus 65536 bytes for the JSON-RPC
+        message. Tool arguments over the create or mark body limit get a tool
+        result with `isError` and the same error body instead.
+      headers:
+        X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+        Cache-Control: {$ref: '#/components/headers/CacheControl'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    McpUnsupportedMediaType:
+      description: '`bad_request`: the request Content-Type is not `application/json`.'
+      headers:
+        X-Request-Id: {$ref: '#/components/headers/XRequestId'}
+        Cache-Control: {$ref: '#/components/headers/CacheControl'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
     BadRequest:
       description: >-
         `bad_request` (body not JSON, or not an object) or `validation_error`
@@ -1407,3 +1461,21 @@ components:
     JsonRpc:
       type: object
       description: A JSON-RPC 2.0 message as defined by the MCP Streamable HTTP transport.
+    JsonRpcError:
+      type: object
+      description: A JSON-RPC 2.0 error response.
+      required: [jsonrpc, error]
+      properties:
+        jsonrpc: {type: string, const: '2.0'}
+        id:
+          oneOf:
+            - {type: string}
+            - {type: integer}
+            - {type: 'null'}
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: {type: integer}
+            message: {type: string}
+            data: {}

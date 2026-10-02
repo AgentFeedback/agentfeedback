@@ -7,7 +7,8 @@ How to change the service and the skills, verify, and release. Read
 
 ```
 cmd/agentfeedback/              main: bare invocation prints help; server `serve` (internal/api; key from API_KEY or API_KEY_FILE), `serve --init` (api-key and serve.env), `server install --systemd|--launchd|--compose` (writes one service file, starts nothing), `import [--dry-run] <export.ndjson>` (restore keeping ids), `backup <dest.db>`; client `doctor`, `doctor --init`, `doctor --e2e` (submit, list, mark one install-check row, no spool), `submit` (friction|review|<kind>, --stdin, --dry-run), `flush`, `version`, `schema`, `skill` (render, render docs, reminder), `install` and `uninstall` (wire the skill, Stop hook or MCP entry into the coding-agent harnesses through internal/harness), `flush --hook`, read and processing `list`, `get`, `stats`, `done`, `undo`, `redact`, `rekind`, `export` (streamed, trailer verified), `digest`, `migrate` (to cloud or a URL through its import route, target key from stdin), settings resolved flag > AGENT_FEEDBACK_* env > config.toml (API key: env > config only); coverage.toml maps every OpenAPI operation, parameter and body property to a command, flag or argument, or lists it with a reason (checked by coverage_test.go)
-internal/api/                   v1 HTTP transport over internal/core: mux, middleware, query grammar, Problem mapping, bundled openapi.json; conformance test against docs/openapi.yaml
+internal/api/                   v1 HTTP transport over internal/core: mux, middleware, query grammar, Problem mapping, bundled openapi.json, /mcp (key, body limit, Error shape around internal/mcp), /skill and discovery; conformance test against docs/openapi.yaml
+internal/mcp/                   remote MCP server over internal/core (go-sdk, stateless Streamable HTTP): six tools answering with the REST bodies, strict argument decoding, the /mcp/{project} preset, server instructions from internal/skillgen; mounted by internal/api; coverage.toml maps every OpenAPI operation, parameter and body property to a tool and argument, or lists it with a reason (checked by coverage_test.go)
 internal/core/                  v1 service, no net/http: create with identity and dedupe, get, list, marks, redaction, stats, export, import and restore of format 2, meta; typed problems
 internal/store/                 SQLite for the v1 API: open + pragmas + the application_id stamp, the single init migration, hand-written SQL, query plans pinned by a test
 internal/harness/               harness wiring for install and uninstall: the six adapters, a byte-preserving JSON/JSONC editor, the Codex TOML block, backups, atomic writes and the install.json manifest
@@ -171,7 +172,8 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
    seed beside the fix.
 6. API touched: `just e2e` green (builds, serves on a temp database, runs
    `scripts/e2e.sh`, which also fails on an uncovered operation), and
-   `cmd/agentfeedback/coverage.toml` updated (`just test` fails otherwise).
+   `cmd/agentfeedback/coverage.toml` and `internal/mcp/coverage.toml`
+   updated (`just test` fails otherwise).
 7. Skill scripts touched: the shellcheck command above, `bash tests/skill/run-tests.sh`
    and `bash tests/skill/triage-tests.sh` all green.
 8. `shellcheck -x scripts/*.sh` clean.

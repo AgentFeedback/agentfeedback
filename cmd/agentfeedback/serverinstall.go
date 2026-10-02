@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"flag"
@@ -11,8 +12,11 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/agentfeedback/agentfeedback/internal/skillgen"
 )
 
 const (
@@ -33,6 +37,8 @@ var (
 type serveEnv struct {
 	keyFile, database, listen string
 	port                      string
+	// Optional: empty when serve.env does not set them.
+	publicURL, instructions string
 }
 
 // serverOutcome is the one JSON line server install always ends with.
@@ -288,8 +294,9 @@ func binaryPath() (string, error) {
 	return exe, checkSafePath("the agentfeedback binary path", exe)
 }
 
-// readServeEnv parses the three KEY=VALUE lines serve --init writes; comment
-// and blank lines are skipped, anything else is refused.
+// readServeEnv parses the three KEY=VALUE lines serve --init writes and the
+// optional PUBLIC_URL and MCP_INSTRUCTIONS; comment and blank lines are
+// skipped, anything else is refused.
 func readServeEnv(path string) (serveEnv, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -300,6 +307,7 @@ func readServeEnv(path string) (serveEnv, error) {
 	}
 	values := map[string]string{}
 	sc := bufio.NewScanner(bytes.NewReader(data))
+	sc.Buffer(make([]byte, 0, 64<<10), 1<<20)
 	for n := 1; sc.Scan(); n++ {
 		line := strings.TrimSpace(sc.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -309,7 +317,7 @@ func readServeEnv(path string) (serveEnv, error) {
 		switch {
 		case !ok:
 			return serveEnv{}, errServeEnvInvalid(path, fmt.Sprintf("line %d is not KEY=VALUE", n))
-		case k != "API_KEY_FILE" && k != "DATABASE_PATH" && k != "HTTP_LISTEN_ADDR":
+		case !slices.Contains(serveEnvKeys, k):
 			return serveEnv{}, errServeEnvInvalid(path, fmt.Sprintf("line %d sets %q, which server install does not know", n, k))
 		case values[k] != "":
 			return serveEnv{}, errServeEnvInvalid(path, fmt.Sprintf("line %d sets %s a second time", n, k))
@@ -318,7 +326,9 @@ func readServeEnv(path string) (serveEnv, error) {
 		}
 		values[k] = v
 	}
-	if err := sc.Err(); err != nil {
+	if err := sc.Err(); errors.Is(err, bufio.ErrTooLong) {
+		return serveEnv{}, errServeEnvInvalid(path, "a line is longer than 1 MiB")
+	} else if err != nil {
 		return serveEnv{}, errPathUnreadable(path, err)
 	}
 	for _, k := range []string{"API_KEY_FILE", "DATABASE_PATH", "HTTP_LISTEN_ADDR"} {
@@ -348,12 +358,60 @@ func readServeEnv(path string) (serveEnv, error) {
 	}
 	// Normalised, so +8080 or 08080 never reaches the compose port mapping.
 	env.port = strconv.Itoa(p)
+	if raw := values["PUBLIC_URL"]; raw != "" {
+		u, err := skillgen.NormalizeServer(raw)
+		if err != nil {
+			var se *skillgen.ServerError
+			reason := err.Error()
+			if errors.As(err, &se) {
+				reason = se.Reason
+			}
+			return serveEnv{}, errServeEnvInvalid(path, "PUBLIC_URL is not a usable base URL: "+reason)
+		}
+		// serve.env is sourced by a shell, so the raw value must already be
+		// in the normalised form, whose characters are shell-safe.
+		if raw != u && raw != u+"/" {
+			return serveEnv{}, errServeEnvInvalid(path, "PUBLIC_URL is not a usable base URL: "+
+				"it is not in normalised form (scheme://host[:port][/path], only letters, digits and . _ ~ % - / in the path)")
+		}
+		env.publicURL = u
+	}
+	if raw := values["MCP_INSTRUCTIONS"]; raw != "" {
+		text, ok := instructionsValue(raw)
+		if !ok {
+			return serveEnv{}, errServeEnvInvalid(path, "MCP_INSTRUCTIONS must be one line in single quotes without a single quote or backslash inside, "+
+				"such as MCP_INSTRUCTIONS='File one report per task.'; the shell and systemd read serve.env, and only that form means the same to both")
+		}
+		env.instructions = text
+	}
 
 	return env, nil
 }
 
+// serveEnvKeys are the keys serve.env may set.
+var serveEnvKeys = []string{"API_KEY_FILE", "DATABASE_PATH", "HTTP_LISTEN_ADDR", "PUBLIC_URL", "MCP_INSTRUCTIONS"}
+
+// instructionsValue reads MCP_INSTRUCTIONS as serve.env holds it: one
+// single-quoted line, which a POSIX shell and a systemd EnvironmentFile both
+// read as the text between the quotes, with no expansion. A backslash is
+// refused because systemd treats it as an escape there and the shell does
+// not; no control character may appear, so nothing can end the value early.
+func instructionsValue(raw string) (string, bool) {
+	if len(raw) < 3 || raw[0] != '\'' || raw[len(raw)-1] != '\'' {
+		return "", false
+	}
+	text := raw[1 : len(raw)-1]
+	for _, r := range text {
+		if r == '\'' || r == '\\' || r < 0x20 || r == 0x7f {
+			return "", false
+		}
+	}
+	return text, strings.TrimSpace(text) != ""
+}
+
 // systemdUnit is a user unit: the environment comes from serve.env, which
-// names the key file, so the unit holds no key.
+// names the key file, so the unit holds no key; the optional values reach
+// the service through the same file.
 func systemdUnit(envPath, bin string) []byte {
 	return fmt.Appendf(nil, `# written by agentfeedback server install --systemd
 [Unit]
@@ -381,10 +439,14 @@ func launchdPlist(bin string, env serveEnv, logPath string) []byte {
 
 		return b.String()
 	}
+	var optional string
+	for _, kv := range env.optional() {
+		optional += "\t\t<key>" + kv[0] + "</key>\n\t\t<string>" + esc(kv[1]) + "</string>\n"
+	}
 
 	return fmt.Appendf(nil, `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- written by agentfeedback server install --launchd -->
+<!-- written by agentfeedback server install (launchd) -->
 <plist version="1.0">
 <dict>
 	<key>Label</key>
@@ -402,7 +464,7 @@ func launchdPlist(bin string, env serveEnv, logPath string) []byte {
 		<string>%s</string>
 		<key>HTTP_LISTEN_ADDR</key>
 		<string>%s</string>
-	</dict>
+%s	</dict>
 	<key>RunAtLoad</key>
 	<true/>
 	<key>KeepAlive</key>
@@ -415,12 +477,17 @@ func launchdPlist(bin string, env serveEnv, logPath string) []byte {
 	<string>%s</string>
 </dict>
 </plist>
-`, launchdLabel, esc(bin), esc(env.keyFile), esc(env.database), esc(env.listen), esc(logPath), esc(logPath))
+`, launchdLabel, esc(bin), esc(env.keyFile), esc(env.database), esc(env.listen), optional, esc(logPath), esc(logPath))
 }
 
 // composeFile runs the image as the calling user, the key as a file secret,
 // the database directory as /data, and publishes the port on loopback only.
 func composeFile(image string, env serveEnv) []byte {
+	var optional string
+	for _, kv := range env.optional() {
+		optional += "      " + kv[0] + ": " + yamlString(kv[1]) + "\n"
+	}
+
 	return fmt.Appendf(nil, `# written by agentfeedback server install --compose
 # The port is published on 127.0.0.1 only; exposing the server beyond this
 # machine is the operator's decision.
@@ -434,7 +501,7 @@ services:
       API_KEY_FILE: /run/secrets/api_key
       DATABASE_PATH: /data/%s
       HTTP_LISTEN_ADDR: 0.0.0.0:8080
-    ports:
+%s    ports:
       - "127.0.0.1:%s:8080"
     volumes:
       - %s:/data
@@ -443,5 +510,25 @@ services:
 secrets:
   api_key:
     file: %s
-`, image, os.Getuid(), os.Getgid(), filepath.Base(env.database), env.port, filepath.Dir(env.database), env.keyFile)
+`, image, os.Getuid(), os.Getgid(), filepath.Base(env.database), optional, env.port, filepath.Dir(env.database), env.keyFile)
+}
+
+// optional lists the optional serve.env values that are set, in a fixed
+// order.
+func (e serveEnv) optional() [][2]string {
+	var out [][2]string
+	if e.publicURL != "" {
+		out = append(out, [2]string{"PUBLIC_URL", e.publicURL})
+	}
+	if e.instructions != "" {
+		out = append(out, [2]string{"MCP_INSTRUCTIONS", e.instructions})
+	}
+	return out
+}
+
+// yamlString quotes v for a Compose file: a JSON string is a YAML
+// double-quoted scalar, and $ is doubled so Compose interpolates nothing.
+func yamlString(v string) string {
+	b, _ := json.Marshal(v)
+	return strings.ReplaceAll(string(b), "$", "$$")
 }
