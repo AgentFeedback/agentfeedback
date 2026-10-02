@@ -19,10 +19,12 @@ spec.loader.exec_module(cluster)
 
 
 def report(report_id, remote="repo-a"):
-    return {"id": report_id, "family": "friction", "processed_at": None,
-            "payload": {"summary": "broken flag", "details": "specific failure",
-                        "context": {"git_remote": remote, "cwd": "PRIVATE_PATH"},
-                        "machine_name": "PRIVATE_MACHINE"}}
+    return {"id": report_id, "uid": "PRIVATE_UID", "kind": "friction", "schema_version": 1,
+            "summary": "broken flag", "machine": "PRIVATE_MACHINE", "project": "PRIVATE_PROJECT",
+            "context": {"git_remote": remote, "repo_root": "PRIVATE_PATH"},
+            "payload": {"category": "tooling", "details": "specific failure", "suggested_fix": "fix it",
+                        "severity": "PRIVATE_SEVERITY"},
+            "content_hash": "PRIVATE_HASH"}
 
 
 def response(choice="same", confidence=0.9):
@@ -220,7 +222,7 @@ class Clustering(unittest.TestCase):
             return {pair: completed("different") for pair in pairs}
         with patch.object(cluster, "compare_chunk", side_effect=fake), patch.object(cluster, "compare", return_value=completed("different")):
             result = self.invoke(rows, ("repo-a",), batch=8)
-        approved = {row["id"] for row in rows if row["payload"]["context"]["git_remote"] == "repo-a"}
+        approved = {row["id"] for row in rows if row["context"]["git_remote"] == "repo-a"}
         self.assertTrue(seen)
         self.assertTrue(all(ids <= approved for ids in seen))
         self.assertTrue(all(set(pair["ids"]) <= approved for pair in result["comparisons"]))
@@ -247,15 +249,31 @@ class Clustering(unittest.TestCase):
         self.assertEqual(result["evaluated_pairs"], 0)
         self.assertEqual(result["groups"], [[i] for i in range(1, 9)])
 
+    def test_evidence_is_exactly_the_four_text_fields_in_order(self):
+        row = report(7)
+        row["summary"] = "top-level summary"
+        row["payload"]["summary"] = "PRIVATE_PAYLOAD_SUMMARY"
+        result = cluster.evidence(row)
+        self.assertEqual(list(result), ["id", "category", "summary", "details", "suggested_fix"])
+        self.assertEqual(result, {"id": 7, "category": "tooling", "summary": "top-level summary",
+                                  "details": "specific failure", "suggested_fix": "fix it"})
+        self.assertNotIn("PRIVATE_", json.dumps(result))
+
+    def test_repository_reads_top_level_context(self):
+        self.assertEqual(cluster.repository(report(1, "git@example.com:o/r.git")), "git@example.com:o/r.git")
+        self.assertEqual(cluster.repository({k: v for k, v in report(1).items() if k != "context"}), "")
+
     def test_cli_rejects_contaminated_or_duplicate_digest_without_network(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "index.json"
             path.write_text(json.dumps([report(1), report(2)]))
-            proc = subprocess.run([sys.executable, str(SCRIPT), str(path), "--max-pairs", "5"], capture_output=True, text=True,
+            proc = subprocess.run([sys.executable, str(SCRIPT), str(path)], capture_output=True, text=True,
                                   env={**os.environ, "TYPESAFE_API_KEY": ""})
-            self.assertEqual(proc.returncode, 2)
+            self.assertEqual(proc.returncode, 0)
+            self.assertEqual((json.loads(proc.stdout)["status"], json.loads(proc.stdout)["reason"]), ("skipped", "no_opt_in"))
             for rows in [[report(1), report(1)], [{**report(1), "processed_at": "already-done"}],
-                         [{**report(1), "family": "event"}]]:
+                         [{**report(1), "kind": "event"}], [{**report(1), "context": "repo-a"}],
+                         [{**report(1), "context": {"git_remote": 1}}]]:
                 path.write_text(json.dumps(rows))
                 proc = subprocess.run([sys.executable, str(SCRIPT), str(path)], capture_output=True, text=True,
                                       env={**os.environ, "TYPESAFE_API_KEY": ""})

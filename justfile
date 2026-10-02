@@ -126,12 +126,10 @@ ci:
     go test -race -count=1 ./...
     just fuzz
     just e2e
-    shellcheck -x skills/agentfeedback/scripts/install.sh
-    if ls skills/agentfeedback-triage/scripts/*.sh >/dev/null 2>&1; then
-        (cd skills/agentfeedback-triage/scripts && shellcheck -x ./*.sh)
-    fi
+    shellcheck -x -P SCRIPTDIR skills/*/scripts/*.sh tests/skill/*.sh
     bash tests/skill/run-tests.sh
-    bash tests/skill/triage-tests.sh
+    python3 tests/skill/test_cluster.py
+    python3 tests/skill/triage-playbooks.py
     python3 tests/playbooks/test_playbooks.py
     python3 scripts/playbooks.py check
     shellcheck -x scripts/*.sh

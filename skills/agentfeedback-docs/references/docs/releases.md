@@ -9,10 +9,7 @@ major for breaking API or operational contracts. Every delivered change belongs
 to a release. The two skills carry their own `version` in their `SKILL.md`;
 bump one only when its command contract changes. The `agentfeedback` skill's
 `SKILL.md` is generated: its version is in `internal/skillgen/source/skill.json`,
-and `just skills` renders it. The bash client scripts in
-`skills/agentfeedback-triage/scripts/` carry their own `AF_CLIENT_VERSION` in
-`_common.sh`; bump it when the scripts' contract changes: that value is what
-their payloads report.
+and `just skills` renders it.
 
 Maintainers decide when to cut a release, by hand, when they judge `main`
 ready; landed changes never trigger one. An agent pushes a `v*` tag, creates a

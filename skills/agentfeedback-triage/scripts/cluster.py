@@ -39,26 +39,31 @@ def load_digest(path):
         if row["id"] in seen:
             raise ValueError("duplicate report id")
         seen.add(row["id"])
-        if row.get("family") != "friction" or row.get("processed_at") is not None:
+        if row.get("kind") != "friction" or row.get("processed_at") is not None:
             raise ValueError("index must contain only unprocessed frictions")
         payload = row.get("payload")
-        if not isinstance(payload, dict) or not isinstance(payload.get("context", {}), dict):
+        if not isinstance(payload, dict) or not isinstance(row.get("context", {}), dict):
             raise ValueError("every report needs a payload object and object context")
-        for field in (*FIELDS, "project"):
-            if field in payload and not isinstance(payload[field], str):
+        for field in ("summary", "project"):
+            if field in row and not isinstance(row[field], str):
                 raise ValueError("report text fields must be strings")
-        repo = payload.get("context", {}).get("git_remote", "")
+        for field in FIELDS:
+            if field != "summary" and field in payload and not isinstance(payload[field], str):
+                raise ValueError("report text fields must be strings")
+        repo = row.get("context", {}).get("git_remote", "")
         if not isinstance(repo, str):
             raise ValueError("git_remote must be a string")
     return sorted(rows, key=lambda row: row["id"]), hashlib.sha256(raw).hexdigest()
 
 
 def repository(row):
-    return row["payload"].get("context", {}).get("git_remote", "")
+    return row.get("context", {}).get("git_remote", "")
 
 
 def evidence(row):
-    return {"id": row["id"], **{field: row["payload"].get(field, "") for field in FIELDS}}
+    """The only report text sent: summary from the row, the rest from its payload."""
+    return {"id": row["id"], **{field: row.get(field, "") if field == "summary" else row["payload"].get(field, "")
+                                for field in FIELDS}}
 
 
 def probability(value):
@@ -282,7 +287,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("index", type=Path, help="digest index.json")
     parser.add_argument("--allow-repo", action="append", default=[],
-                        help="explicit disclosure approval for an exact payload.context.git_remote; repeat per repository")
+                        help="explicit disclosure approval for an exact context.git_remote; repeat per repository")
     parser.add_argument("--dry-run", action="store_true", help="preview approved report text locally; never contact TypeSafe")
     parser.add_argument("--batch-size", type=int, default=8,
                         help="reports per request, all their pairs asked together; 1 = one request per pair")

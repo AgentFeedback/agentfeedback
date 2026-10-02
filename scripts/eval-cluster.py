@@ -2,14 +2,15 @@
 """Measure agentfeedback-triage cluster.py against labelled friction pairs. LIVE.
 
 Sends report text (category, summary, details, suggested_fix) to TypeSafe.
-Every labelled report's exact payload.context.git_remote must be approved with
+Every labelled report's exact context.git_remote must be approved with
 --allow-repo, as in cluster.py; without --live it only lists what would be sent.
 
   python3 scripts/eval-cluster.py export.ndjson labels.json --allow-repo REMOTE ...
   TYPESAFE_API_KEY=... python3 scripts/eval-cluster.py export.ndjson labels.json \
       --allow-repo REMOTE ... --live [--out raw.json]
 
-export.ndjson is `agentfeedback export --kind friction`. labels.json:
+export.ndjson is `agentfeedback export --kind friction` (format 2: the header
+and trailer lines are skipped). labels.json:
   {"chunks": [[id, ...], ...],        # every pair inside a chunk is evaluated
    "same": [[id, id], ...],           # labelled same defect; all other pairs are different
    "compound": [[id, id], ...],       # subset of "same" where one report bundles several defects
@@ -64,7 +65,7 @@ def main():
     parser.add_argument("export", type=Path)
     parser.add_argument("labels", type=Path)
     parser.add_argument("--allow-repo", action="append", default=[],
-                        help="approve disclosure for an exact payload.context.git_remote; repeat per repository")
+                        help="approve disclosure for an exact context.git_remote; repeat per repository")
     parser.add_argument("--live", action="store_true", help="send requests; otherwise list the disclosure and exit")
     parser.add_argument("--out", type=Path, help="write every raw answer here")
     parser.add_argument("--timeout", type=int, default=30)
@@ -73,7 +74,7 @@ def main():
     records = {}
     for line in args.export.read_text().splitlines():
         record = json.loads(line)
-        if isinstance(record, dict) and record.get("family") == "friction" and "id" in record:
+        if isinstance(record, dict) and record.get("kind") == "friction" and type(record.get("id")) is int:
             records[record["id"]] = record
     absent = sorted({report_id for chunk in labels["chunks"] for report_id in chunk} - set(records))
     if absent:
