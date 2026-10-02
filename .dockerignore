@@ -9,6 +9,8 @@ docs/
 infra/
 scripts/
 skills/
+# go:embed in references.go: the plugin bundle carries the install script
+!skills/agentfeedback/scripts/install.sh
 tests/
 .env
 **/.env
