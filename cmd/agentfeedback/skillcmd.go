@@ -13,11 +13,11 @@ import (
 	"github.com/agentfeedback/agentfeedback/internal/skillgen"
 )
 
-const skillSynopsis = "skill render <form> [--server URL] | skill render docs --out DIR | skill reminder"
+const skillSynopsis = "skill render <form> [--server URL] | skill render docs|marketplace --out DIR | skill render agent-plugin --out DIR [--server URL] | skill reminder"
 
 // runSkill prints a rendered form of the submission guidance, or the
-// one-line session-start reminder, on stdout; skill render docs writes the
-// agentfeedback-docs skill into a new or empty directory instead.
+// one-line session-start reminder, on stdout; skill render docs, agent-plugin
+// and marketplace write a directory into a new or empty --out instead.
 func runSkill(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if len(args) > 0 && (args[0] == "-h" || args[0] == "-help" || args[0] == "--help") {
 		fmt.Fprintf(stderr, "usage: agentfeedback %s\n%s", skillSynopsis, skillForms())
@@ -44,8 +44,8 @@ func runSkill(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	}
 
 	fs := newFlagSet("skill render")
-	server := fs.String("server", "", "base URL named by the forms that carry one (prompt, mcp)")
-	out := fs.String("out", "", "docs only: write the skill into this new or empty directory")
+	server := fs.String("server", "", "base URL named by the forms that carry one (prompt, mcp, agent-plugin)")
+	out := fs.String("out", "", "docs, agent-plugin and marketplace only: write into this new or empty directory")
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), "usage: agentfeedback %s\n%s", skillSynopsis, skillForms())
 		fs.PrintDefaults()
@@ -57,25 +57,42 @@ func runSkill(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if len(positional) != 1 {
 		return errArgs("skill", skillSynopsis)
 	}
-	if positional[0] == skillgen.FormDocs {
+	switch form := positional[0]; form {
+	case skillgen.FormDocs, skillgen.FormAgentPlugin, skillgen.FormMarketplace:
 		switch {
-		case *server != "":
-			return errSkillDocsServer()
+		case *server != "" && form != skillgen.FormAgentPlugin:
+			return errSkillServerNotApplicable(form)
 		case *out == "":
-			return errSkillDocsNeedsOut()
+			return errSkillNeedsOut(form)
+		}
+		var files []skillgen.File
+		switch form {
+		case skillgen.FormDocs:
+			files, err = skillgen.Docs()
+		case skillgen.FormAgentPlugin:
+			files, err = skillgen.AgentPlugin(*server)
+		default:
+			files, err = skillgen.Marketplace()
+		}
+		var se *skillgen.ServerError
+		switch {
+		case errors.As(err, &se):
+			return errSkillServer(se.Raw, se.Reason)
+		case err != nil:
+			return err
 		}
 
-		return renderDocs(*out)
+		return renderDir(*out, files)
 	}
 	if *out != "" {
-		return errSkillOutOnlyDocs()
+		return errSkillOutOnlyDirs()
 	}
 
 	rendered, err := skillgen.Render(positional[0], *server)
 	var se *skillgen.ServerError
 	switch {
 	case errors.Is(err, skillgen.ErrUnknownForm):
-		return errSkillForm(positional[0], append(skillgen.Forms(), skillgen.FormDocs))
+		return errSkillForm(positional[0], append(skillgen.Forms(), skillgen.FormDocs, skillgen.FormAgentPlugin, skillgen.FormMarketplace))
 	case errors.As(err, &se):
 		return errSkillServer(se.Raw, se.Reason)
 	case err != nil:
@@ -87,17 +104,13 @@ func runSkill(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 }
 
 func skillForms() string {
-	return fmt.Sprintf("forms: %s (printed on stdout), %s (written with --out DIR)\n",
-		strings.Join(skillgen.Forms(), ", "), skillgen.FormDocs)
+	return fmt.Sprintf("forms: %s (printed on stdout), %s, %s, %s (written with --out DIR)\n",
+		strings.Join(skillgen.Forms(), ", "), skillgen.FormDocs, skillgen.FormAgentPlugin, skillgen.FormMarketplace)
 }
 
-// renderDocs writes the agentfeedback-docs skill into dir, which must not
-// exist or be an empty directory, so a render never mixes with other files.
-func renderDocs(dir string) error {
-	files, err := skillgen.Docs()
-	if err != nil {
-		return err
-	}
+// renderDir writes a rendered directory into dir, which must not exist or be
+// an empty directory, so a render never mixes with other files.
+func renderDir(dir string, files []skillgen.File) error {
 	info, err := os.Lstat(dir)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
@@ -114,7 +127,7 @@ func renderDocs(dir string) error {
 			return errSkillOutNotEmpty(dir)
 		}
 	}
-	// The skill is rendered beside dir and renamed into place, so a failed
+	// The files are rendered beside dir and renamed into place, so a failed
 	// render leaves nothing behind.
 	parent := filepath.Dir(dir)
 	if err := os.MkdirAll(parent, 0o755); err != nil {
@@ -124,7 +137,7 @@ func renderDocs(dir string) error {
 	if err != nil {
 		return errSkillOutDir(parent, err)
 	}
-	if err := renderDocsInto(tmp, dir, files); err != nil {
+	if err := renderInto(tmp, dir, files); err != nil {
 		_ = os.RemoveAll(tmp)
 
 		return err
@@ -133,9 +146,9 @@ func renderDocs(dir string) error {
 	return nil
 }
 
-// renderDocsInto writes files into tmp and renames it to dir, replacing dir
+// renderInto writes files into tmp and renames it to dir, replacing dir
 // when it is an empty directory.
-func renderDocsInto(tmp, dir string, files []skillgen.File) error {
+func renderInto(tmp, dir string, files []skillgen.File) error {
 	if err := os.Chmod(tmp, 0o755); err != nil {
 		return errSkillOutDir(tmp, err)
 	}
@@ -144,7 +157,15 @@ func renderDocsInto(tmp, dir string, files []skillgen.File) error {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			return errSkillOutDir(filepath.Dir(path), err)
 		}
-		if err := os.WriteFile(path, f.Data, 0o644); err != nil {
+		mode := f.Mode
+		if mode == 0 {
+			mode = 0o644
+		}
+		if err := os.WriteFile(path, f.Data, mode); err != nil {
+			return errSkillOutWrite(path, err)
+		}
+		// WriteFile's mode passes through the umask; the render's does not.
+		if err := os.Chmod(path, mode); err != nil {
 			return errSkillOutWrite(path, err)
 		}
 	}

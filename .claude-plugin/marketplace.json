@@ -1,0 +1,15 @@
+{
+  "name": "agentfeedback",
+  "description": "The AgentFeedback plugin: teaches coding agents to report friction (missing docs, misbehaving tools, stale config) to an AgentFeedback server.",
+  "owner": {
+    "name": "AgentFeedback",
+    "url": "https://github.com/AgentFeedback"
+  },
+  "plugins": [
+    {
+      "name": "agentfeedback",
+      "source": "./plugins/agentfeedback",
+      "description": "Report friction from your coding agent to an AgentFeedback server: the agentfeedback skill, which files reports with the agentfeedback binary (the skill's scripts/install.sh installs it)."
+    }
+  ]
+}

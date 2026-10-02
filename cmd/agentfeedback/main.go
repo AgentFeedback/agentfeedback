@@ -58,7 +58,7 @@ var commands = []command{
 	{"digest", "digest [--out DIR] [--kind K] [--include-kind K]: pull the open queue into a triage directory", runDigest},
 	{"version", "print the client version", runVersion},
 	{"schema", "schema [<kind> [<version>]]: list the schemas or print one", runSchema},
-	{"skill", "skill render <form> [--server URL]: print the submission guidance in one form | skill render docs --out DIR: write the agentfeedback-docs skill | skill reminder: print the one-line session-start reminder", runSkill},
+	{"skill", "skill render <form> [--server URL]: print the submission guidance in one form | skill render docs --out DIR: write the agentfeedback-docs skill | skill render agent-plugin|marketplace --out DIR: write the plugin bundle or a marketplace root | skill reminder: print the one-line session-start reminder", runSkill},
 	{"install", installSynopsis + ": wire the agentfeedback skill and Stop hook (or with --mcp an MCP entry) into the coding-agent harnesses; no harness named lists them", runInstall},
 	{"uninstall", uninstallSynopsis + ": remove exactly what install added, restoring untouched files from their backups", runUninstall},
 	{"help", "print this help", nil},

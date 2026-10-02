@@ -36,6 +36,9 @@ __pycache__/
 # .idea/
 # .vscode/
 
+# An Agent Plugins mcp.json names one server; it is rendered with --server, never checked in
+/plugins/agentfeedback/mcp.json
+
 # Local build output (just build) and the local run-local database
 bin/
 dist/

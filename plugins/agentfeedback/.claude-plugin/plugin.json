@@ -1,0 +1,18 @@
+{
+  "name": "agentfeedback",
+  "version": "5.0.0",
+  "description": "Report friction from your coding agent to an AgentFeedback server: the agentfeedback skill, which files reports with the agentfeedback binary (the skill's scripts/install.sh installs it).",
+  "author": {
+    "name": "AgentFeedback",
+    "url": "https://github.com/AgentFeedback"
+  },
+  "homepage": "https://github.com/AgentFeedback/agentfeedback",
+  "repository": "https://github.com/AgentFeedback/agentfeedback",
+  "license": "MIT",
+  "keywords": [
+    "agentfeedback",
+    "friction",
+    "feedback",
+    "agent-skills"
+  ]
+}

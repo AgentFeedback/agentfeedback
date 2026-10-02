@@ -364,16 +364,16 @@ func errSkillForm(form string, known []string) error {
 		"run agentfeedback skill -h to list them")
 }
 
-func errSkillDocsNeedsOut() error {
-	return usageErr("skill render docs writes a directory and needs --out", "pass --out with a new or empty directory")
+func errSkillNeedsOut(form string) error {
+	return usageErr("skill render "+form+" writes a directory and needs --out", "pass --out with a new or empty directory")
 }
 
-func errSkillDocsServer() error {
-	return usageErr("--server does not apply to skill render docs", "remove --server and run it again")
+func errSkillServerNotApplicable(form string) error {
+	return usageErr("--server does not apply to skill render "+form, "remove --server and run it again")
 }
 
-func errSkillOutOnlyDocs() error {
-	return usageErr("--out only applies to skill render docs; the other forms print on stdout", "remove --out and redirect stdout to a file")
+func errSkillOutOnlyDirs() error {
+	return usageErr("--out only applies to skill render docs, agent-plugin and marketplace; the other forms print on stdout", "remove --out and redirect stdout to a file")
 }
 
 func errSkillOutNotEmpty(dir string) error {

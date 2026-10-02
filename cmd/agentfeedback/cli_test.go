@@ -782,10 +782,13 @@ func TestSkillRender(t *testing.T) {
 		{[]string{"skill", "list"}, `unknown skill subcommand "list"`},
 		{[]string{"skill", "render"}, "wrong number of arguments for skill"},
 		{[]string{"skill", "render", "prompt", "mcp"}, "wrong number of arguments for skill"},
-		{[]string{"skill", "render", "pdf"}, `no skill form "pdf"; the forms are skill-md, agents-md, cursor, prompt, mcp, docs`},
+		{[]string{"skill", "render", "pdf"}, `no skill form "pdf"; the forms are skill-md, agents-md, cursor, prompt, mcp, docs, agent-plugin, marketplace`},
 		{[]string{"skill", "render", "docs"}, "skill render docs writes a directory and needs --out"},
 		{[]string{"skill", "render", "docs", "--out", "x", "--server", "https://feedback.example.com"}, "--server does not apply to skill render docs"},
-		{[]string{"skill", "render", "skill-md", "--out", "x"}, "--out only applies to skill render docs"},
+		{[]string{"skill", "render", "skill-md", "--out", "x"}, "--out only applies to skill render docs, agent-plugin and marketplace"},
+		{[]string{"skill", "render", "agent-plugin"}, "skill render agent-plugin writes a directory and needs --out"},
+		{[]string{"skill", "render", "marketplace"}, "skill render marketplace writes a directory and needs --out"},
+		{[]string{"skill", "render", "marketplace", "--out", "x", "--server", "https://feedback.example.com"}, "--server does not apply to skill render marketplace"},
 		{[]string{"skill", "render", "prompt", "--server", "ftp://x"}, "the scheme is not http or https"},
 		{[]string{"skill", "render", "mcp", "--server", "https://user:s3cret@x"}, "carries credentials"},
 		{[]string{"skill", "render", "prompt", "--server", "http://x/\n"}, `"http://x/\n"`},
@@ -808,7 +811,8 @@ func TestSkillRender(t *testing.T) {
 	}
 	for _, args := range [][]string{{"skill", "-h"}, {"skill", "render", "-h"}} {
 		if r := runCLI(t, "", args...); r.code != 0 || !strings.Contains(r.stderr, "skill render <form>") ||
-			!strings.Contains(r.stderr, "skill render docs --out DIR") {
+			!strings.Contains(r.stderr, "skill render docs|marketplace --out DIR") ||
+			!strings.Contains(r.stderr, "skill render agent-plugin --out DIR [--server URL]") {
 			t.Errorf("%v: %+v", args, r)
 		}
 	}
@@ -903,5 +907,112 @@ func TestSkillRenderDocs(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(full); len(entries) != 1 {
 		t.Errorf("a refused --out was written to: %v", entries)
+	}
+}
+
+// tree reads every file under dir, keyed by its slash-separated relative path.
+func tree(t *testing.T, dir string) map[string]string {
+	t.Helper()
+	got := map[string]string{}
+	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		rel, _ := filepath.Rel(dir, p)
+		data, err := os.ReadFile(p)
+		got[filepath.ToSlash(rel)] = string(data)
+
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return got
+}
+
+func TestSkillRenderAgentPlugin(t *testing.T) {
+	isolate(t)
+	for _, server := range []string{"", "https://feedback.example.com"} {
+		files, err := skillgen.AgentPlugin(server)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := filepath.Join(t.TempDir(), "plugin")
+		args := []string{"skill", "render", "agent-plugin", "--out", out}
+		if server != "" {
+			args = append(args, "--server", server)
+		}
+		if r := runCLI(t, "", args...); r.code != 0 || r.stdout != "" || r.stderr != "" {
+			t.Fatalf("%v: %+v", args, r)
+		}
+		got := tree(t, out)
+		if len(got) != len(files) {
+			t.Errorf("%v: %d files, want %d", args, len(got), len(files))
+		}
+		for _, f := range files {
+			if got[f.Path] != string(f.Data) {
+				t.Errorf("%v: %s missing or differs", args, f.Path)
+			}
+		}
+		if _, ok := got["mcp.json"]; ok != (server != "") {
+			t.Errorf("%v: mcp.json present %v", args, ok)
+		}
+		for p, mode := range map[string]fs.FileMode{
+			"skills/agentfeedback/scripts/install.sh": 0o755,
+			"skills/agentfeedback/SKILL.md":           0o644,
+		} {
+			if info, err := os.Stat(filepath.Join(out, filepath.FromSlash(p))); err != nil || info.Mode().Perm() != mode {
+				t.Errorf("%s mode: %v %v", p, info, err)
+			}
+		}
+	}
+
+	r := runCLI(t, "", "skill", "render", "agent-plugin", "--out", filepath.Join(t.TempDir(), "p"), "--server", "http://feedback.example.com")
+	if r.code != 2 || !strings.Contains(r.stderr, "needs https unless the host is localhost or a loopback address") {
+		t.Errorf("http server: %+v", r)
+	}
+	r = runCLI(t, "", "skill", "render", "agent-plugin", "--out", filepath.Join(t.TempDir(), "p"), "--server", "https://user:s3cret@x")
+	if r.code != 2 || strings.Contains(r.stderr, "s3cret") {
+		t.Errorf("credentials: %+v", r)
+	}
+	full := t.TempDir()
+	if err := os.WriteFile(filepath.Join(full, "keep.txt"), []byte("mine\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, form := range []string{"agent-plugin", "marketplace"} {
+		r := runCLI(t, "", "skill", "render", form, "--out", full)
+		if r.code != 1 || !strings.Contains(r.stderr, "exists and is not an empty directory") {
+			t.Errorf("%s into a non-empty --out: %+v", form, r)
+		}
+	}
+}
+
+func TestSkillRenderMarketplace(t *testing.T) {
+	isolate(t)
+	files, err := skillgen.Marketplace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "mkt")
+	if r := runCLI(t, "", "skill", "render", "marketplace", "--out", out); r.code != 0 || r.stdout != "" || r.stderr != "" {
+		t.Fatalf("%+v", r)
+	}
+	got := tree(t, out)
+	if len(got) != len(files) {
+		t.Errorf("%d files, want %d", len(got), len(files))
+	}
+	for _, f := range files {
+		if got[f.Path] != string(f.Data) {
+			t.Errorf("%s missing or differs", f.Path)
+		}
+		// The repository root is a marketplace root: just skills writes it.
+		checkedIn, err := os.ReadFile(filepath.Join("..", "..", filepath.FromSlash(f.Path)))
+		if err != nil || string(checkedIn) != string(f.Data) {
+			t.Errorf("checked-in %s differs from skill render marketplace (run just skills): %v", f.Path, err)
+		}
+	}
+	if info, err := os.Stat(filepath.Join(out, "plugins", "agentfeedback", "skills", "agentfeedback", "scripts", "install.sh")); err != nil || info.Mode().Perm() != 0o755 {
+		t.Errorf("install.sh mode: %v %v", info, err)
 	}
 }

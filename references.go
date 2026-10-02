@@ -1,9 +1,10 @@
 // Package agentfeedback carries the repository's reference files, embedded
 // so a binary renders the agentfeedback-docs skill from exactly the docs,
-// schemas, OpenAPI document and install playbooks it was built with. It
-// exists because go:embed cannot reach a parent directory and the playbooks
-// live at the repository root: internal/skillgen renders it into the docs
-// skill; nothing else should need this package.
+// schemas, OpenAPI document and install playbooks it was built with, and the
+// agentfeedback skill's install script, which the plugin bundle carries. It
+// exists because go:embed cannot reach a parent directory and these files
+// live at the repository root: internal/skillgen renders them into the docs
+// skill and the plugin bundle; nothing else should need this package.
 package agentfeedback
 
 import "embed"
@@ -13,3 +14,9 @@ import "embed"
 //
 //go:embed AGENT-INSTALL*.md docs/*.md docs/openapi.yaml schemas/*.json schemas/kinds/*.json
 var References embed.FS
+
+// InstallScript is skills/agentfeedback/scripts/install.sh, which the plugin
+// bundle carries beside SKILL.md.
+//
+//go:embed skills/agentfeedback/scripts/install.sh
+var InstallScript []byte

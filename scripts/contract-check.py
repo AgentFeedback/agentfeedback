@@ -20,6 +20,10 @@
    409-only one) is exercised by a fixture, every stored envelope validates
    against the envelope schema, and every fixture agrees with the reference
    implementation.
+4. The rendered Agent Plugins manifests (plugins/agentfeedback/plugin.json and
+   the golden mcp.json internal/skillgen renders for a server) validate
+   against the vendored Agent Plugins 1.0.0 schemas, and both name the same
+   spec version.
 
 OpenAPI linting is a separate step (`just contract` runs both).
 """
@@ -262,6 +266,24 @@ def check_fixtures(envelope: dict, registry: Registry, codes: set[str], families
             fail(f"conformance/warnings.json: {code!r} is not exercised by any fixture")
 
 
+AGENT_PLUGINS = ROOT / "internal" / "skillgen" / "testdata" / "agent-plugins" / "1.0.0"
+
+
+def check_agent_plugin() -> None:
+    # Here, not in Go: the plugin schema's name pattern has a lookahead, which Go's regexp lacks.
+    pairs = (("plugins/agentfeedback/plugin.json", "plugin.schema.json"),
+             ("internal/skillgen/testdata/agent-plugin-mcp.json", "mcp.schema.json"))
+    versions = []
+    for rel, schema_name in pairs:
+        doc = load_json(ROOT / rel)
+        for err in Draft202012Validator(load_json(AGENT_PLUGINS / schema_name), format_checker=FormatChecker()).iter_errors(doc):
+            fail(f"{rel}: {err.message} at {err.json_path}")
+        m = re.search(r"/schemas/([^/]+)/", doc.get("$schema", ""))
+        versions.append(m.group(1) if m else None)
+    if versions[0] is None or versions[0] != versions[1]:
+        fail(f"the Agent Plugins spec versions of plugin.json and mcp.json differ: {versions}")
+
+
 def main() -> int:
     schemas = {rel: load_json(ROOT / rel) for rel in SCHEMA_FILES}
     for rel, schema in schemas.items():
@@ -294,6 +316,7 @@ def main() -> int:
     codes = {c["code"] for c in warnings_doc["codes"]}
     families = {c["code"] for c in warnings_doc["codes"] if c.get("family")}
     check_fixtures(schemas["schemas/envelope.v1.json"], registry, codes, families)
+    check_agent_plugin()
 
     sys.path.insert(0, str(ROOT / "conformance"))
     from reference import decode as ref_decode, guide as ref_guide, rawjson as ref_rawjson  # noqa: E402
@@ -337,7 +360,7 @@ def main() -> int:
             print(f"contract-check: {p}", file=sys.stderr)
         print(f"contract-check: {len(problems)} problem(s)", file=sys.stderr)
         return 1
-    print(f"contract-check: {len(schemas)} schemas, {examples} examples, warnings list, manifest and fixtures OK")
+    print(f"contract-check: {len(schemas)} schemas, {examples} examples, warnings list, manifest, fixtures and Agent Plugins manifests OK")
     return 0
 
 

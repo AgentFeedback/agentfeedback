@@ -20,10 +20,11 @@ import (
 const FormDocs = "docs"
 
 // File is one file of a rendered directory; Path is relative and uses
-// forward slashes.
+// forward slashes. Mode is the file's permission bits, 0 meaning 0644.
 type File struct {
 	Path string
 	Data []byte
+	Mode fs.FileMode
 }
 
 // DocsMeta is source/docs.json.

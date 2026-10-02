@@ -48,9 +48,9 @@ fuzz:
     go test -run='^$' -fuzz='^FuzzDecode$' -fuzztime=30s ./pkg/envelope
 
 # The checked-in skill renders: `just skills` writes them, `just ci` checks them.
-skill_renders := "skills/agentfeedback/SKILL.md skills/agentfeedback-docs"
+skill_renders := "skills/agentfeedback/SKILL.md skills/agentfeedback-docs plugins/agentfeedback .claude-plugin .agents/plugins"
 
-# Regenerate every checked-in skill render from internal/skillgen/source and the embedded reference files. Never edit a render by hand.
+# Regenerate every checked-in skill render from internal/skillgen/source and the embedded reference files, including the plugin bundle and both marketplace manifests. Never edit a render by hand.
 skills: build
     #!/usr/bin/env bash
     set -euo pipefail
@@ -59,9 +59,15 @@ skills: build
     trap 'rm -f "$tmp"; rm -rf "$tmpd"' EXIT
     ./bin/agentfeedback skill render skill-md > "$tmp"
     ./bin/agentfeedback skill render docs --out "$tmpd/out"
+    ./bin/agentfeedback skill render marketplace --out "$tmpd/mkt"
     cp "$tmp" skills/agentfeedback/SKILL.md
     rm -rf skills/agentfeedback-docs
     cp -R "$tmpd/out" skills/agentfeedback-docs
+    rm -rf plugins/agentfeedback .claude-plugin .agents/plugins
+    mkdir -p plugins .agents
+    cp -R "$tmpd/mkt/plugins/agentfeedback" plugins/agentfeedback
+    cp -R "$tmpd/mkt/.claude-plugin" .claude-plugin
+    cp -R "$tmpd/mkt/.agents/plugins" .agents/plugins
 
 # Run locally against a database in ./local (created on demand).
 run-local: build
@@ -110,6 +116,12 @@ ci:
         git status --short -- {{skill_renders}} >&2
         echo "just ci: a checked-in skill render differs from its source; edit internal/skillgen/source, run just skills and commit both" >&2
         exit 1
+    fi
+    if command -v claude >/dev/null 2>&1; then
+        claude plugin validate --strict plugins/agentfeedback
+        claude plugin validate --strict .
+    else
+        echo "just ci: claude is not on PATH; claude plugin validate skipped (validate plugins/agentfeedback and the repository root by hand)" >&2
     fi
     go test -race -count=1 ./...
     just fuzz
