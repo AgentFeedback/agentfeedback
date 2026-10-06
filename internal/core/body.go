@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/agentfeedback/agentfeedback/pkg/schema"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/schema"
 )
 
 // member is one member of a strictly read JSON object, its value as the

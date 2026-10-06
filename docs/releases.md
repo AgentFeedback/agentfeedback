@@ -43,6 +43,11 @@ check runs on the releasing machine.
   playbooks against the published pre-release, downloaded as an agent
   downloads it. No other suffix is accepted.
 
+In both forms the tag's major version must match the module path's
+major-version suffix in `go.mod` (`/v4` today): the Go tool never resolves a
+tag of another major for the module path, so `just release` refuses it. A new
+major changes the module path and every import path first, then tags.
+
 ### Assets
 
 Every release carries exactly these assets, and `install.sh` and the install

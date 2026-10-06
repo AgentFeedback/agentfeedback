@@ -8,8 +8,8 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/agentfeedback/agentfeedback/docs"
-	"github.com/agentfeedback/agentfeedback/schemas"
+	"github.com/agentfeedback/agentfeedback/v4/docs"
+	"github.com/agentfeedback/agentfeedback/v4/schemas"
 )
 
 // openAPIDoc is docs/openapi.yaml bundled into one JSON document, built once

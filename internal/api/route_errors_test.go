@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agentfeedback/agentfeedback/internal/core"
-	"github.com/agentfeedback/agentfeedback/pkg/envelope"
+	"github.com/agentfeedback/agentfeedback/v4/internal/core"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/envelope"
 )
 
 func TestRouteErrors_NotFoundAndMethodNotAllowed(t *testing.T) {

@@ -70,14 +70,26 @@ tag=$1 title=$2 notes=$3
 
 [[ $tag =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.(0|[1-9][0-9]*))?$ ]] ||
     die "expected a tag vX.Y.Z or vX.Y.Z-rc.N, got '$tag'"
+tag_major=${BASH_REMATCH[1]}
 version=${tag#v}
+root=$(git rev-parse --show-toplevel 2>/dev/null) || die "run from inside the repository checkout"
+# The tag's major version must match the module path's major-version suffix
+# (go.mod `module …/vN`): the Go tool never resolves a tag of another major
+# for this module path, and the pushed tag and its GitHub release are permanent.
+module_major=$(awk '$1 == "module" { gsub(/["\r]/, "", $2); n = split($2, p, "/"); if (p[n] ~ /^v[0-9]+$/) print substr(p[n], 2) }' "$root/go.mod")
+if [ -n "$module_major" ]; then
+    [ "$tag_major" = "$module_major" ] ||
+        die "tag $tag is major version $tag_major but go.mod's module path is major version $module_major; a new major first changes the module path's suffix and every import path, then tags"
+elif [ "$tag_major" != 0 ] && [ "$tag_major" != 1 ]; then
+    die "tag $tag is major version $tag_major but go.mod's module path has no /v$tag_major suffix; add it to the module path and every import path first, then tag"
+fi
 prerelease=false
 if [[ $tag == *-rc.* ]]; then prerelease=true; fi
 [ -n "${title//[[:space:]]/}" ] || die "a release title is required"
 if [ ! -f "$notes" ] || ! grep -q '[^[:space:]]' "$notes"; then die "the notes file '$notes' is missing or empty"; fi
 notes=$(cd "$(dirname "$notes")" && pwd)/$(basename "$notes")
 
-cd "$(git rev-parse --show-toplevel)"
+cd "$root"
 
 for tool in git gh goreleaser just python3 curl; do
     command -v "$tool" >/dev/null || die "$tool is not on PATH; docs/releases.md lists the tools"

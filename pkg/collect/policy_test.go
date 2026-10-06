@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agentfeedback/agentfeedback/pkg/client"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/client"
 )
 
 // minimalRepo makes dir a repository root: .git with HEAD is all the walk

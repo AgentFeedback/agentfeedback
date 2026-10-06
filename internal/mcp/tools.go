@@ -7,8 +7,8 @@ import (
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/agentfeedback/agentfeedback/internal/core"
-	"github.com/agentfeedback/agentfeedback/pkg/envelope"
+	"github.com/agentfeedback/agentfeedback/v4/internal/core"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/envelope"
 )
 
 // Tool names, one per core operation.

@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agentfeedback/agentfeedback/internal/api"
-	"github.com/agentfeedback/agentfeedback/internal/core"
+	"github.com/agentfeedback/agentfeedback/v4/internal/api"
+	"github.com/agentfeedback/agentfeedback/v4/internal/core"
 )
 
 var clockStart = time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)

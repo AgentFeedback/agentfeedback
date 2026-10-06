@@ -15,9 +15,9 @@ import (
 	"github.com/getkin/kin-openapi/routers"
 	"github.com/getkin/kin-openapi/routers/gorillamux"
 
-	"github.com/agentfeedback/agentfeedback/internal/core"
-	"github.com/agentfeedback/agentfeedback/internal/mcp"
-	"github.com/agentfeedback/agentfeedback/pkg/envelope"
+	"github.com/agentfeedback/agentfeedback/v4/internal/core"
+	"github.com/agentfeedback/agentfeedback/v4/internal/mcp"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/envelope"
 )
 
 func init() {

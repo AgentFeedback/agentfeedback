@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/agentfeedback/agentfeedback/internal/skillgen"
+	"github.com/agentfeedback/agentfeedback/v4/internal/skillgen"
 )
 
 const skillSynopsis = "skill render <form> [--server URL] | skill render docs|marketplace --out DIR | skill render agent-plugin --out DIR [--server URL] | skill reminder"

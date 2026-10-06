@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/agentfeedback/agentfeedback/pkg/schema"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/schema"
 )
 
 // details holds the warnings of one decode as a trie keyed by the path of

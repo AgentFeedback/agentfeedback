@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/agentfeedback/agentfeedback/pkg/envelope"
-	"github.com/agentfeedback/agentfeedback/pkg/schema"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/envelope"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/schema"
 )
 
 // MetaLimits are the limits a client needs to know.

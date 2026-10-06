@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/agentfeedback/agentfeedback/pkg/schema"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/schema"
 )
 
 // The envelope's member set and the rules the compiled envelope schema

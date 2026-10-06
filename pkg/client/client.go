@@ -16,7 +16,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/agentfeedback/agentfeedback/pkg/schema"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/schema"
 )
 
 const (

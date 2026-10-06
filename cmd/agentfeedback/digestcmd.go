@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/agentfeedback/agentfeedback/pkg/client"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/client"
 )
 
 // digestPage is the first page size; a var so tests can lower it.

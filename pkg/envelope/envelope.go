@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strconv"
 
-	"github.com/agentfeedback/agentfeedback/pkg/canonjson"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/canonjson"
 )
 
 // BodyLimit is the largest body the contract accepts, in bytes. Exactly

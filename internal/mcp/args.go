@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agentfeedback/agentfeedback/internal/core"
-	"github.com/agentfeedback/agentfeedback/pkg/schema"
+	"github.com/agentfeedback/agentfeedback/v4/internal/core"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/schema"
 )
 
 // Detail codes and "?name" pointers of the REST query grammar, so a tool

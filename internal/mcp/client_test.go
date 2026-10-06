@@ -12,9 +12,9 @@ import (
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/agentfeedback/agentfeedback/internal/api"
-	"github.com/agentfeedback/agentfeedback/internal/mcp"
-	"github.com/agentfeedback/agentfeedback/internal/skillgen"
+	"github.com/agentfeedback/agentfeedback/v4/internal/api"
+	"github.com/agentfeedback/agentfeedback/v4/internal/mcp"
+	"github.com/agentfeedback/agentfeedback/v4/internal/skillgen"
 )
 
 var toolNames = []string{mcp.ToolGetSchema, mcp.ToolGet, mcp.ToolList, mcp.ToolMark, mcp.ToolStats, mcp.ToolSubmit}

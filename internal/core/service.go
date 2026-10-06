@@ -22,8 +22,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/agentfeedback/agentfeedback/internal/store"
-	"github.com/agentfeedback/agentfeedback/pkg/envelope"
+	"github.com/agentfeedback/agentfeedback/v4/internal/store"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/envelope"
 )
 
 // DedupeWindow is how far back a keyless create looks for an unprocessed

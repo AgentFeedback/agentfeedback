@@ -14,7 +14,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/agentfeedback/agentfeedback/internal/skillgen"
+	"github.com/agentfeedback/agentfeedback/v4/internal/skillgen"
 )
 
 // Modes of a wired harness.

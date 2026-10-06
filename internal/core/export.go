@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/agentfeedback/agentfeedback/internal/store"
-	"github.com/agentfeedback/agentfeedback/pkg/canonjson"
+	"github.com/agentfeedback/agentfeedback/v4/internal/store"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/canonjson"
 )
 
 // ExportParams are the export route's parameters; a nil pointer or an empty

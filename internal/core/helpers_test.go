@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agentfeedback/agentfeedback/internal/store"
-	"github.com/agentfeedback/agentfeedback/pkg/canonjson"
+	"github.com/agentfeedback/agentfeedback/v4/internal/store"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/canonjson"
 )
 
 const conformanceDir = "../../conformance"

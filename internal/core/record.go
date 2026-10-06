@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/agentfeedback/agentfeedback/internal/store"
-	"github.com/agentfeedback/agentfeedback/pkg/canonjson"
-	"github.com/agentfeedback/agentfeedback/pkg/schema"
+	"github.com/agentfeedback/agentfeedback/v4/internal/store"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/canonjson"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/schema"
 )
 
 // Record is one stored submission as the contract serialises it. Its JSON

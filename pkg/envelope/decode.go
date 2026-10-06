@@ -8,8 +8,8 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/agentfeedback/agentfeedback/pkg/canonjson"
-	"github.com/agentfeedback/agentfeedback/pkg/schema"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/canonjson"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/schema"
 )
 
 var versionSpelling = regexp.MustCompile(`^[1-9][0-9]*$`)

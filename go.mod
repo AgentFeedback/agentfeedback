@@ -1,4 +1,4 @@
-module github.com/agentfeedback/agentfeedback
+module github.com/agentfeedback/agentfeedback/v4
 
 go 1.27.0
 

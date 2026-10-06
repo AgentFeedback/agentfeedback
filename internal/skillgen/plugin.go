@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/agentfeedback/agentfeedback"
+	"github.com/agentfeedback/agentfeedback/v4"
 )
 
 // The plugin forms are directories, not stdout forms, so they are not in

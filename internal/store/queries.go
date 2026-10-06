@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/agentfeedback/agentfeedback/pkg/schema"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/schema"
 )
 
 // ErrNotFound is returned by the lookups when no row matches.

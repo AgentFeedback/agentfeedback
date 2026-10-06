@@ -271,6 +271,22 @@ builds a working but different binary. To compare with the release:
 (`shasum -a 256` on macOS). [releases.md](releases.md#reproducing-a-release)
 covers the archives.
 
+Without a checkout, `go install` builds the same tag from the module proxy:
+
+```bash
+go install github.com/agentfeedback/agentfeedback/v4/cmd/agentfeedback@vX.Y.Z
+```
+
+The tag's major version must match the `/v4` in the module path: the Go
+tool refuses a `v3` tag for this path. The binary lands in `$(go env GOBIN)`
+(`$(go env GOPATH)/bin` when unset). It is not byte-identical to the
+release: it is built without the ldflags, `-trimpath` and `CGO_ENABLED=0`
+above and from the module proxy's source archive, which carries no Git
+metadata, so the version comes from the toolchain's build information and
+`agentfeedback version` prints `agentfeedback vX.Y.Z (commit unknown,
+go1.N.M)`: the tag with its `v`, no commit, and the Go version that built
+it. `doctor`'s minimum-version check reads both spellings.
+
 ## Deploy to a host
 
 Prerequisites on the host: Docker with Compose, `curl` 7.71 or newer, `openssl`, SSH access. The

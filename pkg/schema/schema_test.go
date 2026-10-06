@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agentfeedback/agentfeedback/schemas"
+	"github.com/agentfeedback/agentfeedback/v4/schemas"
 )
 
 func mustCompile(t *testing.T, src string, m mode) *Schema {

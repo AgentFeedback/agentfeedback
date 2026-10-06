@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agentfeedback/agentfeedback/pkg/canonjson"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/canonjson"
 )
 
 func decodeString(t *testing.T, body string) (*Envelope, []string) {

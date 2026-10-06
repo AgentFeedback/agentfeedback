@@ -12,9 +12,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/agentfeedback/agentfeedback/internal/core"
-	"github.com/agentfeedback/agentfeedback/internal/mcp"
-	"github.com/agentfeedback/agentfeedback/internal/skillgen"
+	"github.com/agentfeedback/agentfeedback/v4/internal/core"
+	"github.com/agentfeedback/agentfeedback/v4/internal/mcp"
+	"github.com/agentfeedback/agentfeedback/v4/internal/skillgen"
 )
 
 // errorJSON is the Error body of err as a tool result carries it: a

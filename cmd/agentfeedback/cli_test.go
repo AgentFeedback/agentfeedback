@@ -14,10 +14,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agentfeedback/agentfeedback/internal/api"
-	"github.com/agentfeedback/agentfeedback/internal/core"
-	"github.com/agentfeedback/agentfeedback/internal/skillgen"
-	"github.com/agentfeedback/agentfeedback/pkg/schema"
+	"github.com/agentfeedback/agentfeedback/v4/internal/api"
+	"github.com/agentfeedback/agentfeedback/v4/internal/core"
+	"github.com/agentfeedback/agentfeedback/v4/internal/skillgen"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/schema"
 )
 
 const testKey = "test-key-3f9a1c"
@@ -497,6 +497,7 @@ func TestVersionFromBuildInfo(t *testing.T) {
 		{"devel", &debug.BuildInfo{Main: debug.Module{Version: "(devel)"}}, "dev", "unknown"},
 		{"module version", &debug.BuildInfo{Main: debug.Module{Version: "v4.1.0"},
 			Settings: []debug.BuildSetting{setting("vcs.revision", "abc"), setting("vcs.modified", "false")}}, "v4.1.0", "abc"},
+		{"go install from the module proxy", &debug.BuildInfo{Main: debug.Module{Version: "v4.1.0"}}, "v4.1.0", "unknown"},
 		{"dirty", &debug.BuildInfo{Settings: []debug.BuildSetting{setting("vcs.revision", "abc"), setting("vcs.modified", "true")}},
 			"dev", "abc-dirty"},
 	}

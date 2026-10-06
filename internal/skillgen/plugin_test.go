@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agentfeedback/agentfeedback"
+	"github.com/agentfeedback/agentfeedback/v4"
 )
 
 func paths(files []File) []string {

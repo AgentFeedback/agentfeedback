@@ -18,8 +18,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/agentfeedback/agentfeedback/pkg/client"
-	"github.com/agentfeedback/agentfeedback/pkg/schema"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/client"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/schema"
 )
 
 const (

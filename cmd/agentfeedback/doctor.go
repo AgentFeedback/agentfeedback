@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agentfeedback/agentfeedback/pkg/client"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/client"
 )
 
 const (

@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/agentfeedback/agentfeedback/internal/skillgen"
+	"github.com/agentfeedback/agentfeedback/v4/internal/skillgen"
 )
 
 // userError is the one shape of every error a person or an agent reads from

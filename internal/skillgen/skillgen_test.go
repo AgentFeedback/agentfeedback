@@ -12,7 +12,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/agentfeedback/agentfeedback"
+	"github.com/agentfeedback/agentfeedback/v4"
 )
 
 const testServer = "https://feedback.example.com"

@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/agentfeedback/agentfeedback/internal/store"
-	"github.com/agentfeedback/agentfeedback/pkg/canonjson"
-	"github.com/agentfeedback/agentfeedback/pkg/envelope"
-	"github.com/agentfeedback/agentfeedback/pkg/schema"
+	"github.com/agentfeedback/agentfeedback/v4/internal/store"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/canonjson"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/envelope"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/schema"
 )
 
 // CreateResult is the outcome of a create: the stored record (new or

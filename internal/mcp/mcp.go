@@ -15,9 +15,9 @@ import (
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/agentfeedback/agentfeedback/internal/core"
-	"github.com/agentfeedback/agentfeedback/internal/skillgen"
-	"github.com/agentfeedback/agentfeedback/pkg/envelope"
+	"github.com/agentfeedback/agentfeedback/v4/internal/core"
+	"github.com/agentfeedback/agentfeedback/v4/internal/skillgen"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/envelope"
 )
 
 // Config wires a Handler.

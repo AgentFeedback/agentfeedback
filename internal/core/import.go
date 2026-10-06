@@ -12,9 +12,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/agentfeedback/agentfeedback/internal/store"
-	"github.com/agentfeedback/agentfeedback/pkg/envelope"
-	"github.com/agentfeedback/agentfeedback/pkg/schema"
+	"github.com/agentfeedback/agentfeedback/v4/internal/store"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/envelope"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/schema"
 )
 
 // Conflict is an imported record skipped because its (kind, key) names a

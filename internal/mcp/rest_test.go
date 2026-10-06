@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agentfeedback/agentfeedback/internal/api"
-	"github.com/agentfeedback/agentfeedback/internal/core"
-	"github.com/agentfeedback/agentfeedback/internal/mcp"
-	"github.com/agentfeedback/agentfeedback/pkg/envelope"
+	"github.com/agentfeedback/agentfeedback/v4/internal/api"
+	"github.com/agentfeedback/agentfeedback/v4/internal/core"
+	"github.com/agentfeedback/agentfeedback/v4/internal/mcp"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/envelope"
 )
 
 // deterministic returns options that make two services write identical

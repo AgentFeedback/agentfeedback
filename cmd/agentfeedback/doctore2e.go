@@ -10,8 +10,8 @@ import (
 	"net/url"
 	"slices"
 
-	"github.com/agentfeedback/agentfeedback/pkg/client"
-	"github.com/agentfeedback/agentfeedback/pkg/collect"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/client"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/collect"
 )
 
 const installCheckSummary = "agentfeedback doctor --e2e install check"

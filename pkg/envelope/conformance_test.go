@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agentfeedback/agentfeedback/pkg/canonjson"
-	"github.com/agentfeedback/agentfeedback/pkg/schema"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/canonjson"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/schema"
 )
 
 // The fixtures under conformance/ are the executable contract, and this

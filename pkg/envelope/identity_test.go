@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/agentfeedback/agentfeedback/pkg/canonjson"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/canonjson"
 )
 
 // TestContentHashVectors runs every conformance/hash vector from its body

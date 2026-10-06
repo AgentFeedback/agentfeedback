@@ -7,7 +7,7 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 
-	"github.com/agentfeedback/agentfeedback/pkg/collect"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/collect"
 )
 
 // Client environment variables. Each overrides the config file key of the

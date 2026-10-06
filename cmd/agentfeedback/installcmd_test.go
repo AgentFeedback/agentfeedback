@@ -15,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agentfeedback/agentfeedback/internal/harness"
-	"github.com/agentfeedback/agentfeedback/internal/skillgen"
-	"github.com/agentfeedback/agentfeedback/pkg/client"
+	"github.com/agentfeedback/agentfeedback/v4/internal/harness"
+	"github.com/agentfeedback/agentfeedback/v4/internal/skillgen"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/client"
 )
 
 // installEnv is a hermetic machine: HOME holds every file install may

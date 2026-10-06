@@ -12,7 +12,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/agentfeedback/agentfeedback"
+	"github.com/agentfeedback/agentfeedback/v4"
 )
 
 // FormDocs is the agentfeedback-docs skill: a directory, not a stdout form,

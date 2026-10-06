@@ -13,8 +13,8 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/agentfeedback/agentfeedback/internal/harness"
-	"github.com/agentfeedback/agentfeedback/internal/skillgen"
+	"github.com/agentfeedback/agentfeedback/v4/internal/harness"
+	"github.com/agentfeedback/agentfeedback/v4/internal/skillgen"
 )
 
 const (

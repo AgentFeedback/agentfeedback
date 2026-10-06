@@ -28,7 +28,7 @@ import (
 	sqlitedrv "modernc.org/sqlite" // database/sql driver "sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 
-	"github.com/agentfeedback/agentfeedback/pkg/schema"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/schema"
 )
 
 //go:embed migrations/*.sql

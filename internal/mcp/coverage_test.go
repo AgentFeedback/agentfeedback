@@ -13,8 +13,8 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/pelletier/go-toml/v2"
 
-	"github.com/agentfeedback/agentfeedback/internal/api"
-	"github.com/agentfeedback/agentfeedback/internal/mcp"
+	"github.com/agentfeedback/agentfeedback/v4/internal/api"
+	"github.com/agentfeedback/agentfeedback/v4/internal/mcp"
 )
 
 // coverageFile is coverage.toml: one entry per OpenAPI operation.

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agentfeedback/agentfeedback/internal/core"
-	"github.com/agentfeedback/agentfeedback/pkg/schema"
+	"github.com/agentfeedback/agentfeedback/v4/internal/core"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/schema"
 )
 
 // Detail codes of the query grammar and path parameters, in core's

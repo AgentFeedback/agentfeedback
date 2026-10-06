@@ -11,7 +11,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/agentfeedback/agentfeedback/pkg/canonjson"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/canonjson"
 )
 
 // FuzzDecode checks the decoder's promises on arbitrary bytes: it never

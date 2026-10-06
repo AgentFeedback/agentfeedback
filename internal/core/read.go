@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agentfeedback/agentfeedback/internal/store"
-	"github.com/agentfeedback/agentfeedback/pkg/schema"
+	"github.com/agentfeedback/agentfeedback/v4/internal/store"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/schema"
 )
 
 // Get returns one record. id must be positive (else 400); an unknown id is 404.

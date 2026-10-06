@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/agentfeedback/agentfeedback/schemas"
+	"github.com/agentfeedback/agentfeedback/v4/schemas"
 )
 
 // Detail is one warning or error detail item: the code from the closed list
