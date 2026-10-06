@@ -524,18 +524,24 @@ func runEnvelope(kind string, args []string, stdin io.Reader, stdout, stderr io.
 
 // flushReport is the one line flush prints.
 type flushReport struct {
-	Flushed    int    `json:"flushed"`
-	Duplicates int    `json:"duplicates"`
-	Pending    int    `json:"pending"`
-	Rejected   int    `json:"rejected"`
-	Mismatched int    `json:"mismatched"`
-	Expired    int    `json:"expired"`
-	Deferred   int    `json:"deferred"`
-	Stopped    string `json:"stopped,omitempty"`
+	Flushed    int `json:"flushed"`
+	Duplicates int `json:"duplicates"`
+	Pending    int `json:"pending"`
+	Rejected   int `json:"rejected"`
+	Mismatched int `json:"mismatched"`
+	Expired    int `json:"expired"`
+	Deferred   int `json:"deferred"`
+	// OtherDestination counts the entries bound to another destination
+	// than this invocation's (a server, or the local database), left in
+	// place and named on stderr.
+	OtherDestination int    `json:"other_destination"`
+	Stopped          string `json:"stopped,omitempty"`
 }
 
-// runFlush sends the spool's due entries once and prints the counts.
+// runFlush sends the spool's due entries once and prints the counts. The
+// flush is the start-up pass, so it skips the one every other command runs.
 func runFlush(args []string, _ io.Reader, stdout, stderr io.Writer) error {
+	skipStartupPass = true
 	fs := newFlagSet("flush")
 	mf := addModeFlags(fs)
 	hook := fs.Bool("hook", false, "run as a harness hook: print nothing, stop within 4.5 seconds, log failures to the client log and exit 0")
@@ -558,12 +564,11 @@ func runFlush(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if o, off := s.disabled(); off {
 		return finish("flush", o, stdout)
 	}
-	if err := flushLocalGuard(s.mode); err != nil {
-		if errors.Is(err, errFlushNothing) {
-			return writeJSON(stdout, flushReport{})
-		}
-
+	if empty, err := flushNothingLocal(*mf); err != nil {
 		return err
+	} else if empty {
+		// Nothing is due: no reason to create the local database.
+		return writeJSON(stdout, flushReport{})
 	}
 	c, err := s.client()
 	if err != nil {
@@ -573,8 +578,29 @@ func runFlush(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 
 	return writeJSON(stdout, flushReport{
 		Flushed: rep.Flushed, Duplicates: rep.Duplicates, Pending: rep.Pending, Rejected: rep.Rejected,
-		Mismatched: rep.Mismatched, Expired: rep.Expired, Deferred: rep.Deferred, Stopped: rep.Stopped,
+		Mismatched: rep.Mismatched, Expired: rep.Expired, Deferred: rep.Deferred,
+		OtherDestination: rep.OtherDestination, Stopped: rep.Stopped,
 	})
+}
+
+// flushNothingLocal reports whether this flush is in local mode with an
+// empty spool, in which case opening (and on a fresh machine creating) the
+// local database would be a side effect of a no-op. Any entry, due or not,
+// bound here or elsewhere, is reported by the flush itself.
+func flushNothingLocal(mf modeFlags) (bool, error) {
+	m, err := resolveMode(mf, os.Getenv)
+	if err != nil {
+		return false, err
+	}
+	if m.Mode != modeLocal {
+		return false, nil
+	}
+	data, err := dataDir(os.Getenv)
+	if err != nil {
+		return false, err
+	}
+
+	return !client.HasEntries(data), nil
 }
 
 // The flush --hook deadlines, both from the start of the command and under
@@ -606,11 +632,15 @@ func runFlushHook(mf modeFlags) {
 	if err != nil {
 		return
 	}
+	data, err := dataDir(os.Getenv)
+	if err != nil {
+		return
+	}
 	fail := func(msg string) {
 		client.LogTo(cache, client.Outcome{Outcome: client.OutcomeError, Reason: "flush --hook: " + oneLine(msg)}, nowFunc(), io.Discard)
 	}
 	done := make(chan string, 1)
-	go func() { done <- flushHookBody(ctx, cache, mf) }()
+	go func() { done <- flushHookBody(ctx, data, mf) }()
 	timer := time.NewTimer(time.Until(start.Add(flushHookDeadline)))
 	defer timer.Stop()
 	select {
@@ -624,31 +654,22 @@ func runFlushHook(mf modeFlags) {
 }
 
 // flushHookBody is the work runFlushHook bounds; it returns the failure to
-// log, or "".
-func flushHookBody(ctx context.Context, cache string, mf modeFlags) string {
-	if !flushHookHasDue(cache, nowFunc()) {
+// log, or "". An empty spool returns before the config is read; data is the
+// data directory the spool lives in.
+func flushHookBody(ctx context.Context, data string, mf modeFlags) string {
+	if !flushHookHasDue(data, nowFunc()) {
 		return ""
 	}
 	if ctx.Err() != nil {
 		return "the flush ran past its deadline"
 	}
+	skipStartupPass = true
 	s, err := newSubmitter("flush", false, mf, io.Discard, io.Discard)
 	if err != nil {
 		return err.Error()
 	}
 	if _, off := s.disabled(); off {
 		return ""
-	}
-	if err := flushLocalGuard(s.mode); err != nil {
-		if errors.Is(err, errFlushNothing) {
-			return ""
-		}
-		var ue *userError
-		if errors.As(err, &ue) {
-			return ue.problem
-		}
-
-		return err.Error()
 	}
 	c, err := s.client()
 	if err != nil {
@@ -663,63 +684,4 @@ func flushHookBody(ctx context.Context, cache string, mf modeFlags) string {
 	}
 
 	return ""
-}
-
-// errFlushNothing is flushLocalGuard's "local mode, empty spool": there is
-// nothing to flush and no server to flush it to.
-var errFlushNothing = errors.New("nothing to flush")
-
-// flushLocalGuard stops a flush in local mode: the spool only ever holds
-// submissions for a server, and local mode has none to send them to. It
-// returns nil in remote mode, errFlushNothing in local mode with an empty
-// spool, and errFlushLocal when entries are pending.
-func flushLocalGuard(mf modeFlags) error {
-	m, err := resolveMode(mf, os.Getenv)
-	if err != nil {
-		return err
-	}
-	if m.Mode != modeLocal {
-		return nil
-	}
-	cache, err := cacheDir(os.Getenv)
-	if err != nil {
-		return err
-	}
-	n, err := pendingSpool(cache)
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return errFlushNothing
-	}
-
-	return errFlushLocal(n)
-}
-
-// pendingSpool counts the spool's pending entries: regular files that are
-// neither dot-prefixed nor *.rejected, as doctor counts them.
-func pendingSpool(cache string) (int, error) {
-	dir := client.SpoolDir(cache)
-	entries, err := os.ReadDir(dir)
-	if errors.Is(err, os.ErrNotExist) {
-		return 0, nil
-	}
-	if err != nil {
-		return 0, errPathUnreadable(dir, err)
-	}
-	n := 0
-	for _, e := range entries {
-		name := e.Name()
-		if !e.Type().IsRegular() || strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".rejected") {
-			continue
-		}
-		n++
-	}
-
-	return n, nil
-}
-
-func errFlushLocal(n int) error {
-	return failErr(fmt.Sprintf("the spool holds %d submission(s) for a server and this invocation is in local mode; nothing was sent", n),
-		"run agentfeedback flush --server URL, or configure the url, so they reach the server they were spooled for")
 }

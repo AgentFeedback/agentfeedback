@@ -56,10 +56,37 @@ server running; `agentfeedback doctor` prints `mode: local` and the database
 path. `--local` forces local mode and `--server URL` targets a server for one
 invocation; a configured `url` is never ignored without `--local`. `backup
 <dest.db>` and `import` default to the same file, and `serve` started later on
-the same machine serves the same database, so the machine keeps one queue. A
-failed local write is reported as outcome `error` with the body echoed;
-nothing is spooled in local mode, and `flush` refuses to send a spool filled
-for a server while in local mode (pass `--server URL`).
+the same machine serves the same database, so the machine keeps one queue.
+
+A local write that fails (the database busy past its 5 s timeout, a full
+disk) is spooled like a failed send to a server: outcome `spooled`, exit 0,
+and the next client command delivers it at start, before its own work, as
+does `agentfeedback flush`. When the spool cannot be written either, the body
+is echoed on stderr and the command exits 1. Every spool entry records the
+destination it was written for, the server URL or `local`: `flush` sends an
+entry only to that destination and leaves the others in place, naming each
+with the command that sends it (`flush --server URL`, or `flush --local`), so
+a `url` that changes never carries pending reports to the new server and
+local reports never reach a server.
+
+### Data directory
+
+`${XDG_DATA_HOME:-~/.local/share}/agentfeedback/` holds everything that is
+the only copy of a report:
+
+| Path | What |
+|---|---|
+| `agentfeedback.db` (+ `-wal`, `-shm`) | the local-mode database, also the default of `serve`, `backup` and `import` |
+| `spool/` | submissions waiting to be delivered, one `af1-*.json` file each with its destination |
+| `rejected/` | submissions the destination refused for good (kept 30 days) |
+
+The client creates the directory `0700` and the database files `0600`
+(SQLite gives `-wal` and `-shm` the database file's mode). A directory or
+file that already exists keeps its mode: `agentfeedback doctor` reports every
+path other users can reach with the `chmod` to run, and changes nothing. The
+cache directory, `${XDG_CACHE_HOME:-~/.cache}/agentfeedback/`, keeps only the
+client log (`log/client.jsonl`) and `digest/` output; a spool left there by a
+version before 4.0 is reported by `doctor` and is not read any more.
 
 ## Bare binary (no Docker)
 
@@ -528,8 +555,9 @@ safe while the service runs (WAL mode, a 5 s busy timeout); the final
 docker run --rm --volumes-from "$(docker compose ps -q agentfeedback)" alpine:3.24.1 sh -c 'apk add --no-cache sqlite >/dev/null && sqlite3 -cmd ".timeout 5000" /data/agentfeedback.db "DELETE FROM submissions WHERE processed_at < (unixepoch() - 31536000) * 1000000"; s=$?; chown 10001:10001 /data/agentfeedback.db*; exit $s'
 ```
 
-Client spools live in `~/.cache/agentfeedback/spool/` on each producer and
-age out on their own.
+Client spools live in `~/.local/share/agentfeedback/spool/` on each producer
+and age out on their own (frictions after 20 hours, other kinds after 30
+days; an expiry is an `error` line in `client.jsonl`).
 
 ## Monitoring
 
@@ -556,9 +584,13 @@ removing any service; the data is gone with the volume.
    use, e.g. `ls -la ~/.claude/skills | grep feedback`. Entries may be symlinks into
    a shared checkout; remove the links, then the checkout if nothing else uses it.
 3. Flush or discard unsent payloads first: `agentfeedback flush`
-   sends whatever is spooled; or delete `~/.cache/agentfeedback/` to drop it.
-4. Remove the directories or links, then `rm -rf ~/.cache/agentfeedback`, and the binary:
+   sends whatever is spooled; or delete `~/.local/share/agentfeedback/spool/`
+   and `~/.local/share/agentfeedback/rejected/` to drop it.
+4. Remove the directories or links, then `rm -rf ~/.cache/agentfeedback`
+   (the client log and digests), and the binary:
    `rm "$(command -v agentfeedback)"` (`scripts/install.sh` puts it in `~/.local/bin`).
+   `~/.local/share/agentfeedback/` also holds the local-mode database; back
+   it up with `agentfeedback backup` first if the reports matter, then remove it.
 5. Remove `AGENT_FEEDBACK_URL`, `AGENT_FEEDBACK_API_KEY`, `AGENT_FEEDBACK_MACHINE`,
    `AGENT_FEEDBACK_MODEL`, `AGENT_FEEDBACK_HARNESS`, `AGENT_FEEDBACK_SESSION_ID`
    `AGENT_FEEDBACK_REVIEW_DIRS` and `AGENT_FEEDBACK_TRIAGE_ROOTS` (plus

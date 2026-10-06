@@ -180,10 +180,15 @@ func (m *migration) run(args []string, stdin io.Reader) error {
 	if err != nil {
 		return err
 	}
+	data, err := dataDir(os.Getenv)
+	if err != nil {
+		return err
+	}
 	m.cache = cache
 	m.target, err = client.New(client.Config{
 		URL:      m.targetURL,
 		APIKey:   key,
+		DataDir:  data,
 		CacheDir: cache,
 		HTTP:     migrateHTTP(),
 		Now:      nowFunc,

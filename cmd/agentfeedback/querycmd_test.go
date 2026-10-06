@@ -58,13 +58,12 @@ func newLive(t *testing.T, key string) *live {
 	svc := core.New(db, core.Config{Version: "4.0.0", Features: api.Features}, core.WithClock(clock))
 	h := api.New(api.Config{Service: svc, DB: db, APIKey: key}).Handler()
 	l := &live{key: key}
-	l.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	l.srv = startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		l.mu.Lock()
 		l.log = append(l.log, r.Method+" "+r.URL.Path)
 		l.mu.Unlock()
 		h.ServeHTTP(w, r)
 	}))
-	t.Cleanup(l.srv.Close)
 
 	return l
 }
@@ -136,8 +135,7 @@ func (l *live) record(t *testing.T, id int64) map[string]any {
 // stub serves fn and points the client at it; call isolate first.
 func stub(t *testing.T, fn http.HandlerFunc) {
 	t.Helper()
-	srv := httptest.NewServer(fn)
-	t.Cleanup(srv.Close)
+	srv := startServer(t, fn)
 	t.Setenv(envURL, srv.URL)
 	t.Setenv(envAPIKey, testKey)
 }

@@ -512,6 +512,8 @@ func reviewBases(pos []string) []string {
 // rejected; each submitted run prints its outcome line; it exits 0.
 func (s *submitter) sweep(pos []string) error {
 	if !s.dryRun {
+		// The sweep flushes first itself; it is the start-up pass.
+		skipStartupPass = true
 		c, err := s.client()
 		if err != nil {
 			return err

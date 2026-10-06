@@ -76,6 +76,20 @@ pass "export ends with a complete trailer for one record"
 [ -f "$DATA/agentfeedback/agentfeedback.db" ] || fail "$DATA/agentfeedback/agentfeedback.db does not exist"
 pass "the database is the data-directory file"
 
+out=$(af flush) || fail "flush failed: $out"
+jq -e '.flushed == 0 and .pending == 0 and .other_destination == 0' >/dev/null <<<"$out" ||
+  fail "flush in local mode: unexpected report $out"
+pass "flush in local mode reports an empty spool"
+
+# Modes are checked where the stat command speaks GNU; macOS stat has no -c.
+if stat -c %a "$DATA/agentfeedback" >/dev/null 2>&1; then
+  dirmode=$(stat -c %a "$DATA/agentfeedback")
+  dbmode=$(stat -c %a "$DATA/agentfeedback/agentfeedback.db")
+  [ "$dirmode" = 700 ] || fail "data directory mode $dirmode, want 700"
+  [ "$dbmode" = 600 ] || fail "database mode $dbmode, want 600"
+  pass "the data directory is 0700 and the database 0600"
+fi
+
 if pgrep -f "$BIN serve" >/dev/null; then
   fail "a $BIN serve process is running; local mode must not start a server"
 fi

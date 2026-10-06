@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/agentfeedback/agentfeedback/v4/internal/api"
 	"github.com/agentfeedback/agentfeedback/v4/internal/core"
+	"github.com/agentfeedback/agentfeedback/v4/internal/localmode"
 	"github.com/agentfeedback/agentfeedback/v4/pkg/client"
 )
 
@@ -142,5 +144,87 @@ func TestLocalMode_OperatorCommands(t *testing.T) {
 
 	if r := runCLI(t, "", "doctor", "--e2e"); r.code != 0 {
 		t.Fatalf("doctor --e2e: %+v", r)
+	}
+}
+
+// TestLocalMode_WriteFailureSpools: a local write the database cannot take
+// (here a read-only file; a lock held past the busy timeout spools the same
+// way) is spooled with destination local, outcome spooled and exit 0, with
+// nothing echoed; the next command's start-up pass delivers it before its
+// own work, so list shows the row.
+func TestLocalMode_WriteFailureSpools(t *testing.T) {
+	if goos == "windows" {
+		t.Skip("a read-only database file is not reproducible on Windows")
+	}
+	isolate(t)
+	path := localFixture(t)
+	chmodAll(t, path, 0o400)
+	r := runCLI(t, "", "submit", "friction", "--summary", "while read-only")
+	o := outcomeOf(t, r)
+	if r.code != 0 || o["outcome"] != "spooled" || strings.Contains(r.stderr, "NOT persisted") {
+		t.Fatalf("read-only write: %+v", r)
+	}
+	data := dataRoot(t)
+	files := spoolFiles(t, client.SpoolDir(data))
+	if len(files) != 1 {
+		t.Fatalf("spool holds %v", files)
+	}
+	raw, err := os.ReadFile(filepath.Join(client.SpoolDir(data), files[0]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var entry struct {
+		Destination string `json:"destination"`
+	}
+	if json.Unmarshal(raw, &entry) != nil || entry.Destination != client.LocalDestination {
+		t.Fatalf("entry %s", raw)
+	}
+	if r := runCLI(t, "", "list", "--json"); !strings.Contains(r.stdout, `"total":2`) {
+		t.Fatalf("list while read-only delivered something: %+v", r)
+	}
+
+	chmodAll(t, path, 0o600)
+	r = runCLI(t, "", "list", "--json")
+	if r.code != 0 || !strings.Contains(r.stdout, `"total":3`) || !strings.Contains(r.stdout, "while read-only") {
+		t.Fatalf("list after the pass: %+v", r)
+	}
+	if left := spoolFiles(t, client.SpoolDir(data)); len(left) != 0 {
+		t.Fatalf("spool left %v", left)
+	}
+	if r := runCLI(t, "", "doctor", "--json"); !strings.Contains(r.stdout, `"outcome":"flushed"`) {
+		t.Fatalf("no flushed line in the client log: %+v", r)
+	}
+}
+
+// TestLocalMode_UnwritableSpoolEchoes: when the write fails and the spool
+// cannot be written either, the body is echoed on stderr for recovery and
+// the command exits 1 (outcome error).
+func TestLocalMode_UnwritableSpoolEchoes(t *testing.T) {
+	if goos == "windows" {
+		t.Skip("a read-only database file is not reproducible on Windows")
+	}
+	isolate(t)
+	chmodAll(t, localFixture(t), 0o400)
+	writeFile(t, client.SpoolDir(dataRoot(t)), "not a directory", 0o600)
+	r := runCLI(t, "", "submit", "friction", "--summary", "nowhere to go")
+	o := outcomeOf(t, r)
+	if r.code != 1 || o["outcome"] != "error" || o["reason"] != "spool_unwritable" {
+		t.Fatalf("%+v", r)
+	}
+	if !strings.Contains(r.stderr, "NOT persisted") || !strings.Contains(r.stderr, `"summary":"nowhere to go"`) {
+		t.Fatalf("body not echoed: %s", r.stderr)
+	}
+}
+
+// chmodAll sets mode on the database file and the -wal and -shm files that
+// exist: SQLite gives new sidecars the database file's mode, so a read-only
+// database left alone would keep read-only sidecars after the file is
+// restored.
+func chmodAll(t *testing.T, path string, mode os.FileMode) {
+	t.Helper()
+	for _, p := range localmode.Sidecars(path) {
+		if err := os.Chmod(p, mode); err != nil && !errors.Is(err, os.ErrNotExist) {
+			t.Fatal(err)
+		}
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -52,13 +53,42 @@ func noRequests(t *testing.T) {
 }
 
 // deadURL points the client at a closed port, so every send is spooled.
+// The port is kept: a server started afterwards by stub, flushServer or
+// liveServer listens on it, so the spooled entries are bound to the server
+// that later delivers them.
 func deadURL(t *testing.T) {
 	t.Helper()
-	srv := httptest.NewServer(http.NotFoundHandler())
-	u := srv.URL
-	srv.Close()
-	t.Setenv(envURL, u)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadAddr = ln.Addr().String()
+	_ = ln.Close()
+	t.Cleanup(func() { deadAddr = "" })
+	t.Setenv(envURL, "http://"+deadAddr)
 	t.Setenv(envAPIKey, testKey)
+}
+
+// deadAddr is the address deadURL reserved, "" when none.
+var deadAddr string
+
+// startServer serves h on a fresh port, or on deadURL's port while the
+// client still points at it, and closes it with the test.
+func startServer(t *testing.T, h http.Handler) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewUnstartedServer(h)
+	if deadAddr != "" && os.Getenv(envURL) == "http://"+deadAddr {
+		_ = srv.Listener.Close()
+		ln, err := net.Listen("tcp", deadAddr)
+		if err != nil {
+			t.Fatalf("relisten on %s: %v", deadAddr, err)
+		}
+		srv.Listener = ln
+	}
+	srv.Start()
+	t.Cleanup(srv.Close)
+
+	return srv
 }
 
 // copyFixture copies the review fixture base into a temporary directory,
@@ -535,7 +565,7 @@ func TestAC4_ReviewDirectSkips(t *testing.T) {
 }
 
 func TestAC4_ReviewSweep(t *testing.T) {
-	_, cache := isolateSubmit(t)
+	isolateSubmit(t)
 	fixClock(t, time.Date(2020, 1, 1, 3, 0, 0, 0, time.UTC))
 	base := t.TempDir()
 	old := writeRun(t, base, "20200101-000000-old", "20200101-000000", "Old", "5")
@@ -559,7 +589,7 @@ func TestAC4_ReviewSweep(t *testing.T) {
 	if r.code != 0 || !strings.Contains(r.stderr, "no review run directories configured") || r.stdout != "" {
 		t.Fatalf("no bases %+v", r)
 	}
-	if rec := l.record(t, 1); rec["summary"] != "spooled first" || len(spoolFiles(t, client.SpoolDir(cache))) != 0 {
+	if rec := l.record(t, 1); rec["summary"] != "spooled first" || len(spoolFiles(t, client.SpoolDir(dataRoot(t)))) != 0 {
 		t.Fatalf("not flushed first: %v", rec)
 	}
 
@@ -614,10 +644,10 @@ func flushServer(t *testing.T, hits *atomic.Int64) {
 }
 
 func TestAC5_Flush(t *testing.T) {
-	_, cache := isolateSubmit(t)
+	isolateSubmit(t)
 	noRequests(t)
 	r := runCLI(t, "", "flush")
-	if r.code != 0 || lastLine(r.stdout) != `{"flushed":0,"duplicates":0,"pending":0,"rejected":0,"mismatched":0,"expired":0,"deferred":0}` {
+	if r.code != 0 || lastLine(r.stdout) != `{"flushed":0,"duplicates":0,"pending":0,"rejected":0,"mismatched":0,"expired":0,"deferred":0,"other_destination":0}` {
 		t.Fatalf("empty %+v", r)
 	}
 
@@ -627,7 +657,7 @@ func TestAC5_Flush(t *testing.T) {
 			t.Fatalf("spool %s %+v", k, r)
 		}
 	}
-	spool := client.SpoolDir(cache)
+	spool := client.SpoolDir(dataRoot(t))
 	if n := len(spoolFiles(t, spool)); n != 3 {
 		t.Fatalf("spool holds %d", n)
 	}
@@ -646,7 +676,7 @@ func TestAC5_Flush(t *testing.T) {
 	if n := len(spoolFiles(t, spool)); n != 0 {
 		t.Errorf("spool left %d", n)
 	}
-	if n := len(spoolFiles(t, client.RejectedDir(cache))); n != 1 {
+	if n := len(spoolFiles(t, client.RejectedDir(dataRoot(t)))); n != 1 {
 		t.Errorf("rejected holds %d", n)
 	}
 

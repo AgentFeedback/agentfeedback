@@ -17,7 +17,7 @@ internal/skillgen/               skill generator: source/ (skill.json plus one M
 pkg/schema/                     v1 schema engine: embedded schemas compiled at init, the x- keywords, guide validation, the text and date-time rules
 pkg/envelope/                   v1 decoder: token-stream parse (spellings, duplicates, UTF-8 repair), inference table, normalisation order, guide and recommended checks; the content_hash member set
 pkg/canonjson/                  v1 canonical JSON writer on the write path's JSON tree and its SHA-256; identity hashes and stored bytes are written with it
-pkg/client/                     v1 client transport: both auth headers, no redirects, the retry table, the spool (spool/, rejected/ beside it, retention), outcome lines and exit codes, the owner-only client.jsonl; `Do` and `Stream` for every other route (`APIError`, `TransportError`)
+pkg/client/                     v1 client transport: both auth headers, no redirects, the retry table, the spool in the data directory (spool/, rejected/ beside it, every entry bound to its destination, retention), outcome lines and exit codes, the owner-only client.jsonl in the cache directory; `Do` and `Stream` for every other route (`APIError`, `TransportError`)
 pkg/collect/                    client context collection: project, machine and harness groups (git metadata with or without git, env allow-list looked up by name), deny_paths/opt-in narrowing, repository .agentfeedback.toml that may only narrow
 infra/agentfeedback/            compose stacks (local build, image-based deploy) and .env.example
 scripts/                        e2e.sh (live v1 contract suite: every openapi.yaml operation, fails on an uncovered one), gate-e2e.sh, deploy.sh, release.sh (the release step behind

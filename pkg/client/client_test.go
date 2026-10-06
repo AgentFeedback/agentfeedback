@@ -110,7 +110,7 @@ func TestSubmitRetryTable(t *testing.T) {
 			if o.ExitCode() != wantExit {
 				t.Errorf("exit = %d, want %d", o.ExitCode(), wantExit)
 			}
-			spooled, rejected := af1Files(t, SpoolDir(e.cache)), af1Files(t, RejectedDir(e.cache))
+			spooled, rejected := af1Files(t, SpoolDir(e.data)), af1Files(t, RejectedDir(e.data))
 			got := "none"
 			switch {
 			case len(spooled) == 1 && len(rejected) == 0:
@@ -127,7 +127,7 @@ func TestSubmitRetryTable(t *testing.T) {
 				t.Errorf("redirect target was hit")
 			}
 			if got == "spool" {
-				en := readEntry(t, filepath.Join(SpoolDir(e.cache), spooled[0]))
+				en := readEntry(t, filepath.Join(SpoolDir(e.data), spooled[0]))
 				wantNB := t0.Add(30 * time.Second)
 				switch tt.reason {
 				case "rate_limited":
@@ -140,7 +140,7 @@ func TestSubmitRetryTable(t *testing.T) {
 				}
 			}
 			if got == "rejected" {
-				en := readEntry(t, filepath.Join(RejectedDir(e.cache), rejected[0]))
+				en := readEntry(t, filepath.Join(RejectedDir(e.data), rejected[0]))
 				if en.Status != 409 && en.Status < 400 || en.RejectedAt == nil || len(en.Response) == 0 {
 					t.Errorf("rejected entry = %+v", en)
 				}
@@ -194,7 +194,7 @@ func TestOutcomeLastLine(t *testing.T) {
 					if err := os.WriteFile(file, nil, 0o600); err != nil {
 						t.Fatal(err)
 					}
-					e.c.cacheDir = file
+					e.c.dataDir = file
 				}
 				o = e.c.Submit(context.Background(), []byte(`{"kind":"friction","key":"k1"}`))
 				if tt.broken && !strings.Contains(e.stderr.String(), `{"kind":"friction","key":"k1"}`) {
@@ -341,7 +341,7 @@ func (r *recorder) hosts() []string {
 
 // TestNewValidates checks the configuration errors.
 func TestNewValidates(t *testing.T) {
-	good := Config{URL: "https://h.example/prefix/", APIKey: "k", CacheDir: "/c"}
+	good := Config{URL: "https://h.example/prefix/", APIKey: "k", DataDir: "/d", CacheDir: "/c"}
 	tests := []struct {
 		name string
 		edit func(*Config)
@@ -354,6 +354,7 @@ func TestNewValidates(t *testing.T) {
 		{"fragment", func(c *Config) { c.URL = "http://h/#f" }},
 		{"no key", func(c *Config) { c.APIKey = "" }},
 		{"key newline", func(c *Config) { c.APIKey = "a\nb" }},
+		{"no data", func(c *Config) { c.DataDir = "" }},
 		{"no cache", func(c *Config) { c.CacheDir = "" }},
 	}
 	c, err := New(good)
@@ -368,7 +369,7 @@ func TestNewValidates(t *testing.T) {
 		}
 	}
 	caller := &http.Client{}
-	if _, err := New(Config{URL: "http://h", APIKey: "k", CacheDir: "/c", HTTP: caller}); err != nil || caller.CheckRedirect != nil {
+	if _, err := New(Config{URL: "http://h", APIKey: "k", DataDir: "/d", CacheDir: "/c", HTTP: caller}); err != nil || caller.CheckRedirect != nil {
 		t.Errorf("caller's client changed or error %v", err)
 	}
 }
@@ -458,7 +459,7 @@ func TestIdentityNormalised(t *testing.T) {
 				t.Fatalf("outcome = %+v", o)
 			}
 			if tt.want == OutcomeSpooled {
-				en := readEntry(t, filepath.Join(SpoolDir(e.cache), af1Files(t, SpoolDir(e.cache))[0]))
+				en := readEntry(t, filepath.Join(SpoolDir(e.data), af1Files(t, SpoolDir(e.data))[0]))
 				if en.Kind != "tool-failure" || en.Key != "k1" {
 					t.Errorf("entry kind %q key %q", en.Kind, en.Key)
 				}
@@ -477,7 +478,7 @@ func TestLocalRejection(t *testing.T) {
 	if o.Outcome != OutcomeRejected || o.ExitCode() != 1 || hits.Load() != 0 {
 		t.Fatalf("outcome %+v hits %d", o, hits.Load())
 	}
-	if len(af1Files(t, SpoolDir(e.cache)))+len(af1Files(t, RejectedDir(e.cache))) != 0 {
+	if len(af1Files(t, SpoolDir(e.data)))+len(af1Files(t, RejectedDir(e.data))) != 0 {
 		t.Error("stored somewhere")
 	}
 	if !bytes.Contains(e.stderr.Bytes(), body) || !strings.Contains(e.stderr.String(), "not sent") {
@@ -508,7 +509,7 @@ func TestRetryAfterLong(t *testing.T) {
 	defer srv.Close()
 	e := newTestEnv(t, srv.URL, nil)
 	e.c.Submit(context.Background(), []byte(`{"kind":"friction"}`))
-	en := readEntry(t, filepath.Join(SpoolDir(e.cache), af1Files(t, SpoolDir(e.cache))[0]))
+	en := readEntry(t, filepath.Join(SpoolDir(e.data), af1Files(t, SpoolDir(e.data))[0]))
 	if !en.NotBefore.Equal(t0.Add(2 * time.Hour)) {
 		t.Errorf("not_before = %v", en.NotBefore)
 	}

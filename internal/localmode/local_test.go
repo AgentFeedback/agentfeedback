@@ -1,12 +1,14 @@
 package localmode
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -16,7 +18,7 @@ import (
 func openTarget(t *testing.T) (*Target, *client.Client) {
 	t.Helper()
 	dir := t.TempDir()
-	tg, err := Open(context.Background(), filepath.Join(dir, "data", "agentfeedback.db"), "0.0.0-test")
+	tg, err := Open(context.Background(), filepath.Join(dir, "data", "agentfeedback.db"), "0.0.0-test", nil)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -25,7 +27,7 @@ func openTarget(t *testing.T) (*Target, *client.Client) {
 	if err != nil || info.Mode().Perm() != 0o700 {
 		t.Fatalf("data directory: %v, mode %v", err, info.Mode())
 	}
-	c, err := client.New(client.Config{Transport: tg.Transport(), APIKey: Key, CacheDir: t.TempDir(), NoSpool: true, Version: "0.0.0-test"})
+	c, err := client.New(client.Config{Transport: tg.Transport(), APIKey: Key, DataDir: dir, CacheDir: t.TempDir(), Version: "0.0.0-test"})
 	if err != nil {
 		t.Fatalf("client.New: %v", err)
 	}
@@ -209,4 +211,45 @@ func TestTransportCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = resp.Body.Close()
+}
+
+// TestOpenCreatesOwnerOnly: a database Open creates is 0600 with its -wal
+// and -shm files after the first write, in a 0700 directory; a database
+// that already exists keeps the mode it had (doctor reports it).
+func TestOpenCreatesOwnerOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("file modes are not meaningful on Windows")
+	}
+	tg, c := openTarget(t)
+	if o := c.Submit(context.Background(), []byte(`{"kind":"friction","summary":"first write"}`)); o.Outcome != client.OutcomeSubmitted {
+		t.Fatalf("submit: %+v", o)
+	}
+	for _, p := range Sidecars(tg.Path()) {
+		info, err := os.Stat(p)
+		if err != nil {
+			t.Fatalf("%s: %v (every sidecar exists after a write in WAL mode)", p, err)
+		}
+		if info.Mode().Perm() != 0o600 {
+			t.Errorf("%s mode %v, want 0600", p, info.Mode().Perm())
+		}
+	}
+
+	loose := filepath.Join(t.TempDir(), "loose.db")
+	first, err := Open(context.Background(), loose, "0.0.0-test", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = first.Close()
+	if err := os.Chmod(loose, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var warnings bytes.Buffer
+	second, err := Open(context.Background(), loose, "0.0.0-test", &warnings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = second.Close()
+	if info, _ := os.Stat(loose); info.Mode().Perm() != 0o644 || warnings.Len() != 0 {
+		t.Errorf("an existing database was changed to %v (warnings %q); doctor reports it instead", info.Mode().Perm(), warnings.String())
+	}
 }

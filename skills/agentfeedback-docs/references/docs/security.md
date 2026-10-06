@@ -60,8 +60,11 @@ One SQLite file in a Docker volume, or in local mode
 `~/.local/share/agentfeedback/agentfeedback.db`, readable by anyone who can
 read the volume, the file or a backup. Encrypt and restrict backups; they hold everything
 agents ever reported. Retention is manual (see
-[operate.md](operate.md#retention)). Producers keep unsent payloads in
-`~/.cache/agentfeedback/spool/` until delivered or aged out.
+[operate.md](operate.md#retention)). Producers keep unsent payloads in the
+same data directory, `~/.local/share/agentfeedback/spool/`, until delivered
+or aged out; the client creates that directory `0700` and its files `0600`,
+and `agentfeedback doctor` reports a path other users can reach (see
+[operate.md](operate.md#data-directory)).
 
 ## Reporting a vulnerability
 

@@ -5,9 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/agentfeedback/agentfeedback/v4/internal/skillgen"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/client"
 )
 
 // userError is the one shape of every error a person or an agent reads from
@@ -196,6 +198,18 @@ func errURLCredentials() error {
 
 func errPathUnreadable(path string, err error) error {
 	return failErr(fmt.Sprintf("cannot read %s: %v", path, err), "check its permissions")
+}
+
+// errLooseMode: a data directory or database file other users can reach.
+func errLooseMode(path, mode string, want os.FileMode) error {
+	return failErr(fmt.Sprintf("%s has mode %s and is reachable by other users", path, mode), fmt.Sprintf("chmod %o %s", want, path))
+}
+
+// errLegacySpool: files left in the spool a previous version kept under the
+// cache directory; nothing reads them any more.
+func errLegacySpool(cache string, n int, data string) error {
+	return failErr(fmt.Sprintf("the cache directory %s holds %d spool file(s) written by a previous version; the spool now lives in %s", cache, n, data),
+		fmt.Sprintf("remove %s and %s, after sending them with the previous binary's flush if they matter", client.SpoolDir(cache), client.RejectedDir(cache)))
 }
 
 func errClientTooOld(have, minimum string) error {

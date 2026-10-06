@@ -17,6 +17,7 @@ import (
 	"github.com/agentfeedback/agentfeedback/v4/internal/api"
 	"github.com/agentfeedback/agentfeedback/v4/internal/core"
 	"github.com/agentfeedback/agentfeedback/v4/internal/skillgen"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/client"
 	"github.com/agentfeedback/agentfeedback/v4/pkg/schema"
 )
 
@@ -37,6 +38,18 @@ func isolate(t *testing.T) (cfgPath, cache string) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 
 	return filepath.Join(cfgHome, "agentfeedback", "config.toml"), filepath.Join(cacheHome, "agentfeedback")
+}
+
+// dataRoot is the data directory isolate pointed XDG_DATA_HOME at: the
+// local database, spool/ and rejected/ live there.
+func dataRoot(t *testing.T) string {
+	t.Helper()
+	d, err := dataDir(os.Getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return d
 }
 
 type result struct {
@@ -347,11 +360,12 @@ func TestDoctor_AgainstServer(t *testing.T) {
 
 func TestDoctor_SpoolLogAndMode(t *testing.T) {
 	cfgPath, cache := isolate(t)
+	data := dataRoot(t)
 	writeFile(t, cfgPath, "url = \"http://127.0.0.1:1\"\n", 0o644)
 	for _, name := range []string{
 		"spool/a.json", "spool/b.json", "spool/.tmp-c.json", "spool/d.json.rejected", "rejected/e.json", "rejected/f.json",
 	} {
-		writeFile(t, filepath.Join(cache, name), "{}", 0o600)
+		writeFile(t, filepath.Join(data, name), "{}", 0o600)
 	}
 	var log strings.Builder
 	for i := range 7 {
@@ -367,14 +381,121 @@ func TestDoctor_SpoolLogAndMode(t *testing.T) {
 	if rep.URL.Source != sourceConfig || rep.Meta.Checked {
 		t.Fatalf("url from config, meta skipped without a key: %+v %+v", rep.URL, rep.Meta)
 	}
-	if rep.Spool != (spoolCheck{Pending: 2, Rejected: 3}) {
-		t.Fatalf("spool %+v", rep.Spool)
+	if rep.Spool != (spoolCheck{Pending: 2, Rejected: 3}) || rep.LegacySpool != (spoolCheck{}) || hasProblem(rep, "previous version") {
+		t.Fatalf("spool %+v legacy %+v problems %v", rep.Spool, rep.LegacySpool, rep.Problems)
 	}
 	if rep.Recent.Invalid != 1 || len(rep.Recent.Lines) != 4 || string(rep.Recent.Lines[3]) != `{"n":6}` {
 		t.Fatalf("recent %+v", rep.Recent)
 	}
 	if _, err := os.Stat(filepath.Join(cache, "log")); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestDoctor_LegacySpool: files in the spool a previous version kept under
+// the cache directory are counted apart and reported as a problem naming
+// the directories to remove; the data-directory counts are unaffected.
+func TestDoctor_LegacySpool(t *testing.T) {
+	_, cache := isolate(t)
+	data := dataRoot(t)
+	for _, name := range []string{"spool/a.json", "spool/.tmp-b.json", "rejected/c.json"} {
+		writeFile(t, filepath.Join(cache, name), "{}", 0o600)
+	}
+	rep, r := doctorJSON(t)
+	if r.code != 1 || rep.Spool != (spoolCheck{}) || rep.LegacySpool != (spoolCheck{Pending: 1, Rejected: 1}) {
+		t.Fatalf("legacy: %+v %+v", rep, r)
+	}
+	if !hasProblem(rep, "holds 2 spool file(s) written by a previous version") || !hasProblem(rep, "remove "+client.SpoolDir(cache)+" and "+client.RejectedDir(cache)) ||
+		!hasProblem(rep, "now lives in "+data) {
+		t.Fatalf("problems %v", rep.Problems)
+	}
+	if human := runCLI(t, "", "doctor"); !strings.Contains(human.stdout, "legacy:   2 file(s) in the cache directory spool of a previous version") {
+		t.Fatalf("human report: %+v", human)
+	}
+}
+
+// TestDoctor_DeliversNothing: a due entry bound to the local database stays
+// in the spool through doctor and doctor --e2e; the next other command
+// delivers it.
+func TestDoctor_DeliversNothing(t *testing.T) {
+	isolate(t)
+	data := dataRoot(t)
+	if r := runCLI(t, "", "submit", "friction", "--summary", "first"); r.code != 0 {
+		t.Fatalf("submit: %+v", r)
+	}
+	spoolOne(t, data, client.LocalDestination)
+	if r := runCLI(t, "", "doctor", "--json"); r.code != 0 {
+		t.Fatalf("doctor: %+v", r)
+	}
+	if r := runCLI(t, "", "doctor", "--e2e", "--json"); r.code != 0 {
+		t.Fatalf("doctor --e2e: %+v", r)
+	}
+	if entries, _ := os.ReadDir(client.SpoolDir(data)); len(entries) != 1 {
+		t.Fatalf("doctor delivered the spooled entry: %v", entries)
+	}
+	if r := runCLI(t, "", "list", "--json", "--kind", "friction"); !strings.Contains(r.stdout, `"total":2`) {
+		t.Fatalf("list did not deliver it: %+v", r)
+	}
+}
+
+// TestFlush_FreshMachineCreatesNothing: flush in local mode with nothing due
+// prints the empty report without creating the data directory.
+func TestFlush_FreshMachineCreatesNothing(t *testing.T) {
+	isolate(t)
+	if r := runCLI(t, "", "flush"); r.code != 0 || !strings.Contains(r.stdout, `"flushed":0`) {
+		t.Fatalf("%+v", r)
+	}
+	if _, err := os.Stat(dataRoot(t)); !os.IsNotExist(err) {
+		t.Fatalf("flush created the data directory: %v", err)
+	}
+}
+
+// TestDoctor_LooseModes: doctor reports the data directory and the database
+// files other users can reach, each with its chmod, and changes none of
+// them; a fresh local database is reported clean. In remote mode the data
+// directory (the spool) is checked the same way.
+func TestDoctor_LooseModes(t *testing.T) {
+	if goos == "windows" {
+		t.Skip("file modes are not meaningful on Windows")
+	}
+	isolate(t)
+	if s := runCLI(t, "", "submit", "friction", "--summary", "x"); s.code != 0 {
+		t.Fatalf("submit: %+v", s)
+	}
+	rep, r := doctorJSON(t)
+	if r.code != 0 || len(rep.Database.Loose) != 0 {
+		t.Fatalf("fresh database: %+v", r)
+	}
+	db := rep.Database.Path
+	for _, p := range []string{filepath.Dir(db), db} {
+		if err := os.Chmod(p, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// doctor's own open recreates -wal and -shm, which SQLite gives the
+	// database file's mode: all four are reported.
+	rep, r = doctorJSON(t)
+	if r.code != 1 || len(rep.Database.Loose) != 4 || rep.Database.Loose[0] != filepath.Dir(db) || rep.Database.Loose[1] != db ||
+		rep.Database.Loose[3] != db+"-shm" {
+		t.Fatalf("loose: %+v %+v", rep.Database, r)
+	}
+	if !hasProblem(rep, "chmod 700 "+filepath.Dir(db)) || !hasProblem(rep, "chmod 600 "+db) || !hasProblem(rep, db+" has mode 0755") {
+		t.Fatalf("problems %v", rep.Problems)
+	}
+	if info, _ := os.Stat(db); info.Mode().Perm() != 0o755 {
+		t.Fatalf("doctor changed the mode to %v", info.Mode().Perm())
+	}
+
+	// Remote mode: the same directory holds the spool.
+	t.Setenv(envURL, "http://127.0.0.1:1")
+	t.Setenv(envAPIKey, "k")
+	if err := os.Chmod(client.SpoolDir(filepath.Dir(db)), 0o755); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	rep, r = doctorJSON(t)
+	if r.code != 1 || rep.Mode != modeRemote || len(rep.Database.Loose) < 2 || rep.Database.Loose[0] != filepath.Dir(db) ||
+		!hasProblem(rep, "chmod 700 "+filepath.Dir(db)) {
+		t.Fatalf("remote loose: %+v %+v", rep.Database, r)
 	}
 }
 
@@ -403,7 +524,7 @@ func TestDoctor_LocalMode(t *testing.T) {
 	isolate(t)
 	want := filepath.Join(os.Getenv("XDG_DATA_HOME"), "agentfeedback", "agentfeedback.db")
 	rep, r := doctorJSON(t)
-	if r.code != 0 || rep.Status != "ok" || rep.Mode != modeLocal || rep.Database != (databaseCheck{Path: want}) ||
+	if r.code != 0 || rep.Status != "ok" || rep.Mode != modeLocal || rep.Database.Path != want || rep.Database.Exists || len(rep.Database.Loose) != 0 ||
 		rep.Meta.Checked || rep.URL.Value != "" {
 		t.Fatalf("missing database: %+v", r)
 	}
@@ -415,7 +536,7 @@ func TestDoctor_LocalMode(t *testing.T) {
 		t.Fatalf("submit: %+v", s)
 	}
 	rep, r = doctorJSON(t)
-	if r.code != 0 || rep.Status != "ok" || rep.Mode != modeLocal || rep.Database != (databaseCheck{Path: want, Exists: true}) ||
+	if r.code != 0 || rep.Status != "ok" || rep.Mode != modeLocal || rep.Database.Path != want || !rep.Database.Exists || len(rep.Database.Loose) != 0 ||
 		!rep.Meta.OK || rep.Meta.APIVersion != "1.0" {
 		t.Fatalf("present database: %+v", r)
 	}

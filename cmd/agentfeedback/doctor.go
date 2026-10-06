@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -31,24 +32,30 @@ const (
 )
 
 type doctorReport struct {
-	Status   string         `json:"status"`
-	Problems []string       `json:"problems"`
-	Mode     string         `json:"mode"`
-	Database databaseCheck  `json:"database"`
-	Config   configCheck    `json:"config"`
-	URL      resolvedValue  `json:"url"`
-	APIKey   keyCheck       `json:"api_key"`
-	Meta     metaCheck      `json:"meta"`
-	Versions versionCheck   `json:"versions"`
-	Spool    spoolCheck     `json:"spool"`
-	Recent   recentOutcomes `json:"recent"`
+	Status   string        `json:"status"`
+	Problems []string      `json:"problems"`
+	Mode     string        `json:"mode"`
+	Database databaseCheck `json:"database"`
+	Config   configCheck   `json:"config"`
+	URL      resolvedValue `json:"url"`
+	APIKey   keyCheck      `json:"api_key"`
+	Meta     metaCheck     `json:"meta"`
+	Versions versionCheck  `json:"versions"`
+	Spool    spoolCheck    `json:"spool"`
+	// LegacySpool counts the files of the spool a previous version kept in
+	// the cache directory; anything there is a problem naming the remedy.
+	LegacySpool spoolCheck     `json:"legacy_spool"`
+	Recent      recentOutcomes `json:"recent"`
 }
 
 // databaseCheck is the local database: its path and whether it exists. Both
-// are empty in remote mode.
+// are empty in remote mode. Loose lists the paths under the data directory
+// (the directory, spool/, rejected/, the database files) whose mode lets
+// other users in, in either mode; each is also a problem.
 type databaseCheck struct {
-	Path   string `json:"path"`
-	Exists bool   `json:"exists"`
+	Path   string   `json:"path"`
+	Exists bool     `json:"exists"`
+	Loose  []string `json:"loose,omitempty"`
 }
 
 type configCheck struct {
@@ -95,6 +102,8 @@ type recentOutcomes struct {
 // JSON object with --json. --init hands over to runDoctorInit, --e2e to
 // runDoctorE2E.
 func runDoctor(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	// doctor delivers nothing, --e2e included: its one submission is its own.
+	skipStartupPass = true
 	fs := newFlagSet("doctor")
 	urlFlag := fs.String("url", "", "server base URL (overrides AGENT_FEEDBACK_URL and the config file)")
 	asJSON := fs.Bool("json", false, "print one JSON object")
@@ -188,8 +197,9 @@ func redactURL(raw string) string {
 }
 
 // diagnose runs every check. Only the /meta request touches the network (in
-// local mode it is served in-process), and nothing is created on disk: a
-// missing local database is reported, not created.
+// local mode it is served in-process), and nothing is created or delivered:
+// a missing local database is reported, not created, and the start-up pass
+// does not run.
 func diagnose(getenv func(string) string, mf modeFlags, clientVer string) (doctorReport, error) {
 	r := doctorReport{Problems: []string{}, Recent: recentOutcomes{Lines: []json.RawMessage{}}}
 	problem := func(err error) { r.Problems = append(r.Problems, err.Error()) }
@@ -253,7 +263,18 @@ func diagnose(getenv func(string) string, mf modeFlags, clientVer string) (docto
 	if err != nil {
 		return r, err
 	}
-	r.Spool = countSpool(cache, problem)
+	data, err := dataDir(getenv)
+	if err != nil {
+		return r, err
+	}
+	r.Spool = countSpool(data, problem)
+	r.Database.Loose = checkModes(data, problem)
+	if filepath.Clean(cache) != filepath.Clean(data) {
+		r.LegacySpool = countSpool(cache, problem)
+		if n := r.LegacySpool.Pending + r.LegacySpool.Rejected; n > 0 {
+			problem(errLegacySpool(cache, n, data))
+		}
+	}
 	r.Recent = tailLog(client.LogPath(cache), settings.APIKey.Value, problem)
 
 	r.Status = "ok"
@@ -483,13 +504,45 @@ func cmpInt(a, b int) int {
 	return 0
 }
 
-// countSpool counts the client spool: pending submissions are the regular
-// files directly in spool/ (not the dot-prefixed temporary files, not the
-// *.rejected ones); rejected ones are the *.rejected files in spool/ plus the
-// regular files in the sibling rejected/. A missing directory holds none.
-func countSpool(cache string, problem func(error)) spoolCheck {
+// checkModes reports the paths under the data directory whose mode lets
+// other users in: the directory itself, spool/ and rejected/, and the
+// database files (the database, -wal and -shm), each that exists, as a
+// problem with the chmod to run. It runs in both modes, since the spool is
+// the only copy of a pending report in either. Nothing is changed: the
+// client tightens what it creates and leaves what it finds. Modes mean
+// nothing on Windows.
+func checkModes(data string, problem func(error)) []string {
+	if goos == "windows" {
+		return nil
+	}
+	var loose []string
+	check := func(path string, want os.FileMode) {
+		info, err := os.Stat(path)
+		if err != nil || info.Mode().Perm()&0o077 == 0 {
+			return
+		}
+		loose = append(loose, path)
+		problem(errLooseMode(path, fmt.Sprintf("%04o", info.Mode().Perm()), want))
+	}
+	check(data, 0o700)
+	check(client.SpoolDir(data), 0o700)
+	check(client.RejectedDir(data), 0o700)
+	for _, p := range localmode.Sidecars(filepath.Join(data, "agentfeedback.db")) {
+		check(p, 0o600)
+	}
+
+	return loose
+}
+
+// countSpool counts the client spool under root (the data directory, or the
+// cache directory a previous version used): pending submissions are the
+// regular files directly in spool/ (not the dot-prefixed temporary files,
+// not the *.rejected ones); rejected ones are the *.rejected files in spool/
+// plus the regular files in the sibling rejected/. A missing directory holds
+// none.
+func countSpool(root string, problem func(error)) spoolCheck {
 	var s spoolCheck
-	for _, name := range listFiles(client.SpoolDir(cache), problem) {
+	for _, name := range listFiles(client.SpoolDir(root), problem) {
 		switch {
 		case strings.HasPrefix(name, "."):
 		case strings.HasSuffix(name, ".rejected"):
@@ -498,7 +551,7 @@ func countSpool(cache string, problem func(error)) spoolCheck {
 			s.Pending++
 		}
 	}
-	s.Rejected += len(listFiles(client.RejectedDir(cache), problem))
+	s.Rejected += len(listFiles(client.RejectedDir(root), problem))
 
 	return s
 }
@@ -641,6 +694,9 @@ func printReport(w io.Writer, r doctorReport) {
 	}
 	fmt.Fprintf(w, "version:  client %s, server minimum %s (%s)\n", r.Versions.Client, orNone(r.Versions.MinVersion), r.Versions.Compare)
 	fmt.Fprintf(w, "spool:    %d pending, %d rejected\n", r.Spool.Pending, r.Spool.Rejected)
+	if n := r.LegacySpool.Pending + r.LegacySpool.Rejected; n > 0 {
+		fmt.Fprintf(w, "legacy:   %d file(s) in the cache directory spool of a previous version\n", n)
+	}
 	fmt.Fprintf(w, "recent:   %d outcome(s), %d invalid line(s), %d redacted line(s)\n",
 		len(r.Recent.Lines), r.Recent.Invalid, r.Recent.Redacted)
 	for _, line := range r.Recent.Lines {

@@ -30,14 +30,23 @@ const (
 // process.
 const LocalURL = "http://local"
 
-// Config is what a Client needs. URL, APIKey and CacheDir are required.
+// LocalDestination is the destination a spool entry records when a
+// Transport served the submission in process: the local database, never a
+// server.
+const LocalDestination = "local"
+
+// Config is what a Client needs. URL (unless Transport is set), APIKey,
+// DataDir and CacheDir are required.
 type Config struct {
 	// URL is the server base URL, e.g. http://host:8080 or https://h/prefix;
 	// a trailing slash is trimmed.
 	URL    string
 	APIKey string
+	// DataDir is ${XDG_DATA_HOME:-~/.local/share}/agentfeedback, resolved by
+	// the caller: it holds spool/ and rejected/, beside the local database.
+	DataDir string
 	// CacheDir is ${XDG_CACHE_HOME:-~/.cache}/agentfeedback, resolved by the
-	// caller.
+	// caller: it holds the client log (log/client.jsonl).
 	CacheDir string
 	// HTTP is optional; nil means a client with a 2 s dial and 10 s overall
 	// timeout that honours the proxy environment. Redirects are never
@@ -45,13 +54,10 @@ type Config struct {
 	HTTP *http.Client
 	// Transport, when set, serves every request in place of a network
 	// client: URL may then be empty and defaults to http://local, and HTTP
-	// must be nil. Redirects are never followed either way.
+	// must be nil. Redirects are never followed either way. Spool entries
+	// then record LocalDestination and are retried without a backoff: the
+	// next command's pass is the retry.
 	Transport http.RoundTripper
-	// NoSpool makes Submit keep nothing for a retry: an answer that would be
-	// spooled is reported as outcome error with reason unavailable and the
-	// body echoed for recovery. A rejection is still recorded in rejected/
-	// and Flush is unchanged.
-	NoSpool bool
 	// Now is optional; nil means time.Now.
 	Now func() time.Time
 	// Stderr is optional; nil discards the notes meant for a person.
@@ -65,12 +71,16 @@ type Client struct {
 	endpoint string
 	baseURL  string
 	apiKey   string
+	dataDir  string
 	cacheDir string
 	http     *http.Client
 	now      func() time.Time
 	stderr   io.Writer
 	version  string
-	noSpool  bool
+	// destination is what this client's spool entries record and the only
+	// destination its Flush delivers: the base URL, or LocalDestination.
+	destination string
+	local       bool
 }
 
 // New validates cfg and returns a Client.
@@ -106,6 +116,9 @@ func New(cfg Config) (*Client, error) {
 	if strings.ContainsAny(cfg.APIKey, "\r\n") {
 		return nil, errors.New("the API key contains a line break; set AGENT_FEEDBACK_API_KEY to the key alone")
 	}
+	if cfg.DataDir == "" {
+		return nil, errors.New("the data directory is not set; set XDG_DATA_HOME or HOME")
+	}
 	if cfg.CacheDir == "" {
 		return nil, errors.New("the cache directory is not set; set XDG_CACHE_HOME or HOME")
 	}
@@ -124,15 +137,20 @@ func New(cfg Config) (*Client, error) {
 	hc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 
 	c := &Client{
-		endpoint: base + submissionsPath,
-		baseURL:  base,
-		apiKey:   cfg.APIKey,
-		cacheDir: cfg.CacheDir,
-		http:     &hc,
-		now:      cfg.Now,
-		stderr:   cfg.Stderr,
-		version:  cfg.Version,
-		noSpool:  cfg.NoSpool,
+		endpoint:    base + submissionsPath,
+		baseURL:     base,
+		apiKey:      cfg.APIKey,
+		dataDir:     cfg.DataDir,
+		cacheDir:    cfg.CacheDir,
+		http:        &hc,
+		now:         cfg.Now,
+		stderr:      cfg.Stderr,
+		version:     cfg.Version,
+		destination: base,
+		local:       cfg.Transport != nil,
+	}
+	if c.local {
+		c.destination = LocalDestination
 	}
 	if c.now == nil {
 		c.now = time.Now
@@ -274,27 +292,13 @@ func (c *Client) Submit(ctx context.Context, body []byte) Outcome {
 			o.Outcome = OutcomeDuplicate
 		}
 	case actRetry, actHold:
-		if c.noSpool {
-			cause := res.reason
-			if res.message != "" {
-				cause += ": " + res.message
-			}
-			o.Outcome, o.Reason = OutcomeError, "unavailable"
-			o.Message = fmt.Sprintf("the submission could not be stored (%s); nothing was spooled", cause)
-			c.echoBody(o.Message, prepared)
-
-			break
-		}
-		e := newEntry(kind, key, prepared, now)
+		e := c.newEntry(kind, key, prepared, now)
 		e.Attempts = 1
 		e.LastError = res.reason
-		e.NotBefore = now
-		if res.action == actRetry {
-			e.NotBefore = now.Add(backoff(1, res.retryAfter))
-		}
-		if err := c.writeEntry(SpoolDir(c.cacheDir), newEntryName(now), e); err != nil {
+		e.NotBefore = c.nextAttempt(now, 1, res)
+		if err := c.writeEntry(SpoolDir(c.dataDir), newEntryName(now), e); err != nil {
 			o.Outcome, o.Reason = OutcomeError, "spool_unwritable"
-			o.Message = fmt.Sprintf("the spool directory %s is not writable (%v); fix its permissions and submit again", SpoolDir(c.cacheDir), err)
+			o.Message = fmt.Sprintf("the spool directory %s is not writable (%v); fix its permissions and submit again", SpoolDir(c.dataDir), err)
 			c.echoBody(o.Message, prepared)
 		} else {
 			o.Outcome = OutcomeSpooled
@@ -303,17 +307,28 @@ func (c *Client) Submit(ctx context.Context, body []byte) Outcome {
 		o.Outcome, o.Message = OutcomeMismatch, res.message
 	case actReject:
 		o.Outcome, o.Message = OutcomeRejected, res.message
-		e := newEntry(kind, key, prepared, now)
+		e := c.newEntry(kind, key, prepared, now)
 		e.Attempts = 1
 		e.LastError = res.reason
 		if err := c.writeRejected(newEntryName(now), e, res, now); err != nil {
 			o.Reason = "rejected_unwritable"
-			c.echoBody(fmt.Sprintf("the rejected directory %s is not writable (%v)", RejectedDir(c.cacheDir), err), prepared)
+			c.echoBody(fmt.Sprintf("the rejected directory %s is not writable (%v)", RejectedDir(c.dataDir), err), prepared)
 		}
 	}
 	c.Log(o)
 
 	return o
+}
+
+// nextAttempt is when a spooled entry is due again after attempts sends: at
+// once for a hold (a wrong setting) and for the local database (the next
+// command's pass is the retry; nothing hammers), else after the backoff.
+func (c *Client) nextAttempt(now time.Time, attempts int, res result) time.Time {
+	if res.action != actRetry || c.local {
+		return now.UTC()
+	}
+
+	return now.Add(backoff(attempts, res.retryAfter)).UTC()
 }
 
 // echoBody writes a body that could not be persisted to stderr, after one

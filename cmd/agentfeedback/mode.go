@@ -83,6 +83,11 @@ func resolveModeFrom(mf modeFlags, getenv func(string) string, file fileConfig) 
 // localTarget is the open local database of this invocation; run closes it.
 var localTarget *localmode.Target
 
+// skipStartupPass is set by the commands that must not run the start-up
+// pass: flush, which is the pass, and doctor, which changes nothing. run
+// resets it.
+var skipStartupPass bool
+
 // closeLocal closes the local target opened by this invocation, if any.
 func closeLocal() {
 	if localTarget != nil {
@@ -91,37 +96,70 @@ func closeLocal() {
 	}
 }
 
-// openLocalClient opens the local database and builds the client over it.
-// The in-process handler logs through the default logger, so that logger is
-// pointed at stderr for errors only: an access log line per command would
-// be noise, an internal error is not.
+// openLocalClient opens the local database, runs the start-up pass over it
+// and builds the client over it. The in-process handler logs through the
+// default logger, so that logger is pointed at stderr for errors only: an
+// access log line per command would be noise, an internal error is not.
 func openLocalClient(m clientMode, getenv func(string) string, stderr io.Writer) (*client.Client, error) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: slog.LevelError})))
 	cache, err := cacheDir(getenv)
 	if err != nil {
 		return nil, err
 	}
+	data, err := dataDir(getenv)
+	if err != nil {
+		return nil, err
+	}
+	opened := false
 	if localTarget == nil {
-		t, err := localmode.Open(context.Background(), m.Database, clientVersion().Version)
+		t, err := localmode.Open(context.Background(), m.Database, clientVersion().Version, stderr)
 		if err != nil {
 			return nil, errLocalOpen(m.Database, err)
 		}
 		localTarget = t
+		opened = true
 	}
-	c, err := client.New(client.Config{
+	cfg := client.Config{
 		Transport: localTarget.Transport(),
 		APIKey:    localmode.Key,
+		DataDir:   data,
 		CacheDir:  cache,
-		NoSpool:   true,
 		Now:       nowFunc,
 		Stderr:    stderr,
 		Version:   clientVersion().Version,
-	})
+	}
+	if opened && !skipStartupPass {
+		startupPass(cfg)
+	}
+	c, err := client.New(cfg)
 	if err != nil {
 		return nil, errClientSetup(err)
 	}
 
 	return c, nil
+}
+
+// startupPass is what every local-mode command does once, right after its
+// database opens and before its own requests: deliver the spool entries
+// bound to the local database that are due (a write that found the
+// database busy or the disk full spooled them). Nothing is printed: a
+// delivery logs a flushed line to client.jsonl, a quarantine or an expiry
+// logs an error line, a failure leaves the entry for the next command, and
+// entries bound to a server are left in place without a word (flush names
+// them). Ordering is best effort: when the pass fails and the database
+// frees up a moment later, the command's own write lands before the older
+// entry, which the next pass delivers; refusing the write to keep the order
+// would spool a report the database can take. This is the hook point for
+// the file inbox: its ingestion joins here when it ships.
+func startupPass(cfg client.Config) {
+	cfg.Stderr = io.Discard
+	c, err := client.New(cfg)
+	if err != nil {
+		return
+	}
+	if client.HasDue(cfg.DataDir, nowFunc()) {
+		c.Flush(context.Background())
+	}
 }
 
 // newAPIClient resolves the mode and builds the client for it: the local
@@ -143,9 +181,14 @@ func newAPIClient(getenv func(string) string, mf modeFlags, stderr io.Writer) (*
 	if err != nil {
 		return nil, m, err
 	}
+	data, err := dataDir(getenv)
+	if err != nil {
+		return nil, m, err
+	}
 	c, err := client.New(client.Config{
 		URL:      m.Settings.URL.Value,
 		APIKey:   m.Settings.APIKey.Value,
+		DataDir:  data,
 		CacheDir: cache,
 		Now:      nowFunc,
 		Stderr:   stderr,

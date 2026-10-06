@@ -149,7 +149,7 @@ func (c *Client) send(ctx context.Context, body []byte, kind, key string) result
 		fmt.Fprintf(c.stderr, "agentfeedback: key %s already names a different submission: %s; send a correction under a new key\n", key, p.Message)
 	case code >= 400 && code < 500:
 		res.action, res.reason = actReject, "rejected"
-		fmt.Fprintf(c.stderr, "agentfeedback: the server rejected the submission (HTTP %d): %s; it is kept in %s, fix it and submit again\n", code, p.Message, RejectedDir(c.cacheDir))
+		fmt.Fprintf(c.stderr, "agentfeedback: the server rejected the submission (HTTP %d): %s; it is kept in %s, fix it and submit again\n", code, p.Message, RejectedDir(c.dataDir))
 		for _, d := range p.Details {
 			fmt.Fprintf(c.stderr, "%s\n", d)
 		}

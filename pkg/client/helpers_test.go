@@ -21,6 +21,7 @@ var t0 = time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
 // testEnv is a client over a temp cache with a settable clock.
 type testEnv struct {
 	c      *Client
+	data   string
 	cache  string
 	stderr *bytes.Buffer
 	now    time.Time
@@ -28,8 +29,8 @@ type testEnv struct {
 
 func newTestEnv(t *testing.T, url string, hc *http.Client) *testEnv {
 	t.Helper()
-	e := &testEnv{cache: t.TempDir(), stderr: &bytes.Buffer{}, now: t0}
-	c, err := New(Config{URL: url, APIKey: testKey, CacheDir: e.cache, HTTP: hc, Now: func() time.Time { return e.now }, Stderr: e.stderr, Version: "test"})
+	e := &testEnv{data: t.TempDir(), cache: t.TempDir(), stderr: &bytes.Buffer{}, now: t0}
+	c, err := New(Config{URL: url, APIKey: testKey, DataDir: e.data, CacheDir: e.cache, HTTP: hc, Now: func() time.Time { return e.now }, Stderr: e.stderr, Version: "test"})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -106,13 +107,14 @@ func acceptingServer(t *testing.T, hits *atomic.Int64) *httptest.Server {
 	return srv
 }
 
-// spoolEntry writes a ready entry into spool/ under name.
+// spoolEntry writes a ready entry bound to the client's destination into
+// spool/ under name.
 func (e *testEnv) spoolEntry(t *testing.T, name, kind, key string, created, notBefore time.Time) {
 	t.Helper()
-	en := newEntry(kind, key, []byte(fmt.Sprintf(`{"kind":%q,"key":%q,"summary":"s"}`, kind, key)), created)
+	en := e.c.newEntry(kind, key, []byte(fmt.Sprintf(`{"kind":%q,"key":%q,"summary":"s"}`, kind, key)), created)
 	en.NotBefore = notBefore
 	en.Attempts = 1
-	if err := e.c.writeEntry(SpoolDir(e.cache), name, en); err != nil {
+	if err := e.c.writeEntry(SpoolDir(e.data), name, en); err != nil {
 		t.Fatal(err)
 	}
 }

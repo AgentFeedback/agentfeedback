@@ -25,19 +25,19 @@ func TestFlushRetention(t *testing.T) {
 	e.spoolEntry(t, entryName(4), "event", "e-old", t0.Add(-(30*24*time.Hour + time.Hour)), t0.Add(-time.Minute))
 
 	for i, age := range map[int]time.Duration{5: 31 * 24 * time.Hour, 6: 29 * 24 * time.Hour} {
-		en := newEntry("friction", "r"+strconv.Itoa(i), []byte(`{"kind":"friction"}`), t0.Add(-age))
+		en := e.c.newEntry("friction", "r"+strconv.Itoa(i), []byte(`{"kind":"friction"}`), t0.Add(-age))
 		at := t0.Add(-age)
 		en.RejectedAt = &at
 		en.Status = 400
-		if err := e.c.writeEntry(RejectedDir(e.cache), entryName(i), en); err != nil {
+		if err := e.c.writeEntry(RejectedDir(e.data), entryName(i), en); err != nil {
 			t.Fatal(err)
 		}
 	}
 	// A bash-era file and an unreadable af1- file.
-	if err := os.WriteFile(filepath.Join(SpoolDir(e.cache), "friction-1.json"), []byte(`{"kind":"friction"}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(SpoolDir(e.data), "friction-1.json"), []byte(`{"kind":"friction"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(SpoolDir(e.cache), entryName(9)), []byte(`garbage`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(SpoolDir(e.data), entryName(9)), []byte(`garbage`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -49,13 +49,13 @@ func TestFlushRetention(t *testing.T) {
 	if hits.Load() != 2 {
 		t.Errorf("requests = %d, want 2 (rejected/ must never be sent)", hits.Load())
 	}
-	if got := af1Files(t, SpoolDir(e.cache)); len(got) != 0 {
+	if got := af1Files(t, SpoolDir(e.data)); len(got) != 0 {
 		t.Errorf("spool left %v", got)
 	}
-	if !exists(filepath.Join(SpoolDir(e.cache), "friction-1.json")) {
+	if !exists(filepath.Join(SpoolDir(e.data), "friction-1.json")) {
 		t.Error("bash-era file touched")
 	}
-	rej := af1Files(t, RejectedDir(e.cache))
+	rej := af1Files(t, RejectedDir(e.data))
 	if len(rej) != 2 || rej[0] != entryName(6) || rej[1] != entryName(9) {
 		t.Errorf("rejected/ = %v, want the 29-day entry and the quarantined file", rej)
 	}
@@ -84,7 +84,7 @@ func TestFlushScheduling(t *testing.T) {
 	t.Run("inflight", func(t *testing.T) {
 		var hits atomic.Int64
 		e := newTestEnv(t, acceptingServer(t, &hits).URL, nil)
-		spool := SpoolDir(e.cache)
+		spool := SpoolDir(e.data)
 		e.spoolEntry(t, entryName(1), "event", "stale", t0, t0)
 		e.spoolEntry(t, entryName(2), "event", "fresh", t0, t0)
 		rename := func(i int, at time.Time) {
@@ -110,7 +110,7 @@ func TestFlushScheduling(t *testing.T) {
 		e := newTestEnv(t, srv.URL, nil)
 		e.spoolEntry(t, entryName(1), "event", "a", t0, t0)
 		e.spoolEntry(t, entryName(2), "event", "b", t0, t0)
-		second := filepath.Join(SpoolDir(e.cache), entryName(2))
+		second := filepath.Join(SpoolDir(e.data), entryName(2))
 		before, _ := os.ReadFile(second)
 		rep := e.c.Flush(context.Background())
 		if rep != (FlushReport{Pending: 1, Stopped: "network"}) {
@@ -120,7 +120,7 @@ func TestFlushScheduling(t *testing.T) {
 		if string(before) != string(after) {
 			t.Error("second entry changed")
 		}
-		first := readEntry(t, filepath.Join(SpoolDir(e.cache), entryName(1)))
+		first := readEntry(t, filepath.Join(SpoolDir(e.data), entryName(1)))
 		if first.Attempts != 2 || !first.NotBefore.Equal(t0.Add(time.Minute)) || first.LastError != "network" {
 			t.Errorf("first = %+v", first)
 		}
@@ -142,7 +142,7 @@ func TestFlushScheduling(t *testing.T) {
 		if rep != (FlushReport{Pending: 1, Stopped: "unauthorized"}) || hits.Load() != 1 {
 			t.Fatalf("report %+v hits %d", rep, hits.Load())
 		}
-		if first := readEntry(t, filepath.Join(SpoolDir(e.cache), entryName(1))); !first.NotBefore.Equal(t0) {
+		if first := readEntry(t, filepath.Join(SpoolDir(e.data), entryName(1))); !first.NotBefore.Equal(t0) {
 			t.Errorf("not_before = %v", first.NotBefore)
 		}
 	})
@@ -163,10 +163,10 @@ func TestFlushScheduling(t *testing.T) {
 		if rep != (FlushReport{Mismatched: 1, Rejected: 1}) {
 			t.Fatalf("report %+v", rep)
 		}
-		if en := readEntry(t, filepath.Join(RejectedDir(e.cache), entryName(1))); en.Status != 409 {
+		if en := readEntry(t, filepath.Join(RejectedDir(e.data), entryName(1))); en.Status != 409 {
 			t.Errorf("status = %d", en.Status)
 		}
-		if left := af1Files(t, SpoolDir(e.cache)); len(left) != 0 {
+		if left := af1Files(t, SpoolDir(e.data)); len(left) != 0 {
 			t.Errorf("spool = %v", left)
 		}
 		lines := logLines(t, e.cache)
@@ -191,7 +191,7 @@ func TestFlushScheduling(t *testing.T) {
 		if rep != (FlushReport{Deferred: 1}) || hits.Load() != 0 {
 			t.Fatalf("report %+v hits %d", rep, hits.Load())
 		}
-		if left := af1Files(t, SpoolDir(e.cache)); len(left) != 1 || left[0] != entryName(1) {
+		if left := af1Files(t, SpoolDir(e.data)); len(left) != 1 || left[0] != entryName(1) {
 			t.Errorf("spool = %v", left)
 		}
 	})
@@ -202,7 +202,7 @@ func TestFlushScheduling(t *testing.T) {
 func TestFlushHygiene(t *testing.T) {
 	var hits atomic.Int64
 	e := newTestEnv(t, acceptingServer(t, &hits).URL, nil)
-	spool, rejected := SpoolDir(e.cache), RejectedDir(e.cache)
+	spool, rejected := SpoolDir(e.data), RejectedDir(e.data)
 	for _, d := range []string{spool, rejected} {
 		if err := os.MkdirAll(d, 0o700); err != nil {
 			t.Fatal(err)
@@ -256,23 +256,23 @@ func TestFlushHygiene(t *testing.T) {
 
 func TestHasDue(t *testing.T) {
 	e := newTestEnv(t, "http://127.0.0.1:1", nil)
-	if HasDue(e.cache, t0) {
+	if HasDue(e.data, t0) {
 		t.Fatal("empty spool reported due")
 	}
 	e.spoolEntry(t, entryName(1), "event", "later", t0, t0.Add(time.Minute))
 	e.spoolEntry(t, entryName(2), "friction", "old", t0.Add(-21*time.Hour), t0.Add(-time.Hour))
-	if HasDue(e.cache, t0) {
+	if HasDue(e.data, t0) {
 		t.Fatal("deferred and expired entries reported due")
 	}
 	e.spoolEntry(t, entryName(4), "event", "now", t0, t0)
-	if !HasDue(e.cache, t0) {
+	if !HasDue(e.data, t0) {
 		t.Fatal("a due entry not reported")
 	}
-	if err := os.Remove(filepath.Join(SpoolDir(e.cache), entryName(4))); err != nil {
+	if err := os.Remove(filepath.Join(SpoolDir(e.data), entryName(4))); err != nil {
 		t.Fatal(err)
 	}
 	// An entry that cannot be read is not due: Flush skips it too.
-	unreadable := filepath.Join(SpoolDir(e.cache), entryName(5))
+	unreadable := filepath.Join(SpoolDir(e.data), entryName(5))
 	e.spoolEntry(t, entryName(5), "event", "locked", t0, t0)
 	if err := os.Chmod(unreadable, 0); err != nil {
 		t.Fatal(err)
@@ -280,20 +280,20 @@ func TestHasDue(t *testing.T) {
 	if _, err := os.ReadFile(unreadable); err == nil {
 		t.Skip("running with permissions that read a mode-0 file")
 	}
-	if HasDue(e.cache, t0) {
+	if HasDue(e.data, t0) {
 		t.Fatal("an unreadable entry reported due")
 	}
 	if err := os.Remove(unreadable); err != nil {
 		t.Fatal(err)
 	}
 	// An undecodable entry is due: Flush quarantines it.
-	if err := os.WriteFile(filepath.Join(SpoolDir(e.cache), entryName(3)), []byte(`garbage`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(SpoolDir(e.data), entryName(3)), []byte(`garbage`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if !HasDue(e.cache, t0) {
+	if !HasDue(e.data, t0) {
 		t.Fatal("an undecodable entry not reported due")
 	}
-	if got := af1Files(t, SpoolDir(e.cache)); len(got) != 3 {
+	if got := af1Files(t, SpoolDir(e.data)); len(got) != 3 {
 		t.Fatalf("HasDue changed the spool: %v", got)
 	}
 }

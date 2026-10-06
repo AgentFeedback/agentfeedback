@@ -112,14 +112,16 @@ func configPath(getenv func(string) string) (string, error) {
 	return filepath.Join(dir, "config.toml"), nil
 }
 
-// cacheDir holds the spool (spool/, rejected/ beside it) and the client log
-// (log/client.jsonl).
+// cacheDir holds the client log (log/client.jsonl) and the digest
+// directories; the operating system may purge it, so nothing that is the
+// only copy of a report lives here.
 func cacheDir(getenv func(string) string) (string, error) {
 	return xdgDir(getenv, "XDG_CACHE_HOME", ".cache")
 }
 
 // dataDir holds the local-mode database (agentfeedback.db), the path
-// serve --init defaults to as well, so one machine has one queue.
+// serve --init defaults to as well, so one machine has one queue, and the
+// spool (spool/, rejected/ beside it).
 func dataDir(getenv func(string) string) (string, error) {
 	return xdgDir(getenv, "XDG_DATA_HOME", filepath.Join(".local", "share"))
 }

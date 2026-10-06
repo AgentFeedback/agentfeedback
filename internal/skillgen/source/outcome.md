@@ -10,7 +10,7 @@ The last line on stdout is one JSON outcome:
 |---|---|---|
 | `submitted` | stored as a new report; `id` names it | 0 |
 | `duplicate` | the server already had the same report; `id` names it | 0 |
-| `spooled` | the server was unreachable; saved locally and sent on the next command or `agentfeedback flush` | 0 |
+| `spooled` | the server or the local database could not take it now; saved locally and sent on the next command or `agentfeedback flush` | 0 |
 | `valid` | `--dry-run` passed; nothing was sent | 0 |
 | `disabled` | configuration excludes this directory from reporting; nothing was sent, and that is fine | 0 |
 | `rejected` | the server refused the body; the message names the member; fix it before sending again | 1 |

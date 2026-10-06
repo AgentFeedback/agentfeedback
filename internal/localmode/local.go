@@ -43,14 +43,50 @@ type Target struct {
 
 // Open opens (creating if needed) the database at path, its directory
 // included, and builds the handler. version is the service version /meta
-// reports, the client's own.
-func Open(ctx context.Context, path, version string) (*Target, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return nil, fmt.Errorf("create the data directory %s: %w", filepath.Dir(path), err)
+// reports, the client's own. stderr takes the warnings meant for a person;
+// nil discards them.
+//
+// What Open creates is owner-only: the data directory 0700, and the
+// database 0600, created empty with that mode before SQLite first opens it,
+// so that it never exists looser and the -wal and -shm files SQLite creates
+// take the database file's mode; the three are tightened once more after
+// the open, for a file whose creation was interrupted. A directory or file
+// that already exists keeps its mode; doctor reports a looser one with the
+// chmod to run. A failed chmod is a warning: the open proceeds and doctor
+// says what is left.
+func Open(ctx context.Context, path, version string, stderr io.Writer) (*Target, error) {
+	if stderr == nil {
+		stderr = io.Discard
+	}
+	dir := filepath.Dir(path)
+	_, dirErr := os.Stat(dir)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, fmt.Errorf("create the data directory %s: %w", dir, err)
+	}
+	if errors.Is(dirErr, os.ErrNotExist) {
+		tighten(dir, 0o700, stderr)
+	}
+	_, fileErr := os.Stat(path)
+	created := errors.Is(fileErr, os.ErrNotExist)
+	if created {
+		// An empty file is a new database to SQLite; the mode is set at
+		// creation rather than after it.
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		if err != nil && !errors.Is(err, os.ErrExist) {
+			return nil, fmt.Errorf("create the database %s: %w", path, err)
+		}
+		if err == nil {
+			_ = f.Close()
+		}
 	}
 	db, err := store.Open(ctx, path)
 	if err != nil {
 		return nil, err
+	}
+	if created {
+		for _, p := range Sidecars(path) {
+			tighten(p, 0o600, stderr)
+		}
 	}
 	svc := core.New(db, core.Config{Version: version, Features: Features})
 	srv := api.New(api.Config{Service: svc, DB: db, APIKey: Key, NoMCP: true, NoMetrics: true, NoHealth: true})
@@ -60,6 +96,17 @@ func Open(ctx context.Context, path, version string) (*Target, error) {
 
 // Path is the database file.
 func (t *Target) Path() string { return t.path }
+
+// Sidecars lists the database file and the -wal and -shm files SQLite keeps
+// beside it, whether or not they exist now.
+func Sidecars(path string) []string { return []string{path, path + "-wal", path + "-shm"} }
+
+// tighten sets mode on path when it exists; a failure is one warning.
+func tighten(path string, mode os.FileMode, stderr io.Writer) {
+	if err := os.Chmod(path, mode); err != nil && !errors.Is(err, os.ErrNotExist) {
+		fmt.Fprintf(stderr, "agentfeedback: warning: cannot make %s owner-only (%v); run chmod %o %s\n", path, err, mode, path)
+	}
+}
 
 // Close waits for every in-flight handler and closes the database.
 func (t *Target) Close() error {

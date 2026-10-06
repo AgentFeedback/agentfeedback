@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/client"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -124,10 +125,14 @@ func TestMode_ConfiguredURLIsUsed(t *testing.T) {
 	}
 }
 
+// TestMode_FlushLocal: flush in local mode delivers the entries bound to the
+// local database and leaves one bound to a server in place, named with the
+// command that sends it; the hook does the same silently.
 func TestMode_FlushLocal(t *testing.T) {
-	_, cache := isolate(t)
+	isolate(t)
+	data := dataRoot(t)
 	r := runCLI(t, "", "flush")
-	if r.code != 0 || strings.TrimSpace(r.stdout) != `{"flushed":0,"duplicates":0,"pending":0,"rejected":0,"mismatched":0,"expired":0,"deferred":0}` {
+	if r.code != 0 || strings.TrimSpace(r.stdout) != `{"flushed":0,"duplicates":0,"pending":0,"rejected":0,"mismatched":0,"expired":0,"deferred":0,"other_destination":0}` {
 		t.Fatalf("empty %+v", r)
 	}
 
@@ -138,23 +143,22 @@ func TestMode_FlushLocal(t *testing.T) {
 		t.Fatalf("spool setup %+v", r)
 	}
 	t.Setenv(envAPIKey, "")
-	n, err := pendingSpool(cache)
-	if err != nil || n != 1 {
-		t.Fatalf("pending %d %v", n, err)
+	if n := len(spoolFiles(t, client.SpoolDir(data))); n != 1 {
+		t.Fatalf("pending %d", n)
 	}
 	r = runCLI(t, "", "flush")
-	if r.code != 1 || !strings.Contains(r.stderr, "the spool holds 1 submission(s) for a server and this invocation is in local mode; nothing was sent") ||
-		!strings.Contains(r.stderr, "run agentfeedback flush --server URL") {
+	if r.code != 0 || !strings.Contains(r.stdout, `"other_destination":1`) ||
+		!strings.Contains(r.stderr, "is for "+srv.URL+", not local; left in place; run agentfeedback flush --server "+srv.URL) {
 		t.Fatalf("pending %+v", r)
 	}
-	if n, _ = pendingSpool(cache); n != 1 {
+	if n := len(spoolFiles(t, client.SpoolDir(data))); n != 1 {
 		t.Fatalf("flush consumed the spool: %d", n)
 	}
 	r = runCLI(t, "", "flush", "--hook")
 	if r.code != 0 || r.stdout != "" || r.stderr != "" {
 		t.Fatalf("hook %+v", r)
 	}
-	if n, _ = pendingSpool(cache); n != 1 {
+	if n := len(spoolFiles(t, client.SpoolDir(data))); n != 1 {
 		t.Fatalf("hook consumed the spool: %d", n)
 	}
 }

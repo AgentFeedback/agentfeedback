@@ -135,6 +135,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 
+	skipStartupPass = false
 	err := cmd.run(args[1:], stdin, stdout, stderr)
 	closeLocal()
 	switch {

@@ -640,13 +640,19 @@ func TestSkillReminder(t *testing.T) {
 	}
 }
 
-// spoolOne writes one due entry the way the client spools it.
-func spoolOne(t *testing.T, cache string) {
+// spoolOne writes one due entry bound to destination into the data
+// directory's spool, the way the client spools it.
+func spoolOne(t *testing.T, data, destination string) {
 	t.Helper()
 	now := time.Now().UTC()
-	entry := fmt.Sprintf(`{"v":1,"kind":"friction","key":"k-hook","created_at":%q,"attempts":0,"not_before":%q,"last_error":"","body":{"kind":"friction","key":"k-hook","summary":"s"}}`,
-		now.Add(-time.Minute).Format(time.RFC3339Nano), now.Add(-time.Minute).Format(time.RFC3339Nano))
-	putFile(t, filepath.Join(client.SpoolDir(cache), "af1-20260101T000000.000000001Z-00000000.json"), entry, 0o600)
+	entry := fmt.Sprintf(`{"v":1,"kind":"friction","key":"k-hook","destination":%q,"created_at":%q,"attempts":0,"not_before":%q,"last_error":"","body":{"kind":"friction","key":"k-hook","summary":"s"}}`,
+		destination, now.Add(-time.Minute).Format(time.RFC3339Nano), now.Add(-time.Minute).Format(time.RFC3339Nano))
+	putFile(t, filepath.Join(client.SpoolDir(data), "af1-20260101T000000.000000001Z-00000000.json"), entry, 0o600)
+	for _, p := range []string{data, client.SpoolDir(data)} {
+		if err := os.Chmod(p, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func hookLogLines(t *testing.T, cache string) []map[string]any {
@@ -704,7 +710,8 @@ func TestFlushHook(t *testing.T) {
 		defer close(release)
 		t.Setenv(envURL, srv.URL)
 		t.Setenv(envAPIKey, "throwaway")
-		spoolOne(t, cache)
+		data := dataRoot(t)
+		spoolOne(t, data, srv.URL)
 		start := time.Now()
 		r := runCLI(t, "", "flush", "--hook")
 		if took := time.Since(start); took > 3*time.Second {
@@ -725,17 +732,17 @@ func TestFlushHook(t *testing.T) {
 		}
 		// The flush finished its bookkeeping after the cancelled send: the
 		// entry is released, not left claimed, with one more attempt.
-		entries, _ := os.ReadDir(client.SpoolDir(cache))
+		entries, _ := os.ReadDir(client.SpoolDir(data))
 		if len(entries) != 1 || strings.Contains(entries[0].Name(), "inflight") {
 			t.Fatalf("spool after the hook: %v", entries)
 		}
-		data, _ := os.ReadFile(filepath.Join(client.SpoolDir(cache), entries[0].Name()))
+		raw, _ := os.ReadFile(filepath.Join(client.SpoolDir(data), entries[0].Name()))
 		var entry struct {
 			Attempts  int       `json:"attempts"`
 			NotBefore time.Time `json:"not_before"`
 		}
-		if err := json.Unmarshal(data, &entry); err != nil || entry.Attempts != 1 || !entry.NotBefore.After(start) {
-			t.Fatalf("entry not rescheduled: %s %v", data, err)
+		if err := json.Unmarshal(raw, &entry); err != nil || entry.Attempts != 1 || !entry.NotBefore.After(start) {
+			t.Fatalf("entry not rescheduled: %s %v", raw, err)
 		}
 	})
 	t.Run("slow body", func(t *testing.T) {
@@ -764,29 +771,35 @@ func TestFlushHook(t *testing.T) {
 			t.Fatalf("log %v", lines)
 		}
 	})
-	t.Run("missing config", func(t *testing.T) {
-		_, cache := isolate(t)
-		spoolOne(t, cache)
+	t.Run("other destination in local mode", func(t *testing.T) {
+		// Nothing configured is local mode: an entry bound to a server is
+		// left in place without a request, a log line or a word.
+		isolate(t)
+		data := dataRoot(t)
+		spoolOne(t, data, "http://127.0.0.1:1")
 		r := runCLI(t, "", "flush", "--hook")
 		if r.code != 0 || r.stdout != "" || r.stderr != "" {
 			t.Fatalf("%+v", r)
 		}
-		lines := hookLogLines(t, cache)
-		if len(lines) != 1 || lines[0]["outcome"] != "error" || !strings.Contains(fmt.Sprint(lines[0]["reason"]), "this invocation is in local mode") {
-			t.Fatalf("log %v", lines)
+		if _, err := os.Stat(client.LogPath(filepath.Join(os.Getenv("XDG_CACHE_HOME"), "agentfeedback"))); err == nil {
+			t.Fatal("a mismatching entry wrote a log line")
+		}
+		if entries, _ := os.ReadDir(client.SpoolDir(data)); len(entries) != 1 {
+			t.Fatalf("spool after the hook: %v", entries)
 		}
 	})
 	t.Run("undecodable entry", func(t *testing.T) {
 		// An entry that cannot be decoded counts as due, so the hook goes on
 		// to Flush (which quarantines it) instead of returning early.
-		_, cache := isolate(t)
-		putFile(t, filepath.Join(client.SpoolDir(cache), "af1-20260101T000000.000000001Z-00000000.json"), "garbage", 0o600)
+		isolate(t)
+		data := dataRoot(t)
+		putFile(t, filepath.Join(client.SpoolDir(data), "af1-20260101T000000.000000001Z-00000000.json"), "garbage", 0o600)
 		r := runCLI(t, "", "flush", "--hook")
 		if r.code != 0 || r.stdout != "" || r.stderr != "" {
 			t.Fatalf("%+v", r)
 		}
-		if lines := hookLogLines(t, cache); len(lines) == 0 {
-			t.Fatal("the hook returned early on an undecodable entry")
+		if rej, _ := os.ReadDir(client.RejectedDir(data)); len(rej) != 1 {
+			t.Fatal("the hook returned early on an undecodable entry; nothing was quarantined")
 		}
 	})
 	t.Run("deadline", func(t *testing.T) {
