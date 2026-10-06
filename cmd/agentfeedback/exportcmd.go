@@ -19,6 +19,7 @@ import (
 // record lines.
 func runExport(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := newFlagSet("export")
+	mf := addModeFlags(fs)
 	afterID := fs.Int64("after-id", 0, "only rows with a larger id")
 	kind := fs.String("kind", "", "only this kind")
 	since := fs.String("since", "", "RFC 3339 time or <n>m, <n>h, <n>d, <n>w ago, inclusive, on created_at")
@@ -27,7 +28,7 @@ func runExport(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return errFlags("export", err)
 	}
 	if fs.NArg() != 0 {
-		return errArgs("export", "export [--after-id N] [--kind K] [--since T] [--limit N]")
+		return errArgs("export", "export [--after-id N] [--kind K] [--since T] [--limit N] [--local | --server URL]")
 	}
 	set := visited(fs)
 	q := url.Values{}
@@ -48,7 +49,7 @@ func runExport(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		q.Set("limit", strconv.Itoa(*limit))
 	}
 
-	c, err := apiClient(os.Getenv, stderr)
+	c, err := apiClient(os.Getenv, *mf, stderr)
 	if err != nil {
 		return err
 	}

@@ -128,11 +128,9 @@ func runServeInit(getenv func(string) string, opts serveInitOptions, stderr io.W
 		}
 	}
 	if opts.db == "" {
-		data, err := xdgDir(getenv, "XDG_DATA_HOME", filepath.Join(".local", "share"))
-		if err != nil {
+		if opts.db, err = localDBPath(getenv); err != nil {
 			return serveInitOutcome{}, err
 		}
-		opts.db = filepath.Join(data, "agentfeedback.db")
 	}
 	if opts.dir, err = absSafe("the server directory", opts.dir); err != nil {
 		return serveInitOutcome{}, err

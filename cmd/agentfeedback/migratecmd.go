@@ -113,6 +113,7 @@ func runMigrate(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 // run parses the command line, checks the target and pages the source.
 func (m *migration) run(args []string, stdin io.Reader) error {
 	fs := newFlagSet("migrate")
+	mf := addModeFlags(fs)
 	to := fs.String("to", "", "cloud or the target server's base URL")
 	keyFromStdin := fs.Bool("to-key-from-stdin", false, "read the target's API key from stdin (required)")
 	kind := fs.String("kind", "", "only this kind (lifts the default install-check exclusion)")
@@ -125,7 +126,7 @@ func (m *migration) run(args []string, stdin io.Reader) error {
 		return errFlags("migrate", err)
 	}
 	if fs.NArg() != 0 {
-		return errArgs("migrate", "migrate --to cloud|URL --to-key-from-stdin [--kind K] [--include-kind K]... [--since T] [--limit N] [--dry-run]")
+		return errArgs("migrate", "migrate --to cloud|URL --to-key-from-stdin [--kind K] [--include-kind K]... [--since T] [--limit N] [--dry-run] [--local | --server URL]")
 	}
 	set := visited(fs)
 	if *to == "" {
@@ -162,16 +163,13 @@ func (m *migration) run(args []string, stdin io.Reader) error {
 	}
 	m.targetURL = strings.TrimRight(target, "/")
 
-	source, err := apiClient(os.Getenv, m.stderr)
+	source, mode, err := newAPIClient(os.Getenv, *mf, m.stderr)
 	if err != nil {
 		return err
 	}
 	m.source = source
-	from, err := sourceURL(os.Getenv)
-	if err != nil {
-		return err
-	}
-	if from == m.targetURL {
+	// A local source has no URL, so it cannot be the target.
+	if mode.Mode == modeRemote && strings.TrimRight(strings.TrimSpace(mode.Settings.URL.Value), "/") == m.targetURL {
 		return errMigrateSameServer(m.targetURL)
 	}
 	key, err := readKey(stdin, "migrate --to-key-from-stdin")
@@ -214,22 +212,6 @@ func (m *migration) run(args []string, stdin io.Reader) error {
 		Outcome: "migrated", Sent: m.sent, Imported: m.imported, Skipped: m.skipped,
 		Conflicts: m.conflicts, Excluded: m.excluded,
 	})
-}
-
-// sourceURL is the configured server's base URL as apiClient resolves it,
-// without its trailing slash.
-func sourceURL(getenv func(string) string) (string, error) {
-	path, err := configPath(getenv)
-	if err != nil {
-		return "", err
-	}
-	file, _, err := loadFileConfig(path)
-	if err != nil {
-		return "", err
-	}
-	settings := resolveClient(flagConfig{}, getenv, file)
-
-	return strings.TrimRight(strings.TrimSpace(settings.URL.Value), "/"), nil
 }
 
 // migrateHTTP is the target's HTTP client: the default 2 s dial and the

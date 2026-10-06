@@ -22,6 +22,11 @@ is not multi-tenant and is not safe to expose directly to the internet.
 - Keep `infra/agentfeedback/.env`, the remote `.env`, backups and every
   producer's `AGENT_FEEDBACK_API_KEY` private. `.env` and `.private/` are
   gitignored; never force-add them.
+- A local-mode write (no `url` configured) goes to the data-directory
+  database in-process and never presents the server key: the key guards the
+  network, and the one OS user who can read the database file can already
+  write it. Local mode is for that one user; sharing a machine's queue with
+  others means running `serve` with a key.
 
 ## What gets stored
 
@@ -51,8 +56,9 @@ defines the fields, consent rules and manual fallback.
 
 ## Data at rest
 
-One SQLite file in a Docker volume, readable by anyone who can read the
-volume or a backup. Encrypt and restrict backups; they hold everything
+One SQLite file in a Docker volume, or in local mode
+`~/.local/share/agentfeedback/agentfeedback.db`, readable by anyone who can
+read the volume, the file or a backup. Encrypt and restrict backups; they hold everything
 agents ever reported. Retention is manual (see
 [operate.md](operate.md#retention)). Producers keep unsent payloads in
 `~/.cache/agentfeedback/spool/` until delivered or aged out.

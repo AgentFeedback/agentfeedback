@@ -104,9 +104,9 @@ func requestID(next http.Handler) http.Handler {
 	})
 }
 
-// observe records metrics and writes the access log. Operational endpoints are
-// left out of the log: they are polled every few seconds and would bury
-// everything else.
+// observe records metrics (when they are enabled) and writes the access log.
+// Operational endpoints are left out of the log: they are polled every few
+// seconds and would bury everything else.
 func (s *Server) observe(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -126,7 +126,9 @@ func (s *Server) observe(next http.Handler) http.Handler {
 		if route == "" {
 			route = "unmatched"
 		}
-		s.metrics.observeRequest(route, r.Method, status, time.Since(start))
+		if s.metrics != nil {
+			s.metrics.observeRequest(route, r.Method, status, time.Since(start))
+		}
 
 		switch r.URL.Path {
 		case "/health", "/ready", "/metrics":

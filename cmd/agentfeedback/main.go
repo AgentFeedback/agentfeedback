@@ -43,7 +43,7 @@ var commands = []command{
 	{"server", serverSynopsis + ": write a service definition from serve.env, start nothing", runServer},
 	{"import", "import [--dry-run] <export.ndjson>: restore an export (format 2) into the database, keeping ids", runImport},
 	{"backup", "backup <dest.db>: write a consistent copy of the database", runBackup},
-	{"doctor", "check the client configuration and the server connection; doctor --e2e [--json]: submit, list and mark one install-check row", runDoctor},
+	{"doctor", "check the client setup: the mode (local database or server), the connection and the versions; doctor --e2e [--json]: submit, list and mark one install-check row", runDoctor},
 	{"submit", "submit friction --summary S [...] | submit <kind> --stdin [...] | submit review <run_dir> [--include-outputs] | submit review --sweep [<base>...]; --dry-run sends nothing: file a submission, the outcome is the last line", runSubmit},
 	{"flush", "flush [--hook]: send the spooled submissions that are due and print the counts; --hook prints nothing, stops after 5 s and always exits 0", runFlush},
 	{"list", "list [filters] [--limit N] [--before-id N | --after-id N] [--include payload] [--all] [--json | --tsv]: list submissions, newest first", runList},
@@ -68,6 +68,8 @@ const helpFooter = `
 Add --json to help, doctor, version, schema, list, get or stats for JSON output.
 First-time setup: printf '%%s' "$KEY" | agentfeedback doctor --init --url URL --key-from-stdin
 
+Local mode: with no server URL configured, every client command works against the data directory
+  ${XDG_DATA_HOME:-~/.local/share}/agentfeedback/agentfeedback.db with no server; --local forces it, --server URL targets a server once.
 client environment (flag > environment > config file):
   AGENT_FEEDBACK_URL       server base URL (doctor --url overrides it)
   AGENT_FEEDBACK_API_KEY   API key (environment or config file only, never a flag)
@@ -80,7 +82,7 @@ client config file: %s
   a repository .agentfeedback.toml may only narrow (collect.disabled, collect.deny_paths, context.drop)
 
 server environment: API_KEY or API_KEY_FILE (serve only, not both), DATABASE_PATH,
-HTTP_LISTEN_ADDR, GRACEFUL_SHUTDOWN_TIMEOUT, SERVICE_VERSION, LOG_LEVEL
+HTTP_LISTEN_ADDR, GRACEFUL_SHUTDOWN_TIMEOUT, SERVICE_VERSION, LOG_LEVEL (defaults: the data-directory database, 127.0.0.1:8090)
 First server setup: agentfeedback serve --init, then agentfeedback server install --systemd|--launchd|--compose
 `
 
@@ -134,6 +136,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 
 	err := cmd.run(args[1:], stdin, stdout, stderr)
+	closeLocal()
 	switch {
 	case err == nil:
 		return 0
@@ -215,6 +218,10 @@ func serveCommand(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	db := fs.String("db", "", "with --init: database path (default ${XDG_DATA_HOME:-~/.local/share}/agentfeedback/agentfeedback.db)")
 	port := fs.Int("port", defaultServePort, "with --init: port to listen on, on 127.0.0.1")
 	force := fs.Bool("force", false, "with --init: replace existing files, which rotates the API key")
+	fs.Usage = func() {
+		fmt.Fprintf(fs.Output(), "usage: agentfeedback serve (listens on HTTP_LISTEN_ADDR, default 127.0.0.1:8090; database DATABASE_PATH, default ${XDG_DATA_HOME:-~/.local/share}/agentfeedback/agentfeedback.db) | %s\n", serveInitSynopsis)
+		fs.PrintDefaults()
+	}
 	if err := parseFlags(fs, args, stderr); err != nil {
 		err = errFlags("serve", err)
 		if slices.ContainsFunc(args, isInitArg) && !errors.Is(err, flag.ErrHelp) {

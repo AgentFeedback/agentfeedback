@@ -22,9 +22,10 @@ import (
 
 const testKey = "test-key-3f9a1c"
 
-// isolate clears every variable the client reads and points the config and
-// cache directories at fresh temporary ones, so the real environment never
-// leaks into a test. It returns the config file path and the cache dir.
+// isolate clears every variable the client reads and points the config,
+// cache and data directories at fresh temporary ones, so the real
+// environment never leaks into a test and local mode never touches the real
+// database. It returns the config file path and the cache dir.
 func isolate(t *testing.T) (cfgPath, cache string) {
 	t.Helper()
 	for _, name := range []string{envURL, envAPIKey, envMachine, envModel, envHarness} {
@@ -33,6 +34,7 @@ func isolate(t *testing.T) (cfgPath, cache string) {
 	cfgHome, cacheHome := t.TempDir(), t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfgHome)
 	t.Setenv("XDG_CACHE_HOME", cacheHome)
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
 
 	return filepath.Join(cfgHome, "agentfeedback", "config.toml"), filepath.Join(cacheHome, "agentfeedback")
 }
@@ -269,14 +271,12 @@ func TestDoctor_Problems(t *testing.T) {
 		status  int
 		min     string
 		key     string
-		noURL   bool
 		dead    bool
 		problem string
 	}{
 		{name: "401", status: 401, key: testKey, problem: "rejected the API key"},
 		{name: "500", status: 500, key: testKey, problem: "check the URL points at an AgentFeedback v1 server"},
 		{name: "unreachable", dead: true, key: testKey, problem: "check the server is running and reachable"},
-		{name: "missing url", noURL: true, key: testKey, problem: "no server URL is set"},
 		{name: "missing key", status: 200, problem: "no API key is set"},
 	}
 	for _, tt := range tests {
@@ -287,7 +287,7 @@ func TestDoctor_Problems(t *testing.T) {
 			switch {
 			case tt.dead:
 				args = []string{"--url", deadURL}
-			case !tt.noURL:
+			default:
 				args = []string{"--url", metaServer(t, tt.status, "v0.0.1").URL}
 			}
 			rep, r := doctorJSON(t, args...)
@@ -380,14 +380,101 @@ func TestDoctor_SpoolLogAndMode(t *testing.T) {
 
 func TestDoctor_CreatesNothing(t *testing.T) {
 	cfgPath, cache := isolate(t)
-	if r := runCLI(t, "", "doctor"); r.code != 1 {
+	r := runCLI(t, "", "doctor")
+	if r.code != 0 || !strings.Contains(r.stdout, "mode:     local (database ") || !strings.Contains(r.stdout, ", missing)") ||
+		strings.Contains(r.stdout, "url:") || strings.Contains(r.stdout, "api key:") {
 		t.Fatalf("%+v", r)
 	}
-	for _, p := range []string{filepath.Dir(cfgPath), cache} {
+	data, err := dataDir(os.Getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{filepath.Dir(cfgPath), cache, data} {
 		if _, err := os.Stat(p); !os.IsNotExist(err) {
 			t.Fatalf("%s was created", p)
 		}
 	}
+}
+
+// TestDoctor_LocalMode: with nothing configured doctor reports local mode on
+// the data-directory database, missing and fine; after a local submit the
+// database exists and /meta is served in-process.
+func TestDoctor_LocalMode(t *testing.T) {
+	isolate(t)
+	want := filepath.Join(os.Getenv("XDG_DATA_HOME"), "agentfeedback", "agentfeedback.db")
+	rep, r := doctorJSON(t)
+	if r.code != 0 || rep.Status != "ok" || rep.Mode != modeLocal || rep.Database != (databaseCheck{Path: want}) ||
+		rep.Meta.Checked || rep.URL.Value != "" {
+		t.Fatalf("missing database: %+v", r)
+	}
+	if _, err := os.Stat(filepath.Dir(want)); !os.IsNotExist(err) {
+		t.Fatalf("doctor created %s", filepath.Dir(want))
+	}
+
+	if s := runCLI(t, "", "submit", "friction", "--summary", "x"); s.code != 0 {
+		t.Fatalf("submit: %+v", s)
+	}
+	rep, r = doctorJSON(t)
+	if r.code != 0 || rep.Status != "ok" || rep.Mode != modeLocal || rep.Database != (databaseCheck{Path: want, Exists: true}) ||
+		!rep.Meta.OK || rep.Meta.APIVersion != "1.0" {
+		t.Fatalf("present database: %+v", r)
+	}
+	if !strings.Contains(runCLI(t, "", "doctor").stdout, "mode:     local (database "+want+", present)") {
+		t.Fatal("human report has no present database line")
+	}
+}
+
+// TestDoctor_ModeSelection: a configured url means remote unless --local;
+// --local still shows the url it set aside; --server targets a server once;
+// --local with --server is a usage error.
+func TestDoctor_ModeSelection(t *testing.T) {
+	t.Run("configured url", func(t *testing.T) {
+		cfgPath, _ := isolate(t)
+		t.Setenv(envAPIKey, testKey)
+		srv := metaServer(t, http.StatusOK, "v0.0.1")
+		writeFile(t, cfgPath, "url = "+strconv.Quote(srv.URL)+"\n", 0o600)
+		rep, r := doctorJSON(t)
+		if r.code != 0 || rep.Mode != modeRemote || !rep.Meta.OK || rep.Meta.HTTPStatus != http.StatusOK || rep.Database.Path != "" {
+			t.Fatalf("%+v", r)
+		}
+		human := runCLI(t, "", "doctor")
+		if !strings.Contains(human.stdout, "mode:     remote\n") || !strings.Contains(human.stdout, "url:      ") {
+			t.Fatalf("human: %+v", human)
+		}
+	})
+	t.Run("--local with a configured url", func(t *testing.T) {
+		cfgPath, _ := isolate(t)
+		writeFile(t, cfgPath, "url = \"http://127.0.0.1:1\"\n", 0o600)
+		rep, r := doctorJSON(t, "--local")
+		if r.code != 0 || rep.Mode != modeLocal || rep.URL != (resolvedValue{"http://127.0.0.1:1", sourceConfig}) || rep.Meta.Checked {
+			t.Fatalf("%+v", r)
+		}
+		human := runCLI(t, "", "doctor", "--local")
+		if !strings.Contains(human.stdout, "mode:     local (database ") || !strings.Contains(human.stdout, "url:      http://127.0.0.1:1 (source: config)") {
+			t.Fatalf("human: %+v", human)
+		}
+	})
+	t.Run("--server", func(t *testing.T) {
+		isolate(t)
+		t.Setenv(envAPIKey, testKey)
+		srv := metaServer(t, http.StatusOK, "v0.0.1")
+		rep, r := doctorJSON(t, "--server", srv.URL)
+		if r.code != 0 || rep.Mode != modeRemote || !rep.Meta.OK || rep.URL.Source != sourceFlag {
+			t.Fatalf("%+v", r)
+		}
+	})
+	t.Run("--local and --server", func(t *testing.T) {
+		isolate(t)
+		if r := runCLI(t, "", "doctor", "--json", "--local", "--server", "http://x"); r.code != 2 {
+			t.Fatalf("%+v", r)
+		}
+	})
+	t.Run("--url and --server differ", func(t *testing.T) {
+		isolate(t)
+		if r := runCLI(t, "", "doctor", "--url", "http://a", "--server", "http://b"); r.code != 2 {
+			t.Fatalf("%+v", r)
+		}
+	})
 }
 
 func lastJSONLine(t *testing.T, stdout string) map[string]string {
@@ -722,7 +809,7 @@ func TestRun_LeadingFlagAndServeArgs(t *testing.T) {
 	}
 
 	r := runCLI(t, "", "serve", "-h")
-	if r.code != 0 || !strings.Contains(r.stderr, "agentfeedback serve") || r.stdout != "" {
+	if r.code != 0 || !strings.Contains(r.stderr, "agentfeedback serve") || !strings.Contains(r.stderr, "127.0.0.1:8090") || r.stdout != "" {
 		t.Fatalf("serve -h: %+v", r)
 	}
 	for _, args := range [][]string{{"serve", "extra"}, {"serve", "--port", "1"}} {

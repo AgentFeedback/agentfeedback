@@ -33,7 +33,8 @@ func newEnv(t *testing.T) *testEnv {
 	return newEnvWith(t, Config{})
 }
 
-// newEnvWith is newEnv with cfg's PublicURL and MCPInstructions.
+// newEnvWith is newEnv with cfg's PublicURL, MCPInstructions, NoMCP,
+// NoMetrics and NoHealth.
 func newEnvWith(t *testing.T, cfg Config) *testEnv {
 	t.Helper()
 	db, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "api.db"))
@@ -44,7 +45,8 @@ func newEnvWith(t *testing.T, cfg Config) *testEnv {
 	svc := core.New(db, core.Config{Version: "4.0.0", Features: Features})
 	down := &atomic.Bool{}
 	srv := httptest.NewServer(New(Config{Service: svc, DB: db, APIKey: testKey, ShuttingDown: down, Registry: prometheus.NewRegistry(),
-		PublicURL: cfg.PublicURL, MCPInstructions: cfg.MCPInstructions}).Handler())
+		PublicURL: cfg.PublicURL, MCPInstructions: cfg.MCPInstructions,
+		NoMCP: cfg.NoMCP, NoMetrics: cfg.NoMetrics, NoHealth: cfg.NoHealth}).Handler())
 	t.Cleanup(srv.Close)
 	return &testEnv{srv: srv, db: db, svc: svc, down: down}
 }

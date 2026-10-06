@@ -9,6 +9,13 @@ import (
 // catalogue lists every user-facing error constructor with sample arguments;
 // a new constructor is added here so its message is checked.
 var catalogue = map[string]error{
+	"errModeBoth":                 errModeBoth(),
+	"errLocalOpen":                errLocalOpen("/tmp/x.db", errors.New("bad")),
+	"errURLServerDiffer":          errURLServerDiffer(),
+	"errURLLocal":                 errURLLocal(),
+	"errInitModeFlags":            errInitModeFlags(),
+	"errFlushLocal":               errFlushLocal(2),
+	"errInstallMCPLocal":          errInstallMCPLocal(),
 	"errUnknownCommand":           errUnknownCommand("x"),
 	"errFlags":                    errFlags("doctor", errors.New("flag provided but not defined: -x")),
 	"errArgs":                     errArgs("backup", "backup <dest.db>"),
@@ -27,7 +34,6 @@ var catalogue = map[string]error{
 	"errConfigRead":               errConfigRead("/c.toml", errors.New("denied")),
 	"errNoHome":                   errNoHome(errors.New("unset")),
 	"errConfigMode":               errConfigMode("/c.toml", "0644"),
-	"errURLUnset":                 errURLUnset(),
 	"errKeyUnset":                 errKeyUnset(),
 	"errKeyRejected":              errKeyRejected(401),
 	"errMetaStatus":               errMetaStatus("http://x/api/v1/meta", 500),
@@ -77,7 +83,6 @@ var catalogue = map[string]error{
 	"errDigestDir":                errDigestDir("/d", errors.New("denied")),
 	"errDigestNotEmpty":           errDigestNotEmpty("/d"),
 	"errDigestWrite":              errDigestWrite("/d/digest.md", errors.New("denied")),
-	"errURLUnsetNoFlag":           errURLUnsetNoFlag(),
 	"errRedirected":               errRedirected(302, "https://y/"),
 	"errRedirectedNoLocation":     errRedirected(301, ""),
 	"errTooLarge":                 errTooLarge(),

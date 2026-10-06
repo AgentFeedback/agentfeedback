@@ -40,6 +40,14 @@ type Config struct {
 	// MCPInstructions is operator text appended to the MCP server
 	// instructions.
 	MCPInstructions string
+	// NoMCP leaves /mcp and /mcp/{project} unmounted; the paths answer like
+	// any other unknown path.
+	NoMCP bool
+	// NoMetrics leaves /metrics unmounted and registers nothing on a
+	// registry; requests are not observed.
+	NoMetrics bool
+	// NoHealth leaves /health and /ready unmounted.
+	NoHealth bool
 }
 
 // Server serves the v1 HTTP API.
@@ -52,14 +60,14 @@ type Server struct {
 	metrics      *metrics
 	publicURL    string
 	mcp          *mcp.Handler
+	noMCP        bool
+	noMetrics    bool
+	noHealth     bool
 }
 
-// New builds a Server and registers its metrics on the configured registry.
+// New builds a Server and, unless NoMetrics is set, registers its metrics on
+// the configured registry.
 func New(cfg Config) *Server {
-	registry := cfg.Registry
-	if registry == nil {
-		registry = prometheus.NewRegistry()
-	}
 	shuttingDown := cfg.ShuttingDown
 	if shuttingDown == nil {
 		shuttingDown = &atomic.Bool{}
@@ -69,9 +77,20 @@ func New(cfg Config) *Server {
 		db:           cfg.DB,
 		apiKey:       cfg.APIKey,
 		shuttingDown: shuttingDown,
-		registry:     registry,
-		metrics:      newMetrics(registry, cfg.Service, cfg.DB),
 		publicURL:    cfg.PublicURL,
+		noMCP:        cfg.NoMCP,
+		noMetrics:    cfg.NoMetrics,
+		noHealth:     cfg.NoHealth,
+	}
+	if !cfg.NoMetrics {
+		s.registry = cfg.Registry
+		if s.registry == nil {
+			s.registry = prometheus.NewRegistry()
+		}
+		s.metrics = newMetrics(s.registry, cfg.Service, cfg.DB)
+	}
+	if cfg.NoMCP {
+		return s
 	}
 	s.mcp = mcp.New(mcp.Config{Service: cfg.Service, Instructions: cfg.MCPInstructions, ErrorBody: errorJSON,
 		ObserveCreate: s.observeCreate, BuildFailed: writeErr})
@@ -101,23 +120,29 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	// Operational endpoints: unauthenticated, kept inside the deployment
 	// boundary.
-	mux.HandleFunc("GET /health", s.handleHealth)
-	mux.HandleFunc("GET /ready", s.handleReady)
-	mux.Handle("GET /metrics", promhttp.HandlerFor(s.registry, promhttp.HandlerOpts{}))
+	if !s.noHealth {
+		mux.HandleFunc("GET /health", s.handleHealth)
+		mux.HandleFunc("GET /ready", s.handleReady)
+	}
+	if !s.noMetrics {
+		mux.Handle("GET /metrics", promhttp.HandlerFor(s.registry, promhttp.HandlerOpts{}))
+	}
 	mux.Handle("/api/v1/", s.apiV1(public, onlyPostProcessed(jsonRouteErrors(api, nil))))
 	// Discovery: unauthenticated, no data.
 	mux.HandleFunc("GET /skill", s.handleSkill)
 	mux.HandleFunc("GET /.well-known/agentfeedback.json", s.handleDiscovery)
 	// MCP: every method reaches the handler, which checks the key first.
-	mux.Handle("/mcp", s.handleMCP(false))
-	mux.Handle("/mcp/{project}", s.handleMCP(true))
-	mux.Handle("/mcp/", keyedNotFound(s.apiKey))
+	if !s.noMCP {
+		mux.Handle("/mcp", s.handleMCP(false))
+		mux.Handle("/mcp/{project}", s.handleMCP(true))
+		mux.Handle("/mcp/", keyedNotFound(s.apiKey))
+	}
 
 	// A path ServeMux would redirect (not in cleaned form, or bare /api/v1)
-	// is a 404; under /api/v1 and /mcp the key is checked first, as for any
-	// other unknown path there.
+	// is a 404; under /api/v1 and a mounted /mcp the key is checked first, as
+	// for any other unknown path there.
 	notCanonical := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if p := cleanPath(r.URL.EscapedPath()); underKey(p) {
+		if p := cleanPath(r.URL.EscapedPath()); s.underKey(p) {
 			keyedNotFound(s.apiKey).ServeHTTP(w, r)
 			return
 		}
@@ -203,9 +228,14 @@ func redirected(r *http.Request, pattern string) bool {
 	return strings.HasSuffix(pat, "/") && !strings.HasPrefix(p, pat)
 }
 
-// underKey reports a cleaned path in a key-protected route space.
-func underKey(p string) bool {
-	for _, root := range []string{"/api/v1", "/mcp"} {
+// underKey reports a cleaned path in a key-protected route space: /api/v1
+// always, /mcp only when it is mounted.
+func (s *Server) underKey(p string) bool {
+	roots := []string{"/api/v1", "/mcp"}
+	if s.noMCP {
+		roots = roots[:1]
+	}
+	for _, root := range roots {
 		if p == root || strings.HasPrefix(p, root+"/") {
 			return true
 		}

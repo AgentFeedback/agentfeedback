@@ -154,10 +154,6 @@ func errConfigMode(path string, mode string) error {
 	return failErr(fmt.Sprintf("config file %s has mode %s and is readable by other users", path, mode), "chmod 600 "+path)
 }
 
-func errURLUnset() error {
-	return failErr("no server URL is set", "pass --url, set AGENT_FEEDBACK_URL, or run agentfeedback doctor --init")
-}
-
 func errKeyUnset() error {
 	return failErr("no API key is set", "set AGENT_FEEDBACK_API_KEY or run agentfeedback doctor --init")
 }
@@ -426,11 +422,6 @@ func errClientSetup(err error) error {
 	return failErr(fmt.Sprintf("the client cannot be set up: %s", oneLine(err.Error())), "run agentfeedback doctor")
 }
 
-// errURLUnsetNoFlag is errURLUnset for the commands that take no --url.
-func errURLUnsetNoFlag() error {
-	return failErr("no server URL is set", "set AGENT_FEEDBACK_URL or run agentfeedback doctor --init")
-}
-
 func errRedirected(status int, location string) error {
 	if location == "" {
 		location = "(no Location header)"
@@ -649,7 +640,7 @@ func errInstallNoneDetected() error {
 }
 
 func errInstallNoServer() error {
-	return failErr("no server configured", "pass --server cloud|URL or run agentfeedback doctor --init first")
+	return failErr("no server was named", "answer local, cloud or a URL, or pass --server")
 }
 
 // errInstallBadServer never shows credentials, as errSkillServer. A bad
@@ -665,7 +656,7 @@ func errInstallBadServer(source, raw, reason string) error {
 	return failErr(problem, next)
 }
 
-func errInstallServerDiffers(flagURL, configured, path string) error {
-	return failErr(fmt.Sprintf("--server %s differs from the url %s in %s, and install never changes the configured server", flagURL, configured, path),
-		"drop --server, or change the server with agentfeedback doctor --init --force first")
+func errInstallServerDiffers(flagURL, configured, source string) error {
+	return failErr(fmt.Sprintf("--server %s differs from %s (%s), and install never changes the configured server", flagURL, configured, source),
+		"drop --server, or change the server with agentfeedback doctor --init --force first (or unset the variable)")
 }

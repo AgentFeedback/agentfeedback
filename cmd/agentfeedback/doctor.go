@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -18,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agentfeedback/agentfeedback/v4/internal/localmode"
 	"github.com/agentfeedback/agentfeedback/v4/pkg/client"
 )
 
@@ -31,6 +33,8 @@ const (
 type doctorReport struct {
 	Status   string         `json:"status"`
 	Problems []string       `json:"problems"`
+	Mode     string         `json:"mode"`
+	Database databaseCheck  `json:"database"`
 	Config   configCheck    `json:"config"`
 	URL      resolvedValue  `json:"url"`
 	APIKey   keyCheck       `json:"api_key"`
@@ -38,6 +42,13 @@ type doctorReport struct {
 	Versions versionCheck   `json:"versions"`
 	Spool    spoolCheck     `json:"spool"`
 	Recent   recentOutcomes `json:"recent"`
+}
+
+// databaseCheck is the local database: its path and whether it exists. Both
+// are empty in remote mode.
+type databaseCheck struct {
+	Path   string `json:"path"`
+	Exists bool   `json:"exists"`
 }
 
 type configCheck struct {
@@ -91,6 +102,7 @@ func runDoctor(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	keyFromStdin := fs.Bool("key-from-stdin", false, "with --init: read the API key from stdin")
 	force := fs.Bool("force", false, "with --init: replace an existing config file")
 	e2e := fs.Bool("e2e", false, "submit, list and mark one install-check row against the server; one line per step")
+	mf := addModeFlags(fs)
 	if err := parseFlags(fs, args, stderr); err != nil {
 		err = errFlags("doctor", err)
 		if slices.ContainsFunc(args, isInitArg) && !errors.Is(err, flag.ErrHelp) {
@@ -98,6 +110,18 @@ func runDoctor(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		}
 
 		return err
+	}
+	if *doInit && (mf.local || mf.server != "") {
+		return printInitOutcome(stdout, "", errInitModeFlags())
+	}
+	if !*doInit && *urlFlag != "" {
+		if mf.server != "" && mf.server != *urlFlag {
+			return errURLServerDiffer()
+		}
+		if mf.local {
+			return errURLLocal()
+		}
+		mf.server = *urlFlag
 	}
 	if *e2e {
 		if *doInit || *keyFromStdin || *force {
@@ -107,7 +131,7 @@ func runDoctor(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 			return errArgs("doctor", "doctor --e2e [--url URL] [--json]")
 		}
 
-		return runDoctorE2E(os.Getenv, *urlFlag, *asJSON, stdout, stderr)
+		return runDoctorE2E(os.Getenv, *mf, *asJSON, stdout, stderr)
 	}
 	if *doInit {
 		if fs.NArg() != 0 {
@@ -124,7 +148,7 @@ func runDoctor(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		return errInitOnlyFlags()
 	}
 
-	report, err := diagnose(os.Getenv, *urlFlag, clientVersion().Version)
+	report, err := diagnose(os.Getenv, *mf, clientVersion().Version)
 	if err != nil {
 		return err
 	}
@@ -163,9 +187,10 @@ func redactURL(raw string) string {
 	return u.String()
 }
 
-// diagnose runs every check. Only the /meta request touches the network, and
-// nothing is created on disk.
-func diagnose(getenv func(string) string, urlFlag, clientVer string) (doctorReport, error) {
+// diagnose runs every check. Only the /meta request touches the network (in
+// local mode it is served in-process), and nothing is created on disk: a
+// missing local database is reported, not created.
+func diagnose(getenv func(string) string, mf modeFlags, clientVer string) (doctorReport, error) {
 	r := doctorReport{Problems: []string{}, Recent: recentOutcomes{Lines: []json.RawMessage{}}}
 	problem := func(err error) { r.Problems = append(r.Problems, err.Error()) }
 
@@ -186,7 +211,14 @@ func diagnose(getenv func(string) string, urlFlag, clientVer string) (doctorRepo
 		}
 	}
 
-	settings := resolveClient(flagConfig{URL: urlFlag}, getenv, file)
+	// The mode is resolved over the file already loaded: a config file that
+	// does not parse is a problem to report, not the end of the report.
+	mode, err := resolveModeFrom(mf, getenv, file)
+	if err != nil {
+		return r, err
+	}
+	r.Mode = mode.Mode
+	settings := mode.Settings
 	r.URL = settings.URL
 	if r.URL.Value != "" {
 		r.URL.Value = redactURL(r.URL.Value)
@@ -197,8 +229,9 @@ func diagnose(getenv func(string) string, urlFlag, clientVer string) (doctorRepo
 	r.APIKey = keyCheck{Set: settings.APIKey.Value != "", Source: settings.APIKey.Source}
 
 	switch {
-	case settings.URL.Value == "":
-		problem(errURLUnset())
+	case mode.Mode == modeLocal:
+		r.Database.Path = mode.Database
+		r.Meta = checkLocal(mode, getenv, &r.Database, problem)
 	case settings.APIKey.Value == "":
 		problem(errKeyUnset())
 	default:
@@ -276,7 +309,55 @@ func checkMeta(base, key, clientVer string, problem func(error)) metaCheck {
 		return m
 	}
 
-	var body *struct {
+	return parseMeta(m, io.LimitReader(resp.Body, metaBodyLimit), shown, problem)
+}
+
+// checkLocal checks the local database: whether it exists and, when it does,
+// what /api/v1/meta says when served in-process. Opening it checks the
+// schema stamp. A missing database is not a problem and is not created.
+func checkLocal(mode clientMode, getenv func(string) string, db *databaseCheck, problem func(error)) metaCheck {
+	m := metaCheck{}
+	err := localmode.Stat(mode.Database)
+	if errors.Is(err, localmode.ErrNoDatabase) {
+		return m
+	}
+	if err != nil {
+		problem(errPathUnreadable(mode.Database, err))
+
+		return m
+	}
+	db.Exists = true
+	m.Checked = true
+	c, err := openLocalClient(mode, getenv, io.Discard)
+	if err != nil {
+		problem(err)
+
+		return m
+	}
+	shown := "the local database " + mode.Database
+	ctx, cancel := context.WithTimeout(context.Background(), metaTimeout)
+	defer cancel()
+	resp, err := c.Do(ctx, http.MethodGet, "/api/v1/meta", nil, nil)
+	if err != nil {
+		var apiErr *client.APIError
+		if errors.As(err, &apiErr) {
+			m.HTTPStatus = apiErr.Status
+			problem(errMetaStatus(shown, apiErr.Status))
+
+			return m
+		}
+		problem(errUnreachable(shown, err))
+
+		return m
+	}
+	m.HTTPStatus = resp.Status
+
+	return parseMeta(m, bytes.NewReader(resp.Body), shown, problem)
+}
+
+// parseMeta reads a 2xx /api/v1/meta body into m.
+func parseMeta(m metaCheck, body io.Reader, shown string, problem func(error)) metaCheck {
+	var meta *struct {
 		ServiceVersion string `json:"service_version"`
 		APIVersion     string `json:"api_version"`
 		Client         struct {
@@ -284,21 +365,21 @@ func checkMeta(base, key, clientVer string, problem func(error)) metaCheck {
 			LatestKnown string `json:"latest_known"`
 		} `json:"client"`
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, metaBodyLimit)).Decode(&body); err != nil {
+	if err := json.NewDecoder(body).Decode(&meta); err != nil {
 		problem(errMetaBody(shown, err.Error()))
 
 		return m
 	}
-	if body == nil || body.ServiceVersion == "" || body.APIVersion == "" {
+	if meta == nil || meta.ServiceVersion == "" || meta.APIVersion == "" {
 		problem(errMetaBody(shown, "it has no service_version or api_version"))
 
 		return m
 	}
 	m.OK = true
-	m.ServiceVersion = body.ServiceVersion
-	m.APIVersion = body.APIVersion
-	m.ClientMinVersion = body.Client.MinVersion
-	m.ClientLatestKnown = body.Client.LatestKnown
+	m.ServiceVersion = meta.ServiceVersion
+	m.APIVersion = meta.APIVersion
+	m.ClientMinVersion = meta.Client.MinVersion
+	m.ClientLatestKnown = meta.Client.LatestKnown
 
 	return m
 }
@@ -529,12 +610,23 @@ func printReport(w io.Writer, r doctorReport) {
 		cfg = "present, mode " + orNone(r.Config.Mode)
 	}
 	fmt.Fprintf(w, "config:   %s (%s)\n", r.Config.Path, cfg)
-	fmt.Fprintf(w, "url:      %s (source: %s)\n", orNone(r.URL.Value), orNone(r.URL.Source))
-	key := "not set"
-	if r.APIKey.Set {
-		key = "set"
+	if r.Mode == modeLocal {
+		db := "missing"
+		if r.Database.Exists {
+			db = "present"
+		}
+		fmt.Fprintf(w, "mode:     local (database %s, %s)\n", r.Database.Path, db)
+	} else {
+		fmt.Fprintf(w, "mode:     %s\n", orNone(r.Mode))
 	}
-	fmt.Fprintf(w, "api key:  %s (source: %s)\n", key, orNone(r.APIKey.Source))
+	if r.Mode != modeLocal || r.URL.Value != "" {
+		fmt.Fprintf(w, "url:      %s (source: %s)\n", orNone(r.URL.Value), orNone(r.URL.Source))
+		key := "not set"
+		if r.APIKey.Set {
+			key = "set"
+		}
+		fmt.Fprintf(w, "api key:  %s (source: %s)\n", key, orNone(r.APIKey.Source))
+	}
 	switch {
 	case !r.Meta.Checked:
 		fmt.Fprintln(w, "meta:     skipped")
@@ -558,4 +650,16 @@ func printReport(w io.Writer, r doctorReport) {
 		fmt.Fprintf(w, "problem:  %s\n", p)
 	}
 	fmt.Fprintf(w, "status:   %s\n", r.Status)
+}
+
+func errURLServerDiffer() error {
+	return usageErr("--url and --server name different servers", "pass one of them")
+}
+
+func errURLLocal() error {
+	return usageErr("--local and --url are both set", "pass one of them")
+}
+
+func errInitModeFlags() error {
+	return usageErr("--init takes --url, not --local or --server", "pass --url URL with --init")
 }

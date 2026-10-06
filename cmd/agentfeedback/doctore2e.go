@@ -31,7 +31,7 @@ type e2eStep struct {
 // runDoctorE2E submits one install-check row, finds it by its key and marks
 // it processed. The submission goes straight to the server, not through the
 // spool, so a failed check leaves nothing behind on this machine.
-func runDoctorE2E(getenv func(string) string, urlFlag string, asJSON bool, stdout, stderr io.Writer) error {
+func runDoctorE2E(getenv func(string) string, mf modeFlags, asJSON bool, stdout, stderr io.Writer) error {
 	emit := func(s e2eStep) error {
 		if asJSON {
 			return writeJSON(stdout, s)
@@ -64,11 +64,11 @@ func runDoctorE2E(getenv func(string) string, urlFlag string, asJSON bool, stdou
 	}
 
 	ctx := context.Background()
-	c, settings, err := newAPIClient(getenv, urlFlag, errURLUnset, stderr)
+	c, m, err := newAPIClient(getenv, mf, stderr)
 	if err != nil {
 		return fail("submit", err)
 	}
-	body, err := installCheckBody(getenv, settings)
+	body, err := installCheckBody(getenv, m.Settings)
 	if err != nil {
 		return fail("submit", err)
 	}

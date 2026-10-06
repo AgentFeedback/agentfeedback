@@ -44,8 +44,11 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 // observeCreate records a create attempt on submissions_created_total, for
-// REST and MCP alike.
+// REST and MCP alike; it does nothing when metrics are disabled.
 func (s *Server) observeCreate(created bool, err error) {
+	if s.metrics == nil {
+		return
+	}
 	switch {
 	case err != nil:
 		s.metrics.observeCreateError(err)

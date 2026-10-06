@@ -473,13 +473,43 @@ func TestInstall_ServerResolution(t *testing.T) {
 	}
 
 	t.Run("none configured, not a terminal", func(t *testing.T) {
+		// Nothing configured and no manifest installs for local mode: there
+		// is nothing to configure, so no next step.
 		e := newInstallEnv(t)
-		before := snapshot(t, e.home)
 		r, out := installRun(t, "install", "claude-code")
-		if r.code == 0 || !strings.Contains(out["message"].(string), "no server configured; pass --server cloud|URL or run agentfeedback doctor --init first") {
+		if r.code != 0 || out["status"] != "installed" || out["next"] != nil || strings.Contains(r.stderr, "next:") ||
+			manifestServer(t, e) != serverLocal {
 			t.Fatalf("%+v", r)
 		}
-		sameTree(t, "no server", snapshot(t, e.home), before)
+	})
+	t.Run("--mcp in local mode", func(t *testing.T) {
+		e := newInstallEnv(t)
+		before := snapshot(t, e.home)
+		r, out := installRun(t, "install", "claude-code", "--mcp")
+		msg, _ := out["message"].(string)
+		if r.code == 0 || !strings.Contains(msg, "the MCP entry needs a server URL; local mode has no HTTP endpoint yet") ||
+			!strings.Contains(msg, "run agentfeedback install without --mcp, or pass --server URL") {
+			t.Fatalf("%+v", r)
+		}
+		sameTree(t, "--mcp local", snapshot(t, e.home), before)
+	})
+	t.Run("--server local with a configured url", func(t *testing.T) {
+		e := newInstallEnv(t)
+		e.seed(t)
+		before := snapshot(t, e.home)
+		r, out := installRun(t, "install", "pi", "--server", "local")
+		if r.code != 1 || !strings.Contains(out["message"].(string), "doctor --init --force") {
+			t.Fatalf("%+v", r)
+		}
+		sameTree(t, "--server local", snapshot(t, e.home), before)
+	})
+	t.Run("empty prompt answer", func(t *testing.T) {
+		e := newInstallEnv(t)
+		isTerminal = func() bool { return true }
+		r := runCLI(t, "\n", "install", "pi")
+		if r.code != 0 || manifestServer(t, e) != serverLocal || strings.Contains(r.stderr, "next:") {
+			t.Fatalf("%+v", r)
+		}
 	})
 	t.Run("config url", func(t *testing.T) {
 		e := newInstallEnv(t)
@@ -515,7 +545,7 @@ func TestInstall_ServerResolution(t *testing.T) {
 		e := newInstallEnv(t)
 		isTerminal = func() bool { return true }
 		r := runCLI(t, "https://prompted.example.test\n", "install", "pi")
-		if r.code != 0 || !strings.Contains(r.stderr, `AgentFeedback server ("cloud" or a URL): `) || manifestServer(t, e) != "https://prompted.example.test" {
+		if r.code != 0 || !strings.Contains(r.stderr, `AgentFeedback server ("local", "cloud" or a URL): `) || manifestServer(t, e) != "https://prompted.example.test" {
 			t.Fatalf("%+v", r)
 		}
 	})
@@ -742,7 +772,7 @@ func TestFlushHook(t *testing.T) {
 			t.Fatalf("%+v", r)
 		}
 		lines := hookLogLines(t, cache)
-		if len(lines) != 1 || lines[0]["outcome"] != "error" || !strings.Contains(fmt.Sprint(lines[0]["reason"]), "no server URL is set") {
+		if len(lines) != 1 || lines[0]["outcome"] != "error" || !strings.Contains(fmt.Sprint(lines[0]["reason"]), "this invocation is in local mode") {
 			t.Fatalf("log %v", lines)
 		}
 	})

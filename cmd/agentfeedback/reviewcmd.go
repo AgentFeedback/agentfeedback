@@ -381,11 +381,12 @@ func buildReview(dir string, includeOutputs bool, drop []string, warn func(strin
 	return bytes.TrimRight(buf.Bytes(), "\n"), key, nil
 }
 
-const reviewSynopsis = "submit review <run_dir> [--include-outputs] [--dry-run] | submit review --sweep [<base>...]"
+const reviewSynopsis = "submit review <run_dir> [--include-outputs] [--dry-run] | submit review --sweep [<base>...] [--local | --server URL]"
 
 // runReview is submit review <run_dir> and submit review --sweep.
 func runReview(args []string, stdout, stderr io.Writer) error {
 	fs := newFlagSet("submit review")
+	mf := addModeFlags(fs)
 	includeOutputs := fs.Bool("include-outputs", false, "send the reviewer outputs and the prompt")
 	sweep := fs.Bool("sweep", false, "submit every old unsubmitted run under the bases")
 	dryRun := fs.Bool("dry-run", false, "print the body and check it locally; send nothing")
@@ -399,7 +400,7 @@ func runReview(args []string, stdout, stderr io.Writer) error {
 	if !*sweep && len(pos) != 1 {
 		return errArgs("submit review", reviewSynopsis)
 	}
-	s, err := newSubmitter("submit", *dryRun, stdout, stderr)
+	s, err := newSubmitter("submit", *dryRun, *mf, stdout, stderr)
 	if err != nil {
 		return err
 	}

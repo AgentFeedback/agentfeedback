@@ -26,6 +26,10 @@ const (
 	defaultDialLimit = 2 * time.Second
 )
 
+// LocalURL is the base URL requests carry when a Transport serves them in
+// process.
+const LocalURL = "http://local"
+
 // Config is what a Client needs. URL, APIKey and CacheDir are required.
 type Config struct {
 	// URL is the server base URL, e.g. http://host:8080 or https://h/prefix;
@@ -39,6 +43,15 @@ type Config struct {
 	// timeout that honours the proxy environment. Redirects are never
 	// followed either way; the caller's client is copied, not changed.
 	HTTP *http.Client
+	// Transport, when set, serves every request in place of a network
+	// client: URL may then be empty and defaults to http://local, and HTTP
+	// must be nil. Redirects are never followed either way.
+	Transport http.RoundTripper
+	// NoSpool makes Submit keep nothing for a retry: an answer that would be
+	// spooled is reported as outcome error with reason unavailable and the
+	// body echoed for recovery. A rejection is still recorded in rejected/
+	// and Flush is unchanged.
+	NoSpool bool
 	// Now is optional; nil means time.Now.
 	Now func() time.Time
 	// Stderr is optional; nil discards the notes meant for a person.
@@ -57,11 +70,20 @@ type Client struct {
 	now      func() time.Time
 	stderr   io.Writer
 	version  string
+	noSpool  bool
 }
 
 // New validates cfg and returns a Client.
 func New(cfg Config) (*Client, error) {
 	base := strings.TrimRight(strings.TrimSpace(cfg.URL), "/")
+	if cfg.Transport != nil {
+		if cfg.HTTP != nil {
+			return nil, errors.New("the Transport and HTTP settings are both set; give one")
+		}
+		if base == "" {
+			base = LocalURL
+		}
+	}
 	if base == "" {
 		return nil, errors.New("AGENT_FEEDBACK_URL is not set; export it or run agentfeedback doctor --init")
 	}
@@ -89,7 +111,9 @@ func New(cfg Config) (*Client, error) {
 	}
 
 	var hc http.Client
-	if cfg.HTTP != nil {
+	if cfg.Transport != nil {
+		hc = http.Client{Transport: cfg.Transport, Timeout: defaultTimeout}
+	} else if cfg.HTTP != nil {
 		hc = *cfg.HTTP
 	} else {
 		t := http.DefaultTransport.(*http.Transport).Clone()
@@ -108,6 +132,7 @@ func New(cfg Config) (*Client, error) {
 		now:      cfg.Now,
 		stderr:   cfg.Stderr,
 		version:  cfg.Version,
+		noSpool:  cfg.NoSpool,
 	}
 	if c.now == nil {
 		c.now = time.Now
@@ -249,6 +274,17 @@ func (c *Client) Submit(ctx context.Context, body []byte) Outcome {
 			o.Outcome = OutcomeDuplicate
 		}
 	case actRetry, actHold:
+		if c.noSpool {
+			cause := res.reason
+			if res.message != "" {
+				cause += ": " + res.message
+			}
+			o.Outcome, o.Reason = OutcomeError, "unavailable"
+			o.Message = fmt.Sprintf("the submission could not be stored (%s); nothing was spooled", cause)
+			c.echoBody(o.Message, prepared)
+
+			break
+		}
 		e := newEntry(kind, key, prepared, now)
 		e.Attempts = 1
 		e.LastError = res.reason

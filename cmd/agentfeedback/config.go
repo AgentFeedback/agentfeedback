@@ -13,6 +13,13 @@ import (
 	"github.com/agentfeedback/agentfeedback/v4/internal/skillgen"
 )
 
+// defaultListenAddr is the loopback address serve listens on when
+// HTTP_LISTEN_ADDR is unset; the container image sets 0.0.0.0:8080.
+const defaultListenAddr = "127.0.0.1:8090"
+
+// config is the server environment. DatabasePath defaults to the
+// data-directory database (localDBPath), the file local mode uses, so serve on
+// the same machine serves the same queue.
 type config struct {
 	APIKey          string
 	DatabasePath    string
@@ -55,12 +62,14 @@ func envDurationOr(key string, fallback time.Duration) (time.Duration, error) {
 }
 
 // loadConfig reads the environment and fails fast on anything that would only
-// surface later as a failed write.
+// surface later as a failed write. An unset DATABASE_PATH means the
+// data-directory database, whose directory is created with mode 0700; an
+// explicit DATABASE_PATH must name a file in an existing directory.
 func loadConfig(requireAPIKey bool) (config, error) {
 	cfg := config{
 		APIKey:          os.Getenv("API_KEY"),
-		DatabasePath:    envOr("DATABASE_PATH", "/data/agentfeedback.db"),
-		HTTPListenAddr:  envOr("HTTP_LISTEN_ADDR", "0.0.0.0:8080"),
+		DatabasePath:    os.Getenv("DATABASE_PATH"),
+		HTTPListenAddr:  envOr("HTTP_LISTEN_ADDR", defaultListenAddr),
 		ServiceVersion:  envOr("SERVICE_VERSION", defaultServiceVersion()),
 		LogLevel:        envOr("LOG_LEVEL", "info"),
 		MCPInstructions: os.Getenv("MCP_INSTRUCTIONS"),
@@ -98,6 +107,16 @@ func loadConfig(requireAPIKey bool) (config, error) {
 	case "debug", "info":
 	default:
 		return config{}, errLogLevel(cfg.LogLevel)
+	}
+	if cfg.DatabasePath == "" {
+		path, err := localDBPath(os.Getenv)
+		if err != nil {
+			return config{}, err
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			return config{}, errDatabaseDir(filepath.Dir(path), fmt.Sprintf("cannot be created: %v", err))
+		}
+		cfg.DatabasePath = path
 	}
 	if err := checkWritableDir(filepath.Dir(cfg.DatabasePath)); err != nil {
 		return config{}, err

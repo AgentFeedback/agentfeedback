@@ -22,8 +22,8 @@ import (
 )
 
 const (
-	submitSynopsis = "submit friction --summary S [flags] | submit <kind> [--stdin] [flags] | submit review <run_dir> [--include-outputs] | submit review --sweep [<base>...]"
-	flushSynopsis  = "flush [--hook]"
+	submitSynopsis = "submit friction --summary S [flags] | submit <kind> [--stdin] [flags] | submit review <run_dir> [--include-outputs] | submit review --sweep [<base>...] [--local | --server URL]"
+	flushSynopsis  = "flush [--hook] [--local | --server URL]"
 	// occurredLayout is occurred_at: UTC with microseconds.
 	occurredLayout = "2006-01-02T15:04:05.000000Z"
 	// stdinMax bounds what --stdin reads: one byte over the body limit is
@@ -197,6 +197,7 @@ type submitter struct {
 	name           string
 	stdout, stderr io.Writer
 	dryRun         bool
+	mode           modeFlags
 	file           fileConfig
 	decision       collect.Decision
 	dir            string // the working directory the narrowing rules saw
@@ -205,8 +206,8 @@ type submitter struct {
 
 // newSubmitter loads the config file and applies the narrowing rules to the
 // working directory; their warnings go to stderr.
-func newSubmitter(name string, dryRun bool, stdout, stderr io.Writer) (*submitter, error) {
-	s := &submitter{name: name, stdout: stdout, stderr: stderr, dryRun: dryRun}
+func newSubmitter(name string, dryRun bool, mf modeFlags, stdout, stderr io.Writer) (*submitter, error) {
+	s := &submitter{name: name, stdout: stdout, stderr: stderr, dryRun: dryRun, mode: mf}
 	path, err := configPath(os.Getenv)
 	if err != nil {
 		return nil, err
@@ -232,7 +233,7 @@ func (s *submitter) warn(msg string) {
 // client builds the API client on first use.
 func (s *submitter) client() (*client.Client, error) {
 	if s.c == nil {
-		c, err := apiClient(os.Getenv, s.stderr)
+		c, err := apiClient(os.Getenv, s.mode, s.stderr)
 		if err != nil {
 			return nil, err
 		}
@@ -305,7 +306,15 @@ func (s *submitter) send(body []byte) (client.Outcome, error) {
 	}
 	c, err := s.client()
 	if err != nil {
-		return client.Outcome{}, err
+		// The body may have come from stdin and is gone with this process:
+		// echo it for recovery, and keep the one-outcome-line contract.
+		o := client.Outcome{Outcome: client.OutcomeError, Kind: kind, Key: key, Reason: "client_setup", Message: err.Error()}
+		fmt.Fprintf(s.stderr, "agentfeedback %s: %s; the submission was NOT persisted and is echoed below for recovery\n", s.name, err)
+		_, _ = s.stderr.Write(prepared)
+		fmt.Fprintln(s.stderr)
+		s.logLocal(o)
+
+		return o, nil
 	}
 
 	return c.Submit(context.Background(), prepared), nil
@@ -353,6 +362,7 @@ func runSubmit(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 func runEnvelope(kind string, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	friction := schema.Token(kind) == "friction"
 	fs := newFlagSet("submit " + kind)
+	mf := addModeFlags(fs)
 	str := map[string]*string{}
 	for _, name := range []string{"summary", "project", "harness", "model", "machine", "key", "schema-version"} {
 		str[name] = fs.String(name, "", name)
@@ -373,7 +383,7 @@ func runEnvelope(kind string, args []string, stdin io.Reader, stdout, stderr io.
 	}
 	// The narrowing gate comes before anything reads or checks the input: a
 	// switched-off directory is disabled whatever stdin holds.
-	s, err := newSubmitter("submit", *dryRun, stdout, stderr)
+	s, err := newSubmitter("submit", *dryRun, *mf, stdout, stderr)
 	if err != nil {
 		return err
 	}
@@ -527,6 +537,7 @@ type flushReport struct {
 // runFlush sends the spool's due entries once and prints the counts.
 func runFlush(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := newFlagSet("flush")
+	mf := addModeFlags(fs)
 	hook := fs.Bool("hook", false, "run as a harness hook: print nothing, stop within 4.5 seconds, log failures to the client log and exit 0")
 	pos, err := parseInterleaved(fs, args, stderr)
 	if err != nil {
@@ -536,16 +547,23 @@ func runFlush(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return errArgs("flush", flushSynopsis)
 	}
 	if *hook {
-		runFlushHook()
+		runFlushHook(*mf)
 
 		return nil
 	}
-	s, err := newSubmitter("flush", false, stdout, stderr)
+	s, err := newSubmitter("flush", false, *mf, stdout, stderr)
 	if err != nil {
 		return err
 	}
 	if o, off := s.disabled(); off {
 		return finish("flush", o, stdout)
+	}
+	if err := flushLocalGuard(s.mode); err != nil {
+		if errors.Is(err, errFlushNothing) {
+			return writeJSON(stdout, flushReport{})
+		}
+
+		return err
 	}
 	c, err := s.client()
 	if err != nil {
@@ -580,7 +598,7 @@ var flushHookFlush = func(ctx context.Context, c *client.Client) client.FlushRep
 // runFlushHook is flush as a harness hook: nothing on stdout or stderr,
 // never a failing exit. An empty spool returns before the config is read;
 // any failure, the deadline included, is one error line in the client log.
-func runFlushHook() {
+func runFlushHook(mf modeFlags) {
 	start := time.Now()
 	ctx, cancel := context.WithDeadline(context.Background(), start.Add(flushHookSend))
 	defer cancel()
@@ -592,7 +610,7 @@ func runFlushHook() {
 		client.LogTo(cache, client.Outcome{Outcome: client.OutcomeError, Reason: "flush --hook: " + oneLine(msg)}, nowFunc(), io.Discard)
 	}
 	done := make(chan string, 1)
-	go func() { done <- flushHookBody(ctx, cache) }()
+	go func() { done <- flushHookBody(ctx, cache, mf) }()
 	timer := time.NewTimer(time.Until(start.Add(flushHookDeadline)))
 	defer timer.Stop()
 	select {
@@ -607,19 +625,30 @@ func runFlushHook() {
 
 // flushHookBody is the work runFlushHook bounds; it returns the failure to
 // log, or "".
-func flushHookBody(ctx context.Context, cache string) string {
+func flushHookBody(ctx context.Context, cache string, mf modeFlags) string {
 	if !flushHookHasDue(cache, nowFunc()) {
 		return ""
 	}
 	if ctx.Err() != nil {
 		return "the flush ran past its deadline"
 	}
-	s, err := newSubmitter("flush", false, io.Discard, io.Discard)
+	s, err := newSubmitter("flush", false, mf, io.Discard, io.Discard)
 	if err != nil {
 		return err.Error()
 	}
 	if _, off := s.disabled(); off {
 		return ""
+	}
+	if err := flushLocalGuard(s.mode); err != nil {
+		if errors.Is(err, errFlushNothing) {
+			return ""
+		}
+		var ue *userError
+		if errors.As(err, &ue) {
+			return ue.problem
+		}
+
+		return err.Error()
 	}
 	c, err := s.client()
 	if err != nil {
@@ -634,4 +663,63 @@ func flushHookBody(ctx context.Context, cache string) string {
 	}
 
 	return ""
+}
+
+// errFlushNothing is flushLocalGuard's "local mode, empty spool": there is
+// nothing to flush and no server to flush it to.
+var errFlushNothing = errors.New("nothing to flush")
+
+// flushLocalGuard stops a flush in local mode: the spool only ever holds
+// submissions for a server, and local mode has none to send them to. It
+// returns nil in remote mode, errFlushNothing in local mode with an empty
+// spool, and errFlushLocal when entries are pending.
+func flushLocalGuard(mf modeFlags) error {
+	m, err := resolveMode(mf, os.Getenv)
+	if err != nil {
+		return err
+	}
+	if m.Mode != modeLocal {
+		return nil
+	}
+	cache, err := cacheDir(os.Getenv)
+	if err != nil {
+		return err
+	}
+	n, err := pendingSpool(cache)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return errFlushNothing
+	}
+
+	return errFlushLocal(n)
+}
+
+// pendingSpool counts the spool's pending entries: regular files that are
+// neither dot-prefixed nor *.rejected, as doctor counts them.
+func pendingSpool(cache string) (int, error) {
+	dir := client.SpoolDir(cache)
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, errPathUnreadable(dir, err)
+	}
+	n := 0
+	for _, e := range entries {
+		name := e.Name()
+		if !e.Type().IsRegular() || strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".rejected") {
+			continue
+		}
+		n++
+	}
+
+	return n, nil
+}
+
+func errFlushLocal(n int) error {
+	return failErr(fmt.Sprintf("the spool holds %d submission(s) for a server and this invocation is in local mode; nothing was sent", n),
+		"run agentfeedback flush --server URL, or configure the url, so they reach the server they were spooled for")
 }

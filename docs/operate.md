@@ -39,7 +39,27 @@ The service answers the v1 contract, [openapi.yaml](openapi.yaml); `bash scripts
 Tear down with `docker compose down -v` (deletes the database volume; `.env`
 stays).
 
-Without Docker: `go build -o bin/agentfeedback ./cmd/agentfeedback && API_KEY=dev DATABASE_PATH=/tmp/agentfeedback.db HTTP_LISTEN_ADDR=127.0.0.1:8090 bin/agentfeedback serve`.
+Without Docker: `go build -o bin/agentfeedback ./cmd/agentfeedback && API_KEY=dev bin/agentfeedback serve`. It listens on `127.0.0.1:8090` with the database in the data directory, `${XDG_DATA_HOME:-~/.local/share}/agentfeedback/agentfeedback.db`.
+
+## Local mode (no server)
+
+```bash
+agentfeedback doctor                             # mode: local and the database path
+agentfeedback submit friction --summary "local smoke test"
+agentfeedback list
+```
+
+With no `url` in the config file and no `AGENT_FEEDBACK_URL`, every client
+command works in-process against
+`${XDG_DATA_HOME:-~/.local/share}/agentfeedback/agentfeedback.db`, with no
+server running; `agentfeedback doctor` prints `mode: local` and the database
+path. `--local` forces local mode and `--server URL` targets a server for one
+invocation; a configured `url` is never ignored without `--local`. `backup
+<dest.db>` and `import` default to the same file, and `serve` started later on
+the same machine serves the same database, so the machine keeps one queue. A
+failed local write is reported as outcome `error` with the body echoed;
+nothing is spooled in local mode, and `flush` refuses to send a spool filled
+for a server while in local mode (pass `--server URL`).
 
 ## Bare binary (no Docker)
 
@@ -159,12 +179,15 @@ supported on Windows.
   spooled without the CLI. Entries point at `<server>/mcp` and read the key
   from `AGENT_FEEDBACK_API_KEY` in the harness's environment; install warns
   when it is not set. `--with-reminder` does not apply with `--mcp`.
-- **The server.** `--server cloud|URL`, else `url` in `config.toml`, else the
-  server the last install recorded, else a prompt on a terminal; with none of
-  them install fails and writes nothing. A `--server` that differs from
+- **The server.** `--server local|cloud|URL`, else `url` in `config.toml`,
+  else the server the last install recorded, else a prompt on a terminal
+  (an empty answer means local), else local: with nothing named, install
+  wires the harnesses for local mode and records `local`. `--mcp` needs a
+  URL and is refused for local. A `--server` that differs from
   `config.toml` is refused: install never changes the configured server
-  (`doctor --init --force` does). Install never writes `config.toml`; when it
-  does not exist, `next` holds the `doctor --init` command.
+  (`doctor --init --force` does). Install never writes `config.toml`; when a
+  server is named and the file does not exist, `next` holds the
+  `doctor --init` command.
 - **Edits and backups.** JSON and JSONC files are edited in place, keeping
   comments, trailing commas and formatting; nothing else in them changes.
   Before the first change to an existing file install copies it to
@@ -339,8 +362,8 @@ Environment variables read by the binary:
 |---|---|---|
 | `API_KEY` | required | the shared key every client sends |
 | `API_KEY_FILE` | unset | `serve` reads the key from this file instead (trimmed; exactly one key); setting both is an error |
-| `DATABASE_PATH` | `/data/agentfeedback.db` | SQLite file; its directory must be writable |
-| `HTTP_LISTEN_ADDR` | `0.0.0.0:8080` | inside the container; Compose maps it to `127.0.0.1:8090` |
+| `DATABASE_PATH` | `${XDG_DATA_HOME:-~/.local/share}/agentfeedback/agentfeedback.db` (created on first start); the image sets `/data/agentfeedback.db` | SQLite file; its directory must be writable, and an explicitly set one must already exist |
+| `HTTP_LISTEN_ADDR` | `127.0.0.1:8090`; the image sets `0.0.0.0:8080`, which Compose maps to `127.0.0.1:8090` | listen address of `serve` |
 | `GRACEFUL_SHUTDOWN_TIMEOUT` | `30s` | drain time for in-flight requests |
 | `SERVICE_VERSION` | build default | reported in logs |
 | `LOG_LEVEL` | `info` | `debug` or `info` |

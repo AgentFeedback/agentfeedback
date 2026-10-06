@@ -1,11 +1,12 @@
 ## When something fails
 
 <!-- only: cli -->
-Run `agentfeedback doctor` first. It checks the configuration, the
-connection, the key, the server's version and the local spool, and says what
-to do next. A machine without configuration needs
-`agentfeedback doctor --init --url <server URL> --key-from-stdin` with the key
-on stdin.
+Run `agentfeedback doctor` first. It prints the mode (a local database on
+this machine when no server is configured, otherwise the server), checks the
+configuration, the connection, the key, the server's version and the local
+spool, and says what to do next. To report to a server instead of the local
+database, run `agentfeedback doctor --init --url <server URL> --key-from-stdin`
+with the key on stdin.
 <!-- end -->
 <!-- only: http -->
 Call `GET {{server}}/api/v1/meta` with the same headers: `200` means the URL

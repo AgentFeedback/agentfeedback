@@ -118,6 +118,23 @@ func cacheDir(getenv func(string) string) (string, error) {
 	return xdgDir(getenv, "XDG_CACHE_HOME", ".cache")
 }
 
+// dataDir holds the local-mode database (agentfeedback.db), the path
+// serve --init defaults to as well, so one machine has one queue.
+func dataDir(getenv func(string) string) (string, error) {
+	return xdgDir(getenv, "XDG_DATA_HOME", filepath.Join(".local", "share"))
+}
+
+// localDBPath is the data-directory database: the local-mode target and the
+// default of serve, serve --init, backup and import.
+func localDBPath(getenv func(string) string) (string, error) {
+	dir, err := dataDir(getenv)
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join(dir, "agentfeedback.db"), nil
+}
+
 // loadFileConfig reads the config file. A missing file is not an error: it
 // returns exists=false and an empty config.
 func loadFileConfig(path string) (cfg fileConfig, exists bool, err error) {

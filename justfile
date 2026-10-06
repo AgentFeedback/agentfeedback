@@ -86,6 +86,10 @@ contract:
 e2e: build
     bash scripts/gate-e2e.sh
 
+# Local-mode end-to-end: the client commands against the data-directory database, no server process.
+e2e-local: build
+    bash scripts/gate-local.sh
+
 # Run the install playbooks' fenced commands in a clean Linux container (Docker, privileged for systemd). source: github (the published tag), tree (the working tree built under the tag) or a release directory such as dist/release.
 [positional-arguments]
 playbooks tag source="github" *flags:
@@ -126,6 +130,7 @@ ci:
     go test -race -count=1 ./...
     just fuzz
     just e2e
+    just e2e-local
     shellcheck -x -P SCRIPTDIR skills/*/scripts/*.sh tests/skill/*.sh
     bash tests/skill/run-tests.sh
     python3 tests/skill/test_cluster.py

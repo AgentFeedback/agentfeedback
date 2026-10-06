@@ -2,7 +2,7 @@
 name: agentfeedback
 description: "File a friction report with AgentFeedback when something slowed you down: a missing or wrong doc, a tool that behaved unlike its name, stale config, several attempts at something that should have been written down. Use when your instructions tell you to surface or submit friction, or when you would otherwise tell the user \"this should have been documented\"."
 license: MIT
-compatibility: Any harness that can run a command. Needs the agentfeedback binary on PATH (bash scripts/install.sh in this skill installs it) and a configured server (agentfeedback doctor --init).
+compatibility: Any harness that can run a command. Needs the agentfeedback binary on PATH (bash scripts/install.sh in this skill installs it); with no server configured it stores reports on this machine, and agentfeedback doctor --init points it at a server.
 metadata:
   author: AgentFeedback
   version: "5.0"
@@ -115,11 +115,12 @@ The binary relays the server's warnings on stderr, one per line.
 
 ## When something fails
 
-Run `agentfeedback doctor` first. It checks the configuration, the
-connection, the key, the server's version and the local spool, and says what
-to do next. A machine without configuration needs
-`agentfeedback doctor --init --url <server URL> --key-from-stdin` with the key
-on stdin.
+Run `agentfeedback doctor` first. It prints the mode (a local database on
+this machine when no server is configured, otherwise the server), checks the
+configuration, the connection, the key, the server's version and the local
+spool, and says what to do next. To report to a server instead of the local
+database, run `agentfeedback doctor --init --url <server URL> --key-from-stdin`
+with the key on stdin.
 
 Never work around a failure by writing the report somewhere else; tell the
 user the report was not filed and why.

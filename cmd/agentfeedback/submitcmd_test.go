@@ -651,8 +651,8 @@ func TestAC5_Flush(t *testing.T) {
 	}
 
 	isolate(t)
-	if r := runCLI(t, "", "flush"); r.code != 1 {
-		t.Errorf("unconfigured flush %+v", r)
+	if r := runCLI(t, "", "flush"); r.code != 0 || !strings.Contains(r.stdout, `"flushed":0`) {
+		t.Errorf("unconfigured flush is local mode with an empty spool %+v", r)
 	}
 }
 

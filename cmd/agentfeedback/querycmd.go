@@ -33,52 +33,6 @@ const (
 // nowFunc is the clock relative --since and --until count back from.
 var nowFunc = time.Now
 
-// apiClient builds the client from the config file and the environment; the
-// read commands take no --url flag.
-func apiClient(getenv func(string) string, stderr io.Writer) (*client.Client, error) {
-	c, _, err := newAPIClient(getenv, "", errURLUnsetNoFlag, stderr)
-
-	return c, err
-}
-
-// newAPIClient resolves the settings with urlFlag on top and builds the
-// client; noURL is the error for a missing URL, which names --url only for
-// a command that takes it.
-func newAPIClient(getenv func(string) string, urlFlag string, noURL func() error, stderr io.Writer) (*client.Client, clientSettings, error) {
-	path, err := configPath(getenv)
-	if err != nil {
-		return nil, clientSettings{}, err
-	}
-	file, _, err := loadFileConfig(path)
-	if err != nil {
-		return nil, clientSettings{}, err
-	}
-	settings := resolveClient(flagConfig{URL: urlFlag}, getenv, file)
-	if settings.URL.Value == "" {
-		return nil, settings, noURL()
-	}
-	if settings.APIKey.Value == "" {
-		return nil, settings, errKeyUnset()
-	}
-	cache, err := cacheDir(getenv)
-	if err != nil {
-		return nil, settings, err
-	}
-	c, err := client.New(client.Config{
-		URL:      settings.URL.Value,
-		APIKey:   settings.APIKey.Value,
-		CacheDir: cache,
-		Now:      nowFunc,
-		Stderr:   stderr,
-		Version:  clientVersion().Version,
-	})
-	if err != nil {
-		return nil, settings, errClientSetup(err)
-	}
-
-	return c, settings, nil
-}
-
 // apiErr maps a failed request to a userError. A 400's details go to stderr
 // one per line; a 404 is reported by the caller when it names an id.
 func apiErr(err error, stderr io.Writer) error {
@@ -459,11 +413,12 @@ func writeCompact(w io.Writer, body []byte) error {
 	return writeBody(w, buf.Bytes())
 }
 
-const listSynopsis = "list [filters] [--limit N] [--before-id N | --after-id N] [--include payload] [--all] [--json | --tsv]"
+const listSynopsis = "list [filters] [--limit N] [--before-id N | --after-id N] [--include payload] [--all] [--json | --tsv] [--local | --server URL]"
 
 // runList prints one page of submissions, or every page with --all.
 func runList(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := newFlagSet("list")
+	mf := addModeFlags(fs)
 	f := addFilters(fs)
 	limit := fs.Int("limit", 0, "rows per page: 1-500, or 1-100 with --include payload")
 	beforeID := fs.Int64("before-id", 0, "newest-first page of rows with a smaller id")
@@ -513,7 +468,7 @@ func runList(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		q.Set("limit", strconv.Itoa(listMax))
 	}
 
-	c, err := apiClient(os.Getenv, stderr)
+	c, err := apiClient(os.Getenv, *mf, stderr)
 	if err != nil {
 		return err
 	}
@@ -597,20 +552,21 @@ func listFooter(w io.Writer, page listPage, shown int, after bool) {
 // runGet prints one record.
 func runGet(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := newFlagSet("get")
+	mf := addModeFlags(fs)
 	asJSON := fs.Bool("json", false, "print the API body")
 	pos, err := parseInterleaved(fs, args, stderr)
 	if err != nil {
 		return errFlags("get", err)
 	}
 	if len(pos) != 1 {
-		return errArgs("get", "get <id> [--json]")
+		return errArgs("get", "get <id> [--json] [--local | --server URL]")
 	}
 	ids, err := parseIDs(pos)
 	if err != nil {
 		return err
 	}
 
-	c, err := apiClient(os.Getenv, stderr)
+	c, err := apiClient(os.Getenv, *mf, stderr)
 	if err != nil {
 		return err
 	}
@@ -716,6 +672,7 @@ type statsBody struct {
 // runStats prints the aggregates over the filtered rows.
 func runStats(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := newFlagSet("stats")
+	mf := addModeFlags(fs)
 	f := addFilters(fs)
 	by := fs.String("by", "", "comma list of up to three group keys, e.g. project,category")
 	top := fs.Int("top", 0, "how many recurring content hashes: 0-50, server default 10")
@@ -725,7 +682,7 @@ func runStats(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return errFlags("stats", err)
 	}
 	if fs.NArg() != 0 {
-		return errArgs("stats", "stats [filters] [--by a,b] [--top N] [--bucket day|week] [--json]")
+		return errArgs("stats", "stats [filters] [--by a,b] [--top N] [--bucket day|week] [--json] [--local | --server URL]")
 	}
 	q, err := f.query()
 	if err != nil {
@@ -742,7 +699,7 @@ func runStats(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		q.Set("bucket", *bucket)
 	}
 
-	c, err := apiClient(os.Getenv, stderr)
+	c, err := apiClient(os.Getenv, *mf, stderr)
 	if err != nil {
 		return err
 	}

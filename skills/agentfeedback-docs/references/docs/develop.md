@@ -6,12 +6,13 @@ How to change the service and the skills, verify, and release. Read
 ## Layout
 
 ```
-cmd/agentfeedback/              main: bare invocation prints help; server `serve` (internal/api; key from API_KEY or API_KEY_FILE), `serve --init` (api-key and serve.env), `server install --systemd|--launchd|--compose` (writes one service file, starts nothing), `import [--dry-run] <export.ndjson>` (restore keeping ids), `backup <dest.db>`; client `doctor`, `doctor --init`, `doctor --e2e` (submit, list, mark one install-check row, no spool), `submit` (friction|review|<kind>, --stdin, --dry-run), `flush`, `version`, `schema`, `skill` (render, render docs, reminder), `install` and `uninstall` (wire the skill, Stop hook or MCP entry into the coding-agent harnesses through internal/harness), `flush --hook`, read and processing `list`, `get`, `stats`, `done`, `undo`, `redact`, `rekind`, `export` (streamed, trailer verified), `digest`, `migrate` (to cloud or a URL through its import route, target key from stdin), settings resolved flag > AGENT_FEEDBACK_* env > config.toml (API key: env > config only); coverage.toml maps every OpenAPI operation, parameter and body property to a command, flag or argument, or lists it with a reason (checked by coverage_test.go)
+cmd/agentfeedback/              main: bare invocation prints help; server `serve` (internal/api; key from API_KEY or API_KEY_FILE), `serve --init` (api-key and serve.env), `server install --systemd|--launchd|--compose` (writes one service file, starts nothing), `import [--dry-run] <export.ndjson>` (restore keeping ids), `backup <dest.db>`; client `doctor`, `doctor --init`, `doctor --e2e` (submit, list, mark one install-check row, no spool), `submit` (friction|review|<kind>, --stdin, --dry-run), `flush`, `version`, `schema`, `skill` (render, render docs, reminder), `install` and `uninstall` (wire the skill, Stop hook or MCP entry into the coding-agent harnesses through internal/harness), `flush --hook`, read and processing `list`, `get`, `stats`, `done`, `undo`, `redact`, `rekind`, `export` (streamed, trailer verified), `digest`, `migrate` (to cloud or a URL through its import route, target key from stdin), settings resolved flag > AGENT_FEEDBACK_* env > config.toml (API key: env > config only); no url configured means local mode: the same commands over the API handler in-process on the data-directory database (internal/localmode), `--local` and `--server URL` override per invocation; coverage.toml maps every OpenAPI operation, parameter and body property to a command, flag or argument, or lists it with a reason (checked by coverage_test.go)
 internal/api/                   v1 HTTP transport over internal/core: mux, middleware, query grammar, Problem mapping, bundled openapi.json, /mcp (key, body limit, Error shape around internal/mcp), /skill and discovery; conformance test against docs/openapi.yaml
 internal/mcp/                   remote MCP server over internal/core (go-sdk, stateless Streamable HTTP): six tools answering with the REST bodies, strict argument decoding, the /mcp/{project} preset, server instructions from internal/skillgen; mounted by internal/api; coverage.toml maps every OpenAPI operation, parameter and body property to a tool and argument, or lists it with a reason (checked by coverage_test.go)
 internal/core/                  v1 service, no net/http: create with identity and dedupe, get, list, marks, redaction, stats, export, import and restore of format 2, meta; typed problems
 internal/store/                 SQLite for the v1 API: open + pragmas + the application_id stamp, the single init migration, hand-written SQL, query plans pinned by a test
 internal/harness/               harness wiring for install and uninstall: the six adapters, a byte-preserving JSON/JSONC editor, the Codex TOML block, backups, atomic writes and the install.json manifest
+internal/localmode/              the local-mode target: the v1 API handler in-process over a core.Service on the data-directory database, served to pkg/client through its transport seam; no MCP, metrics or health routes
 internal/skillgen/               skill generator: source/ (skill.json plus one Markdown fragment per teaching point) rendered into skill-md, agents-md, cursor, prompt and mcp; source/docs.json and the reference files rendered into the docs skill; source/plugin.json rendered into the agent-plugin bundle and the marketplace root; `skill render`
 pkg/schema/                     v1 schema engine: embedded schemas compiled at init, the x- keywords, guide validation, the text and date-time rules
 pkg/envelope/                   v1 decoder: token-stream parse (spellings, duplicates, UTF-8 repair), inference table, normalisation order, guide and recommended checks; the content_hash member set
@@ -57,6 +58,7 @@ just test           # go test -race -count=1 ./...  (SQLite on temp files; no se
 just fuzz           # go test -fuzz=FuzzDecode -fuzztime=30s ./pkg/envelope: the decoder on top of its seed corpus (every fixture body)
 just skills         # regenerate the checked-in skill renders: skills/agentfeedback/SKILL.md from internal/skillgen/source, skills/agentfeedback-docs/ from the reference files, the plugin bundle and both marketplace manifests
 just e2e            # live contract suite against a fresh `serve` on a temporary database (scripts/gate-e2e.sh, port 18080, E2E_ADDR overrides)
+just e2e-local      # the client commands in local mode against a temporary data directory, no server process (scripts/gate-local.sh)
 just run-local      # serve on 127.0.0.1:8090 with a database in ./local/
 just playbooks <tag> [github|tree|<release-dir>]  # both install playbooks in a clean Linux container (Docker, privileged for systemd); `just release` runs it
 just docker-build                             # the image from source, tagged agentfeedback (the published image comes from the release step)
@@ -185,16 +187,19 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
    `scripts/e2e.sh`, which also fails on an uncovered operation), and
    `cmd/agentfeedback/coverage.toml` and `internal/mcp/coverage.toml`
    updated (`just test` fails otherwise).
-7. Skill scripts or triage playbooks touched: the shellcheck command above,
+7. Client commands or the local target touched: `just e2e-local` green (the
+   client commands in local mode against a temporary data directory, no
+   server process).
+8. Skill scripts or triage playbooks touched: the shellcheck command above,
    `bash tests/skill/run-tests.sh`, `python3 tests/skill/test_cluster.py` and
    `python3 tests/skill/triage-playbooks.py` all green.
-8. `shellcheck -x scripts/*.sh` clean.
-9. Docs touched: every relative link resolves.
-10. Contract files touched (`schemas/`, `docs/openapi.yaml`, `conformance/`):
+9. `shellcheck -x scripts/*.sh` clean.
+10. Docs touched: every relative link resolves.
+11. Contract files touched (`schemas/`, `docs/openapi.yaml`, `conformance/`):
     `just contract` green. It also validates the plugin manifest and the
     rendered mcp.json against the vendored Agent Plugins 1.0.0 schemas
     (`internal/skillgen/testdata/agent-plugins/`).
-11. Playbooks or the extractor touched: `python3 tests/playbooks/test_playbooks.py`
+12. Playbooks or the extractor touched: `python3 tests/playbooks/test_playbooks.py`
     and `python3 scripts/playbooks.py check` green. A change to a playbook
     command, the CLI or `install.sh` also runs the playbook gate,
     `just playbooks <tag> tree` (any release tag, built from the working
@@ -208,7 +213,7 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
     them. `just release` runs it against the local build before the tag
     is pushed; `just playbooks <tag>` checks a published release.
 
-`just ci` runs items 1 to 10 and the static half of item 11 in order and fails if `just check` rewrote a
+`just ci` runs items 1 to 11 and the static half of item 12 in order and fails if `just check` rewrote a
 file. There is no hosted CI: `just ci` green on the tree that is merged is the
 merge gate, and the image is built and published by the release step
 ([releases.md](releases.md)). A change that adds a gate adds it to the `ci`

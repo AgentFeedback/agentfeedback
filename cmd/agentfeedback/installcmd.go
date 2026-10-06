@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	installSynopsis   = "install [all|<harness>...] [--server cloud|URL] [--mcp] [--with-reminder] [--docs] [--dry-run] [--list] [--json]"
+	installSynopsis   = "install [all|<harness>...] [--server local|cloud|URL] [--mcp] [--with-reminder] [--docs] [--dry-run] [--list] [--json]"
 	uninstallSynopsis = "uninstall all|<harness>... [--dry-run] [--json]"
 )
 
@@ -114,7 +114,7 @@ func installErr(err error) error {
 // runInstall wires the harnesses, or with no harness named lists them.
 func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	fs := newFlagSet("install")
-	server := fs.String("server", "", "server the MCP entries point at: cloud or a base URL (default: url in config.toml, then the one recorded at the last install)")
+	server := fs.String("server", "", "local, cloud or a base URL (default: url in config.toml, then the one recorded at the last install, then a prompt, then local); the MCP entries point at it")
 	mcp := fs.Bool("mcp", false, "add an MCP entry instead of the skill and the Stop hook")
 	docs := fs.Bool("docs", false, "also install the agentfeedback-docs skill (reference docs for integrators and operators)")
 	reminder := fs.Bool("with-reminder", false, "also add a session-start hook that prints a one-line reminder, where the harness supports one")
@@ -185,6 +185,9 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 		return printInstallOutcome(stdout, installOutcome{}, err)
 	}
 	mode := harness.ModeCLI
+	if *mcp && srv == serverLocal {
+		return printInstallOutcome(stdout, installOutcome{}, errInstallMCPLocal())
+	}
 	if *mcp {
 		mode = harness.ModeMCP
 		if os.Getenv(envAPIKey) == "" {
@@ -216,7 +219,7 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 			}
 		}
 	}
-	if !configExists {
+	if !configExists && srv != serverLocal {
 		out.Next = append(out.Next, `printf '%s' "$KEY" | agentfeedback doctor --init --url `+srv+` --key-from-stdin`)
 	}
 	report(stderr, "install", out, res.Commands, *dryRun)
@@ -373,7 +376,8 @@ func listHarnesses(env harness.Env, asJSON bool, stdout io.Writer) error {
 }
 
 // resolveInstallServer picks the server: --server, then config.toml's url,
-// then the one the manifest records, then a prompt on a terminal. A
+// then the one the manifest records, then a prompt on a terminal, then
+// local mode ("local"; also an empty answer at the prompt). A
 // --server that differs from config.toml's url is refused: install never
 // changes the configured server.
 func resolveInstallServer(getenv func(string) string, env harness.Env, flagValue string, stdin io.Reader, stderr io.Writer) (srv string, configExists bool, err error) {
@@ -385,9 +389,16 @@ func resolveInstallServer(getenv func(string) string, env harness.Env, flagValue
 	if err != nil {
 		return "", configExists, err
 	}
-	var configured string
-	if file.URL != "" {
-		if configured, err = normaliseServer("the url in "+path, file.URL); err != nil {
+	// The configured server is what every command resolves: the environment
+	// over the config file. Install never changes it, and never records
+	// local beside it.
+	var configured, source string
+	if u := resolveClient(flagConfig{}, getenv, file).URL; u.Value != "" {
+		source = "the url in " + path
+		if u.Source == sourceEnv {
+			source = envURL
+		}
+		if configured, err = normaliseServer(source, u.Value); err != nil {
 			return "", configExists, err
 		}
 	}
@@ -396,7 +407,7 @@ func resolveInstallServer(getenv func(string) string, env harness.Env, flagValue
 			return "", configExists, err
 		}
 		if configured != "" && configured != srv {
-			return "", configExists, errInstallServerDiffers(srv, configured, path)
+			return "", configExists, errInstallServerDiffers(srv, configured, source)
 		}
 
 		return srv, configExists, nil
@@ -414,16 +425,16 @@ func resolveInstallServer(getenv func(string) string, env harness.Env, flagValue
 		return srv, configExists, err
 	}
 	if !isTerminal() {
-		return "", configExists, errInstallNoServer()
+		return serverLocal, configExists, nil
 	}
-	fmt.Fprint(stderr, `AgentFeedback server ("cloud" or a URL): `)
+	fmt.Fprint(stderr, `AgentFeedback server ("local", "cloud" or a URL): `)
 	line, err := bufio.NewReader(stdin).ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
 		return "", configExists, errInstallNoServer()
 	}
 	line = strings.TrimSpace(line)
 	if line == "" {
-		return "", configExists, errInstallNoServer()
+		return serverLocal, configExists, nil
 	}
 	srv, err = normaliseServer("the server", line)
 
@@ -434,6 +445,9 @@ func resolveInstallServer(getenv func(string) string, env harness.Env, flagValue
 // skillgen.NormalizeServer, so the URL is safe to show in a shell command;
 // source names where the value came from.
 func normaliseServer(source, raw string) (string, error) {
+	if raw == serverLocal {
+		return serverLocal, nil
+	}
 	if raw == "cloud" {
 		raw = cloudURL
 	}
@@ -444,4 +458,13 @@ func normaliseServer(source, raw string) (string, error) {
 	}
 
 	return out, err
+}
+
+// serverLocal is the server value of local mode: no URL, the data-directory
+// database. The manifest records it as is.
+const serverLocal = "local"
+
+func errInstallMCPLocal() error {
+	return usageErr("the MCP entry needs a server URL; local mode has no HTTP endpoint yet",
+		"run agentfeedback install without --mcp, or pass --server URL")
 }

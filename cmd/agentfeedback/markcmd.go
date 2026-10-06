@@ -105,8 +105,8 @@ func checkBatch(ids []int64, out batchResult) error {
 
 // runMark sends the batch mark for done and undo: the compact API body is
 // the last stdout line, the counts go to stderr, and an id not found exits 1.
-func runMark(name string, m batchMark, stdout, stderr io.Writer) error {
-	c, err := apiClient(os.Getenv, stderr)
+func runMark(name string, m batchMark, mf modeFlags, stdout, stderr io.Writer) error {
+	c, err := apiClient(os.Getenv, mf, stderr)
 	if err != nil {
 		return err
 	}
@@ -125,11 +125,12 @@ func runMark(name string, m batchMark, stdout, stderr io.Writer) error {
 	return nil
 }
 
-const doneSynopsis = "done <id>... --verdict V [--resolution R] [--ref REF] [--processed-by P]"
+const doneSynopsis = "done <id>... --verdict V [--resolution R] [--ref REF] [--processed-by P] [--local | --server URL]"
 
 // runDone marks submissions processed.
 func runDone(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := newFlagSet("done")
+	mf := addModeFlags(fs)
 	verdict := fs.String("verdict", "", "fixed, invalid, duplicate, wont_fix, deferred, upstream or unverifiable (required)")
 	resolution := fs.String("resolution", "", "what was done")
 	ref := fs.String("ref", "", "a commit, URL, or the uid of another submission")
@@ -163,18 +164,19 @@ func runDone(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	return runMark("done", batchMark{
 		IDs: ids, Processed: true, Verdict: verdict, Resolution: given("resolution", resolution),
 		Ref: given("ref", ref), ProcessedBy: given("processed-by", processedBy),
-	}, stdout, stderr)
+	}, *mf, stdout, stderr)
 }
 
 // runUndo clears the processing mark of submissions.
 func runUndo(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := newFlagSet("undo")
+	mf := addModeFlags(fs)
 	pos, err := parseInterleaved(fs, args, stderr)
 	if err != nil {
 		return errFlags("undo", err)
 	}
 	if len(pos) == 0 {
-		return errArgs("undo", "undo <id>...")
+		return errArgs("undo", "undo <id>... [--local | --server URL]")
 	}
 	ids, err := parseIDs(pos)
 	if err != nil {
@@ -184,25 +186,26 @@ func runUndo(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	return runMark("undo", batchMark{IDs: ids, Processed: false}, stdout, stderr)
+	return runMark("undo", batchMark{IDs: ids, Processed: false}, *mf, stdout, stderr)
 }
 
 // runRedact replaces a submission with its tombstone.
 func runRedact(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := newFlagSet("redact")
+	mf := addModeFlags(fs)
 	pos, err := parseInterleaved(fs, args, stderr)
 	if err != nil {
 		return errFlags("redact", err)
 	}
 	if len(pos) != 1 {
-		return errArgs("redact", "redact <id>")
+		return errArgs("redact", "redact <id> [--local | --server URL]")
 	}
 	ids, err := parseIDs(pos)
 	if err != nil {
 		return err
 	}
 
-	c, err := apiClient(os.Getenv, stderr)
+	c, err := apiClient(os.Getenv, *mf, stderr)
 	if err != nil {
 		return err
 	}
@@ -235,12 +238,13 @@ type rekindBody struct {
 // original a duplicate of the new row. The last stdout line is the outcome.
 func runRekind(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := newFlagSet("rekind")
+	mf := addModeFlags(fs)
 	pos, err := parseInterleaved(fs, args, stderr)
 	if err != nil {
 		return errFlags("rekind", err)
 	}
 	if len(pos) != 2 {
-		return errArgs("rekind", "rekind <id> <kind>")
+		return errArgs("rekind", "rekind <id> <kind> [--local | --server URL]")
 	}
 	ids, err := parseIDs(pos[:1])
 	if err != nil {
@@ -252,7 +256,7 @@ func runRekind(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return errRekindKind(pos[1])
 	}
 
-	c, err := apiClient(os.Getenv, stderr)
+	c, err := apiClient(os.Getenv, *mf, stderr)
 	if err != nil {
 		return err
 	}

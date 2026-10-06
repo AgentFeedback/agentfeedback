@@ -38,6 +38,7 @@ type digestRow struct {
 // already processed exits 2.
 func runDigest(args []string, _ io.Reader, stdout, stderr io.Writer) (err error) {
 	fs := newFlagSet("digest")
+	mf := addModeFlags(fs)
 	out := fs.String("out", "", "write into this new or empty directory (default: a fresh one under the cache dir)")
 	kind := fs.String("kind", "", "only this kind (lifts the default install-check exclusion)")
 	var include multiFlag
@@ -46,7 +47,7 @@ func runDigest(args []string, _ io.Reader, stdout, stderr io.Writer) (err error)
 		return errFlags("digest", err)
 	}
 	if fs.NArg() != 0 {
-		return errArgs("digest", "digest [--out DIR] [--kind K] [--include-kind K]")
+		return errArgs("digest", "digest [--out DIR] [--kind K] [--include-kind K] [--local | --server URL]")
 	}
 	set := visited(fs)
 	q := url.Values{}
@@ -57,7 +58,7 @@ func runDigest(args []string, _ io.Reader, stdout, stderr io.Writer) (err error)
 	}
 	defaultExclusion(q, set["kind"], include)
 
-	c, err := apiClient(os.Getenv, stderr)
+	c, err := apiClient(os.Getenv, *mf, stderr)
 	if err != nil {
 		return err
 	}

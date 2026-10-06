@@ -436,9 +436,8 @@ func TestAPIErrors(t *testing.T) {
 		t.Fatalf("no key %+v", r)
 	}
 	t.Setenv(envURL, "")
-	if r := runCLI(t, "", "export"); r.code != 1 || !strings.Contains(r.stderr, "no server URL is set; set AGENT_FEEDBACK_URL or run agentfeedback doctor --init.") ||
-		strings.Contains(r.stderr, "--url") {
-		t.Fatalf("no url %+v", r)
+	if r := runCLI(t, "", "export"); r.code != 0 {
+		t.Fatalf("no url is local mode %+v", r)
 	}
 }
 

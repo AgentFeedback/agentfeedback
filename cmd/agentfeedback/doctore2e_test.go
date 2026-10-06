@@ -174,9 +174,13 @@ func TestDoctorE2E_NoConfig(t *testing.T) {
 	_, cache := isolate(t)
 	r := runCLI(t, "", "doctor", "--e2e", "--json")
 	steps := e2eLines(t, r.stdout)
-	if r.code != 1 || len(steps) != 1 || steps[0].Step != "submit" || steps[0].Outcome != "error" ||
-		!strings.Contains(steps[0].Message, "no server URL is set") {
-		t.Fatalf("%+v", r)
+	if r.code != 0 || len(steps) == 0 {
+		t.Fatalf("local mode %+v", r)
+	}
+	for _, s := range steps {
+		if s.Outcome != "ok" {
+			t.Fatalf("local mode %+v", r)
+		}
 	}
 	if _, err := os.Stat(cache); !os.IsNotExist(err) {
 		t.Fatalf("the check wrote to the cache: %v", err)

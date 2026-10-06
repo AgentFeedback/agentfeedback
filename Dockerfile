@@ -47,6 +47,8 @@ USER 10001:10001
 WORKDIR /data
 VOLUME /data
 ENV DATABASE_PATH=/data/agentfeedback.db
+# The binary's own default is loopback; the container listens on its interface so the published port reaches it.
+ENV HTTP_LISTEN_ADDR=0.0.0.0:8080
 
 EXPOSE 8080
 ENTRYPOINT ["/opt/agentfeedback"]
