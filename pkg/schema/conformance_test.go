@@ -267,7 +267,8 @@ func TestConformanceKindSchemaGuides(t *testing.T) {
 		t.Run(f.name, func(t *testing.T) {
 			got := keys(Validate(Token(kind), version, payload, nil))
 			var want []string
-			for _, w := range f.expected["warnings"].([]any) {
+			warnings, _ := f.expected["warnings"].([]any) // optional in expected.json (conformance/README.md)
+			for _, w := range warnings {
 				m := w.(map[string]any)
 				code, pointer := m["code"].(string), m["pointer"].(string)
 				// The guide's share: payload pointers, plus the two lookup codes.

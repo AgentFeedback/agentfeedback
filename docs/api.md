@@ -23,6 +23,7 @@ Contents:
 6. [Idempotency and duplicates](#idempotency-and-duplicates)
 7. [Operational endpoints](#operational-endpoints)
 8. [Changes since API 1.0](#changes-since-api-10)
+9. [Evolution policy](#evolution-policy) and [version axes](#version-axes) of the v1 contract
 
 ## Base URL, auth, common rules
 
@@ -386,3 +387,47 @@ type and omission behaviour. Additions:
 - Unmatched routes and wrong methods under `/api/v1/` return the JSON error
   shape (`not_found`, `method_not_allowed`) instead of plain text.
 - `GET /ready` also checks the schema version.
+
+## Evolution policy
+
+Applies to the v1 contract of the next major release:
+[openapi.yaml](openapi.yaml), the schemas under `schemas/` and the
+conformance kit under `conformance/`. Producers and consumers can rely on it.
+
+- Additive changes never bump a kind's `schema_version`: a new optional
+  payload member, a new `context` key, a new documented value of an existing
+  member. `friction` `evidence[]` and the `context` keys `origin`, `detector`
+  and `session_harness` were added this way to version 1.
+- A `schema_version` bump means a member changed meaning or shape. The new
+  version is a new schema file beside the old one; a server that does not
+  ship a version stores its payload unvalidated with an
+  `unknown_schema_version` warning.
+- Unknown fields are stored, never rejected: an unknown payload member of a
+  kind the server ships a schema for is kept with an `unknown_field` warning
+  (a kind without one is stored unvalidated with `no_schema`), an unknown
+  top-level member is moved into `payload`, an unknown `context` key is kept
+  as sent.
+- `context` stays a flat map of strings (32 entries, values up to 2000
+  bytes) about how and where a submission came to be. Structured content
+  goes in `payload`. `context` is not part of `content_hash`, so a new key
+  leaves a submission's identity unchanged while the context stays within 32
+  entries; entries beyond the first 32 move into `payload.context_overflow`,
+  which is part of identity.
+- A documented vocabulary in a `context` value (`origin`: `agent`,
+  `hook-nudge`, `session-scan`, `inbox`, `import`) is not enforced: another
+  value is stored as sent, without a warning.
+
+## Version axes
+
+The values below are those of the v1 contract of the next major release. The
+v3 service the rest of this page describes answers API 1.1 and export format
+1. Each axis moves on its own; none implies another.
+
+| Axis | Current | Where it is read | Changes when |
+|---|---|---|---|
+| API | `1.0` | `info.version` in [openapi.yaml](openapi.yaml); `api_version` in `GET /api/v1/meta` | a route, parameter or response member is added (minor) or changed (major) |
+| Envelope | v1 | `$id` of `schemas/envelope.v1.json` | the envelope's members change meaning; additions stay v1 |
+| Kind payload | `schema_version` per kind, `1` for `friction` and `review` | the submission's `schema_version`; `kinds` in `GET /api/v1/meta` | a payload member changes meaning or shape (see [Evolution policy](#evolution-policy)) |
+| Export format | `2` | `export_format` in the export header line and in `GET /api/v1/meta` | the NDJSON export lines change shape |
+| Binary | the release version, e.g. `4.0.0` | `agentfeedback version`; `service_version` in `GET /api/v1/meta` | every release; `client.min_version` in `GET /api/v1/meta` rises only when a server change breaks older clients |
+| Skills | `metadata.version` in each `SKILL.md` | the skill's front matter | the commands or rules a skill teaches change |

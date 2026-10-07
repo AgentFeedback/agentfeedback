@@ -1,0 +1,6 @@
+{
+  "row": "context.origin outside the documented vocabulary is stored as sent",
+  "status": 201,
+  "note": "The vocabulary is documentation: no warning, no trimming, no normalisation, as for every context value.",
+  "warnings": []
+}

@@ -65,7 +65,10 @@
         "task_id":        { "type": "string", "description": "non-code: the unit of work in the agent's own system" },
         "workflow":       { "type": "string", "description": "non-code: workflow or pipeline name" },
         "occurred_at_raw": { "type": "string", "description": "server-added: the occurred_at text that did not parse" },
-        "rekinded_from":  { "type": "string", "description": "uid of the submission this one re-kinds" }
+        "rekinded_from":  { "type": "string", "description": "uid of the submission this one re-kinds" },
+        "origin":         { "type": "string", "description": "how the submission came to be: agent, hook-nudge, session-scan, inbox, import; another value is stored as sent" },
+        "detector":       { "type": "string", "description": "name and version of the tool that pointed the agent at the friction" },
+        "session_harness": { "type": "string", "description": "harness of the session the submission is about, when that is not the submitting harness" }
       }
     },
     "payload": {
@@ -84,7 +87,7 @@
       "harness": "claude-code",
       "project": "example",
       "occurred_at": "2026-09-27T09:58:12.000000Z",
-      "context": { "git_commit": "a1b2c3d", "session_id": "3f9c1e2a", "client": "agentfeedback/4.0.0" },
+      "context": { "git_commit": "a1b2c3d", "session_id": "3f9c1e2a", "client": "agentfeedback/4.0.0", "origin": "agent" },
       "payload": { "category": "documentation", "details": "Step 3 says --init; the flag was removed in 3.0.", "fix_status": "applied", "fix_ref": "example@a1b2c3d" }
     },
     {

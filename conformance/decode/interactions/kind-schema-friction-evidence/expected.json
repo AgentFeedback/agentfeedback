@@ -1,0 +1,19 @@
+{
+  "row": "friction evidence is a guide: a non-conforming item warns and is stored as sent",
+  "status": 201,
+  "note": "Every evidence member is a string with no format check, so at \"yesterday\" passes; a number where a string belongs and an item that is not an object are type mismatches; an unlisted member is unknown_field.",
+  "warnings": [
+    {
+      "code": "type_mismatch",
+      "pointer": "/payload/evidence/1/count"
+    },
+    {
+      "code": "type_mismatch",
+      "pointer": "/payload/evidence/2"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/evidence/1/extra"
+    }
+  ]
+}

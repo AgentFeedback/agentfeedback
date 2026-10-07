@@ -1,0 +1,1 @@
+{"kind":"friction","summary":"tests failed on a missing fixture","machine":"workstation-a","model":"claude-fable-5-1","payload":{"category":"tooling","details":"d","evidence":[{"tool":"bash","command":"go test ./pkg/store","error":"exit 1","count":"3","at":"2026-10-07T09:58:12Z","span":"s12"},{"tool":"bash","count":3,"at":"yesterday","extra":true},"not an object"]}}

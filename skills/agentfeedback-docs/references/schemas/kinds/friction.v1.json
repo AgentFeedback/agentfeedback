@@ -28,9 +28,26 @@
     },
     "severity": {
       "type": "string", "enum": ["low", "medium", "high"]
+    },
+    "evidence": {
+      "type": "array",
+      "description": "Observed facts behind the report, such as the failing tool calls of a session: one object per fact, every member of it a string.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "tool":    { "type": "string", "description": "tool or command name" },
+          "command": { "type": "string", "description": "the invocation, or a digest of its arguments" },
+          "error":   { "type": "string", "description": "error class or a short excerpt" },
+          "count":   { "type": "string", "description": "how often it happened, as a decimal string" },
+          "at":      { "type": "string", "description": "when it happened; RFC 3339 recommended, not checked" },
+          "span":    { "type": "string", "description": "opaque position in the source, such as a session digest span" }
+        }
+      }
     }
   },
   "examples": [
-    { "category": "documentation", "details": "Step 3 says --init; the flag was removed in 3.0.", "suggested_fix": "Drop the flag from the README.", "fix_status": "applied", "fix_ref": "example@a1b2c3d", "severity": "low" }
+    { "category": "documentation", "details": "Step 3 says --init; the flag was removed in 3.0.", "suggested_fix": "Drop the flag from the README.", "fix_status": "applied", "fix_ref": "example@a1b2c3d", "severity": "low" },
+    { "category": "tooling", "details": "The test command failed three times on the same missing fixture directory.", "evidence": [ { "tool": "bash", "command": "go test ./pkg/store", "error": "exit 1: no such file or directory", "count": "3", "at": "2026-10-07T09:58:12Z", "span": "s12" } ] }
   ]
 }

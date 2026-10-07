@@ -1,0 +1,1 @@
+{"context":{"detector":"agentfeedback-sessions/1"},"kind":"friction","machine":"workstation-a","model":"claude-fable-5-1","payload":{"category":"tooling","details":"d"},"schema_version":1,"summary":"tests failed on a missing fixture"}

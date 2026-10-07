@@ -83,7 +83,7 @@ paths:
                   harness: claude-code
                   project: example
                   occurred_at: '2026-09-27T09:58:12.000000Z'
-                  context: {git_commit: a1b2c3d, client: agentfeedback/4.0.0}
+                  context: {git_commit: a1b2c3d, client: agentfeedback/4.0.0, origin: agent}
                   payload: {category: documentation, details: The --fast flag was removed in 3.0., fix_status: applied, fix_ref: example@a1b2c3d}
                   content_hash: 9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a
                   created_at: '2026-09-27T10:00:01.123456Z'
@@ -215,7 +215,7 @@ paths:
                 harness: claude-code
                 project: example
                 occurred_at: '2026-09-27T09:58:12.000000Z'
-                context: {git_commit: a1b2c3d, client: agentfeedback/4.0.0}
+                context: {git_commit: a1b2c3d, client: agentfeedback/4.0.0, origin: agent}
                 payload: {category: documentation, details: The --fast flag was removed in 3.0., fix_status: applied, fix_ref: example@a1b2c3d}
                 content_hash: 9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a9f3a
                 created_at: '2026-09-27T10:00:01.123456Z'

@@ -46,3 +46,39 @@ func TestContentHashVectors(t *testing.T) {
 		})
 	}
 }
+
+// TestContentHashIgnoresProvenanceContext pins that the context keys naming
+// how a submission came to be never change its identity: the same report
+// filed by an agent, a hook nudge or a session scan replays as one row.
+func TestContentHashIgnoresProvenanceContext(t *testing.T) {
+	t.Parallel()
+	const head = `{"kind":"friction","summary":"s","machine":"m","model":"x","payload":{"category":"tooling","details":"d"}`
+	bodies := []string{
+		head + `}`,
+		head + `,"context":{"origin":"agent"}}`,
+		head + `,"context":{"origin":"session-scan","detector":"agentfeedback-sessions/1","session_harness":"codex"}}`,
+		head + `,"context":{"origin":"hook-nudge","detector":"agentfeedback-hook/2","session_harness":"claude-code"}}`,
+	}
+	var want string
+	for i, body := range bodies {
+		env, _, err := Decode([]byte(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i == 0 {
+			want = env.ContentHash()
+			continue
+		}
+		if got := env.ContentHash(); got != want {
+			t.Errorf("body %d: content hash %s, want %s", i, got, want)
+		}
+	}
+	// evidence[] is payload content, so it is part of identity.
+	env, _, err := Decode([]byte(`{"kind":"friction","summary":"s","machine":"m","model":"x","payload":{"category":"tooling","details":"d","evidence":[{"tool":"bash"}]}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env.ContentHash() == want {
+		t.Error("evidence[] did not change the content hash")
+	}
+}
