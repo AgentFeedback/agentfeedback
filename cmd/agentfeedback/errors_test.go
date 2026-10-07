@@ -134,10 +134,25 @@ var catalogue = map[string]error{
 	"errConfigUnknownKey":         errConfigUnknownKey("/c/config.toml", "collect.deny_path"),
 	"errCollectWarning":           errCollectWarning(`collect.deny_paths: ignoring "rel": not an absolute path or ~/ path`),
 	"errDoctorWorkdir":            errDoctorWorkdir(errors.New("getwd: no such file or directory")),
+	"errInstallHarness":           errInstallHarness("x", []string{"claude-code", "codex"}),
+	"errInstallNoneDetected":      errInstallNoneDetected(),
+	"errInstallNoServer":          errInstallNoServer(),
+	"errInstallBadServer":         errInstallBadServer("--server", "ftp://x", "the scheme is not http or https"),
+	"errInstallBadServerConfig":   errInstallBadServer("the url in /c/config.toml", "ftp://x", "the scheme is not http or https"),
+	"errInstallServerDiffers":     errInstallServerDiffers("https://a.example", "https://b.example", "AGENT_FEEDBACK_URL"),
+	"errPayloadNotObject":         errPayloadNotObject(),
+	"errPublicURL":                errPublicURL(errors.New("no host")),
+	"errSchemaVersionFlag":        errSchemaVersionFlag("x"),
+	"errStdinObject":              errStdinObject("two objects"),
+	"errStdinRead":                errStdinRead(errors.New("closed")),
+	"errSubmitKind":               errSubmitKind("x"),
+	"errSummaryRequired":          errSummaryRequired(),
+	"errWorkdir":                  errWorkdir(errors.New("getwd: no such file or directory")),
 }
 
 var nextVerbs = []string{
 	"run", "export", "pass", "set", "fix", "check", "chmod", "edit", "remove", "upgrade", "use", "start", "retry", "give",
+	"answer", "name", "drop", "pipe",
 }
 
 func TestCatalogue(t *testing.T) {
