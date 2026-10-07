@@ -119,8 +119,8 @@ func installErr(err error) error {
 // runInstall wires the harnesses, or with no harness named lists them.
 func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	fs := newFlagSet("install")
-	server := fs.String("server", "", "local, cloud or a base URL (default: url in config.toml, then the one recorded at the last install, then a prompt, then local); the MCP entries point at it")
-	mcp := fs.Bool("mcp", false, "add an MCP entry instead of the skill and the Stop hook")
+	server := fs.String("server", "", "local, cloud or a base URL (default: url in config.toml, then the one recorded at the last install, then a prompt, then local); a URL MCP entry points at it")
+	mcp := fs.Bool("mcp", false, "add an MCP entry instead of the skill and the Stop hook: for local, a stdio entry that runs this binary's mcp command; for a server, a URL entry")
 	docs := fs.Bool("docs", false, "also install the agentfeedback-docs skill (reference docs for integrators and operators)")
 	reminder := fs.Bool("with-reminder", false, "also add a session-start hook that prints a one-line reminder, where the harness supports one")
 	dryRun := fs.Bool("dry-run", false, "print what would change and change nothing")
@@ -143,7 +143,9 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 		return printInstallOutcome(stdout, installOutcome{}, err)
 	}
 	if err := checkInstallSupported("install"); err != nil {
-		return printInstallOutcome(stdout, installOutcome{Manual: manualSteps(pos, *server, stderr)}, err)
+		steps, warnings := manualSteps(pos, *server, stderr)
+
+		return printInstallOutcome(stdout, installOutcome{Manual: steps, Warnings: warnings}, err)
 	}
 	env, err := harnessEnv()
 	if err != nil {
@@ -216,10 +218,7 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 	if err != nil {
 		return printInstallOutcome(stdout, installOutcome{}, err)
 	}
-	if *mcp && srv == serverLocal {
-		return printInstallOutcome(stdout, installOutcome{}, errInstallMCPLocal())
-	}
-	if *mcp {
+	if *mcp && srv != serverLocal {
 		if os.Getenv(envAPIKey) == "" {
 			fmt.Fprintf(stderr, "agentfeedback install: warning: %s is not set here; the harnesses read the key from it, so set it in the environment they start from\n", envAPIKey)
 		}
@@ -517,12 +516,7 @@ func normaliseServer(source, raw string) (string, error) {
 
 // serverLocal is the server value of local mode: no URL, the data-directory
 // database. The manifest records it as is.
-const serverLocal = "local"
-
-func errInstallMCPLocal() error {
-	return usageErr("the MCP entry needs a server URL; local mode has no HTTP endpoint yet",
-		"run agentfeedback install without --mcp, or pass --server URL")
-}
+const serverLocal = harness.ServerLocal
 
 // errInstallNoneSupported is install all when every detected harness was
 // left out because it cannot be wired in mode.

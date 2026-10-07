@@ -146,6 +146,9 @@ const submitDescription = "File feedback at the end of a task when something slo
 	"Never include credentials, tokens or private data. Returns the stored submission and any warnings; " +
 	"an identical retry returns the existing row."
 
+// register adds every tool to s. It is the one registration point of both
+// transports: a tool added here is served over Streamable HTTP and stdio
+// alike.
 func (t *tools) register(s *sdk.Server) {
 	preset := t.preset != ""
 	s.AddTool(&sdk.Tool{Name: ToolSubmit, Description: submitDescription,

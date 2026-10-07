@@ -3,8 +3,9 @@
 // database, served to pkg/client through its transport seam. Every command
 // keeps its code and its output; only the transport differs from a server.
 //
-// No MCP, metrics, health or readiness route is mounted: nothing listens and
-// nothing scrapes. The key the client presents never leaves the process, so
+// No /mcp, metrics, health or readiness route is mounted: nothing listens and
+// nothing scrapes. MCPServer builds the stdio MCP server over the same
+// service instead. The key the client presents never leaves the process, so
 // it is a fixed constant: a local write bypasses the server key by
 // construction, for the one OS user who can open the database file.
 package localmode
@@ -20,8 +21,11 @@ import (
 	"slices"
 	"sync"
 
+	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/agentfeedback/agentfeedback/v4/internal/api"
 	"github.com/agentfeedback/agentfeedback/v4/internal/core"
+	"github.com/agentfeedback/agentfeedback/v4/internal/mcp"
 	"github.com/agentfeedback/agentfeedback/v4/internal/store"
 )
 
@@ -36,6 +40,8 @@ var Features = slices.DeleteFunc(slices.Clone(api.Features), func(f string) bool
 // Target is an open local-mode database with its handler.
 type Target struct {
 	db      *store.DB
+	svc     *core.Service
+	version string
 	handler http.Handler
 	path    string
 	wg      sync.WaitGroup
@@ -91,7 +97,17 @@ func Open(ctx context.Context, path, version string, stderr io.Writer) (*Target,
 	svc := core.New(db, core.Config{Version: version, Features: Features})
 	srv := api.New(api.Config{Service: svc, DB: db, APIKey: Key, NoMCP: true, NoMetrics: true, NoHealth: true})
 
-	return &Target{db: db, handler: srv.Handler(), path: path}, nil
+	return &Target{db: db, svc: svc, version: version, handler: srv.Handler(), path: path}, nil
+}
+
+// MCPServer builds the MCP server over the target's service for the stdio
+// transport: the tools of /mcp with no project preset, the generated
+// instructions with the placeholder base and no operator text, and the
+// version Open was given. Every tool call gets its own request id, which a
+// tool error's body carries as over HTTP.
+func (t *Target) MCPServer() (*sdk.Server, error) {
+	return mcp.NewServer(mcp.Config{Service: t.svc, ErrorBody: api.ToolErrorBody, CallContext: api.WithNewRequestID},
+		"", "", t.version)
 }
 
 // Path is the database file.

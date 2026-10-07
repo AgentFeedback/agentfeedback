@@ -12,9 +12,17 @@ import (
 	"github.com/agentfeedback/agentfeedback/v4/internal/harness"
 )
 
+// runMainEnv, set to 1, makes the test binary run as the agentfeedback
+// binary: the tests that need a real process (stdin, stdout, exit status)
+// execute it with the command line as its arguments.
+const runMainEnv = "AGENTFEEDBACK_TEST_RUN_MAIN"
+
 // TestMain keeps the package's tests off the host: no test finds an
 // agentfeedback on PATH unless it stubs pathBinary itself.
 func TestMain(m *testing.M) {
+	if os.Getenv(runMainEnv) == "1" {
+		main()
+	}
 	pathBinary = func() (string, bool) { return "", false }
 	os.Exit(m.Run())
 }

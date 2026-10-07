@@ -23,6 +23,7 @@ fi
 KEY="$1"
 BASE="${2:-http://127.0.0.1:8090}"
 OPENAPI="$(dirname "${BASH_SOURCE[0]}")/../docs/openapi.yaml"
+RECIPE="$(dirname "${BASH_SOURCE[0]}")/../docs/recipes/http-curl.md"
 RUN="e2e-$(date +%Y%m%d%H%M%S)-$$-$RANDOM"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
@@ -353,6 +354,40 @@ s=$(req postMcpProject "${MCPH[@]}" -d "$pcall" "$BASE/mcp/p")
 chk "POST /mcp/{project} without key -> 401" 401 "$s" "$(problem unauthorized)"
 s=$(req postMcpProject "${A[@]}" "${MCPH[@]}" -d "$pcall" "$BASE/mcp/%20")
 chk "POST /mcp/{project} empty once normalised -> 400" 400 "$s" "$(problem validation_error)"
+
+# --- the generated curl recipe ------------------------------------------------
+# Every ```bash block of docs/recipes/http-curl.md runs as written, with the
+# URL and key placeholders turned into variable references set only in the
+# block's environment, so neither is pasted into the source. These calls
+# bypass req; their operations are covered above.
+recipes=0
+url_ref="\${AF_RECIPE_URL}"; key_ref="\${AF_RECIPE_KEY}"
+if [ -f "$RECIPE" ]; then
+  n=0; inblock=0; : >"$TMP/recipe.0"
+  while IFS= read -r l; do
+    if [ "$inblock" = 0 ] && [ "$l" = '```bash' ]; then
+      inblock=1; n=$((n+1)); : >"$TMP/recipe.$n"
+    elif [ "$inblock" = 1 ] && [ "$l" = '```' ]; then
+      inblock=0
+    elif [ "$inblock" = 1 ]; then
+      l=${l//<server URL>/$url_ref}; l=${l//<API key>/$key_ref}; l=${l//<your model id>/e2e-recipe-$RUN}
+      printf '%s\n' "$l" >>"$TMP/recipe.$n"
+    fi
+  done <"$RECIPE"
+  recipes=$n
+fi
+ok "docs/recipes/http-curl.md exists and has a bash block" "$( [ "$recipes" -gt 0 ] && echo 1 || echo 0)"
+for ((i = 1; i <= recipes; i++)); do
+  rc=0; out=$(AF_RECIPE_URL=$BASE AF_RECIPE_KEY=$KEY bash "$TMP/recipe.$i" 2>&1) || rc=$?
+  if grep -q '/api/v1/submissions' "$TMP/recipe.$i"; then
+    printf '%s' "$out" >"$TMP/recipe.out"
+    ok "recipe $i (submit) -> a stored friction" "$( [ "$rc" = 0 ] && j -f "$TMP/recipe.out" '(.submission.id|type)=="number" and .submission.kind=="friction"' || echo 0)"
+  elif grep -q '/api/v1/meta' "$TMP/recipe.$i"; then
+    ok "recipe $i (meta) -> 200" "$( [ "$rc" = 0 ] && is "$out" 200 || echo 0)"
+  else
+    ok "recipe $i runs" "$( [ "$rc" = 0 ] && [ -n "$out" ] && echo 1 || echo 0)"
+  fi
+done
 
 # --- coverage of docs/openapi.yaml --------------------------------------------
 echo

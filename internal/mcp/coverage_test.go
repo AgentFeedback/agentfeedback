@@ -17,10 +17,15 @@ import (
 	"github.com/agentfeedback/agentfeedback/v4/internal/mcp"
 )
 
-// coverageFile is coverage.toml: one entry per OpenAPI operation.
+// coverageFile is coverage.toml: the transports that serve the tools, and
+// one entry per OpenAPI operation.
 type coverageFile struct {
+	Transports map[string]string      `toml:"transports"`
 	Operations map[string]*opCoverage `toml:"operations"`
 }
+
+// transports are the keys of coverage.toml's [transports] table.
+var transports = []string{"http", "stdio"}
 
 // opCoverage is one operation: the tool that calls it or the reason none
 // does, and an entry per parameter and body property.
@@ -220,6 +225,29 @@ func TestCoverage_ToolsAndArgumentsExist(t *testing.T) {
 		if _, ok := preset[name]["project"]; ok {
 			t.Errorf("%s takes project on /mcp/{project}", name)
 		}
+	}
+}
+
+// TestCoverage_TransportsServeTheSameTools: coverage.toml lists exactly the
+// transports, and tools/list over the stdio construction equals tools/list
+// over /mcp.
+func TestCoverage_TransportsServeTheSameTools(t *testing.T) {
+	cov := loadCoverage(t)
+	var keys []string
+	for k, v := range cov.Transports {
+		keys = append(keys, k)
+		if strings.TrimSpace(v) == "" {
+			t.Errorf("transport %s: empty description", k)
+		}
+	}
+	sort.Strings(keys)
+	if !slices.Equal(keys, transports) {
+		t.Fatalf("coverage.toml transports %v, want %v", keys, transports)
+	}
+	e := newEnv(t, api.Config{})
+	httpTools := toolsJSON(t, e.connect(t, "/mcp", ""))
+	if stdio := toolsJSON(t, connectStdio(t)); stdio != httpTools {
+		t.Fatalf("tools/list over stdio differs from /mcp:\nstdio: %s\nhttp:  %s", stdio, httpTools)
 	}
 }
 

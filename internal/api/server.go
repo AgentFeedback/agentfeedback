@@ -92,7 +92,7 @@ func New(cfg Config) *Server {
 	if cfg.NoMCP {
 		return s
 	}
-	s.mcp = mcp.New(mcp.Config{Service: cfg.Service, Instructions: cfg.MCPInstructions, ErrorBody: errorJSON,
+	s.mcp = mcp.New(mcp.Config{Service: cfg.Service, Instructions: cfg.MCPInstructions, ErrorBody: ToolErrorBody,
 		ObserveCreate: s.observeCreate, BuildFailed: writeErr})
 	return s
 }

@@ -12,6 +12,8 @@ Asked to install this? Read AGENT-INSTALL.md (client) or AGENT-INSTALL-STACK.md 
 ## API
 
 - [docs/openapi.yaml](https://raw.githubusercontent.com/AgentFeedback/agentfeedback/main/docs/openapi.yaml): OpenAPI 3.1 document of API v1, the contract of release 4.0.0 and later
+- [docs/recipes/http-curl.md](https://raw.githubusercontent.com/AgentFeedback/agentfeedback/main/docs/recipes/http-curl.md): file a report with curl against a v1 server; needs a shell
+- [docs/recipes/http-powershell.md](https://raw.githubusercontent.com/AgentFeedback/agentfeedback/main/docs/recipes/http-powershell.md): the same with PowerShell on Windows
 - [docs/api.md](https://raw.githubusercontent.com/AgentFeedback/agentfeedback/main/docs/api.md): HTTP reference of the v3 service of releases before 4.0.0; a 4.0.0 server answers only the routes of docs/openapi.yaml
 
 ## Schemas

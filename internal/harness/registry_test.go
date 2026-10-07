@@ -50,6 +50,9 @@ func TestRegistry_Complete(t *testing.T) {
 		if a.MCP.URLShape == "" && a.MCP.NoMCP == "" {
 			bad("no MCP entry and no reason")
 		}
+		if (a.MCP.StdioShape == "") != (a.MCP.URLShape == "") {
+			bad("a URL entry without a stdio entry, or the reverse")
+		}
 		if a.Sessions.Reader == "" || (a.Sessions.Reader == "none" && a.Sessions.NoReader == "") {
 			bad("no session reader and no reason")
 		}
@@ -203,12 +206,16 @@ func TestRegistry_AgreesWithWiring(t *testing.T) {
 		if a.MCP.File != nil {
 			mcpFile = a.MCP.File(e)
 		}
-		for _, mode := range []string{ModeCLI, ModeMCP} {
+		for _, mode := range []string{ModeCLI, ModeMCP, ModeMCP + "/" + ServerLocal} {
+			mode, server, _ := strings.Cut(mode, "/")
+			if server == "" {
+				server = "https://x.test"
+			}
 			if ok, _ := Supports(a.Name, mode); !ok {
 				continue
 			}
 			p := newPlan(e, newManifest())
-			d, err := p.desired(a.Name, Options{Mode: mode, Reminder: true, Docs: true, Server: "https://x.test", Binary: "/bin/af"})
+			d, err := p.desired(a.Name, Options{Mode: mode, Reminder: true, Docs: true, Server: server, Binary: "/bin/af"})
 			if err != nil {
 				t.Fatalf("%s/%s: %v", a.Name, mode, err)
 			}

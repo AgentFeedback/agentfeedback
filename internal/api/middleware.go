@@ -89,15 +89,27 @@ func validRequestID(id string) bool {
 	return true
 }
 
+// newRequestID is a generated request id: 16 random bytes in hex.
+func newRequestID() string {
+	var buf [16]byte
+	_, _ = rand.Read(buf[:])
+	return hex.EncodeToString(buf[:])
+}
+
+// WithNewRequestID attaches a generated request id to ctx, for a call that
+// does not pass through the HTTP middleware (a stdio MCP tool call), so its
+// Error body and log lines carry one as an HTTP request's do.
+func WithNewRequestID(ctx context.Context) context.Context {
+	return ctxWithRequestID(ctx, newRequestID())
+}
+
 // requestID echoes a well-formed caller X-Request-Id or generates one, so a
 // client retry can be correlated with the server's log lines.
 func requestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := r.Header.Get("X-Request-Id")
 		if !validRequestID(id) {
-			var buf [16]byte
-			_, _ = rand.Read(buf[:])
-			id = hex.EncodeToString(buf[:])
+			id = newRequestID()
 		}
 		w.Header().Set("X-Request-Id", id)
 		next.ServeHTTP(w, r.WithContext(ctxWithRequestID(r.Context(), id)))

@@ -15,6 +15,12 @@
 #     <name> = { reason = "..." }           not set by the tool, and why
 # Operations listed with a reason still list their parameters and body.
 
+# The transports that serve the tools; coverage_test.go checks that every one
+# registers the same tools.
+[transports]
+http = "POST /mcp and POST /mcp/{project}, mounted by internal/api"
+stdio = "agentfeedback mcp, on the local database (internal/localmode)"
+
 [operations.createSubmission]
 tool = "submit_feedback"
 

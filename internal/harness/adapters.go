@@ -294,6 +294,13 @@ type Options struct {
 	Binary string
 }
 
+// ServerLocal is the Server of the local target: no URL, the data-directory
+// database. Its MCP entry is a stdio entry running Binary's mcp command.
+const ServerLocal = "local"
+
+// stdio reports whether the MCP entry for o is a stdio entry.
+func (o Options) stdio() bool { return o.Server == ServerLocal }
+
 // desired computes the items for name; files are read through p so the
 // choice of an OpenCode config file sees the planned state.
 func (p *plan) desired(name string, o Options) (desire, error) {
@@ -362,11 +369,12 @@ func (p *plan) wiring(name string, o Options) (desire, error) {
 }
 
 // ManualMCP is the MCP entry install --mcp would add for the harness against
-// server, for wiring it by hand; it writes nothing. The OpenCode config file
-// is chosen from what is on disk.
-func (e Env) ManualMCP(name, server string) (Item, error) {
+// server (a stdio entry running binary for ServerLocal), for wiring it by
+// hand; it writes nothing. The OpenCode config file is chosen from what is
+// on disk.
+func (e Env) ManualMCP(name, server, binary string) (Item, error) {
 	p := newPlan(e, newManifest())
-	d, err := p.wiring(name, Options{Mode: ModeMCP, Server: server})
+	d, err := p.wiring(name, Options{Mode: ModeMCP, Server: server, Binary: binary})
 	if err != nil {
 		return Item{}, err
 	}

@@ -13,8 +13,8 @@ import (
 )
 
 // manualStep is how to wire one harness by hand where install cannot run:
-// the skill file and the command that writes it, the MCP entry when a server
-// URL is configured, and the command whose output goes into the harness's
+// the skill file and the command that writes it, the MCP entry (a stdio
+// entry running this binary for local, else a URL entry), and the command whose output goes into the harness's
 // instruction file.
 type manualStep struct {
 	Harness   string `json:"harness"`
@@ -44,11 +44,12 @@ const ruleNote = "paste the output of the rule command into the harness's instru
 
 // manualSteps computes the wiring by hand of the named harnesses, or of the
 // detected ones when none (or all) is named, and prints it on stderr. The
-// server is resolved without a prompt; nothing is written.
-func manualSteps(pos []string, serverFlag string, stderr io.Writer) []manualStep {
+// server is resolved without a prompt; nothing is written. warnings are
+// those of the binary a stdio entry runs, when a step carries one.
+func manualSteps(pos []string, serverFlag string, stderr io.Writer) (steps []manualStep, warnings []string) {
 	env, err := harnessEnv()
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 	names := pos
 	if len(pos) == 0 || slices.Contains(pos, "all") {
@@ -61,7 +62,9 @@ func manualSteps(pos []string, serverFlag string, stderr io.Writer) []manualStep
 	}
 	names = dedupe(names)
 	srv, _, srvErr := installServerNoPrompt(os.Getenv, env, serverFlag)
+	bin, binErr := resolvedExecutable()
 	var out []manualStep
+	stdio := false
 	for _, n := range names {
 		s := manualStep{
 			Harness:     n,
@@ -88,10 +91,13 @@ func manualSteps(pos []string, serverFlag string, stderr io.Writer) []manualStep
 			s.Notes = append(s.Notes, mcpReason)
 		case srvErr != nil:
 			s.Notes = append(s.Notes, "the MCP entry cannot be computed: "+oneLine(srvErr.Error()))
-		case srv == "" || srv == serverLocal:
-			s.Notes = append(s.Notes, "the MCP entry needs a server URL; local mode has none yet")
+		case (srv == "" || srv == serverLocal) && binErr != nil:
+			s.Notes = append(s.Notes, "the MCP entry cannot be computed: "+oneLine(binErr.Error()))
 		default:
-			it, err := env.ManualMCP(n, srv)
+			if srv == "" {
+				srv = serverLocal
+			}
+			it, err := env.ManualMCP(n, srv, bin)
 			if err != nil {
 				s.Notes = append(s.Notes, "the MCP entry cannot be computed: "+oneLine(err.Error()))
 
@@ -102,13 +108,35 @@ func manualSteps(pos []string, serverFlag string, stderr io.Writer) []manualStep
 				m.Command = harness.ClaudeCommand(it.Args)
 			}
 			s.MCP = m
+			stdio = stdio || srv == serverLocal
 		}
 		s.Notes = append(s.Notes, ruleNote)
 		out = append(out, s)
 	}
 	printManualSteps(stderr, out)
+	if stdio {
+		warnings = pathWarnings(bin)
+	}
+	for _, w := range warnings {
+		fmt.Fprintf(stderr, "agentfeedback install: warning: %s\n", w)
+	}
 
-	return out
+	return out, warnings
+}
+
+// resolvedExecutable is the running binary with symlinks resolved; unlike
+// binaryPath it accepts any path, since a Windows path has a drive letter
+// and backslashes and the entry quotes it as a JSON or TOML string.
+func resolvedExecutable() (string, error) {
+	exe, err := executable()
+	if err == nil {
+		exe, err = filepath.EvalSymlinks(exe)
+	}
+	if err != nil {
+		return "", errServerBinary(err)
+	}
+
+	return exe, nil
 }
 
 // psQuote is s as a PowerShell literal string: single-quoted, with each

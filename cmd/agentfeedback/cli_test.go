@@ -991,7 +991,7 @@ func TestSkillRender(t *testing.T) {
 		{[]string{"skill", "list"}, `unknown skill subcommand "list"`},
 		{[]string{"skill", "render"}, "wrong number of arguments for skill"},
 		{[]string{"skill", "render", "prompt", "mcp"}, "wrong number of arguments for skill"},
-		{[]string{"skill", "render", "pdf"}, `no skill form "pdf"; the forms are skill-md, agents-md, cursor, prompt, mcp, docs, agent-plugin, marketplace`},
+		{[]string{"skill", "render", "pdf"}, `no skill form "pdf"; the forms are skill-md, agents-md, cursor, prompt, prompt-powershell, mcp, docs, agent-plugin, marketplace`},
 		{[]string{"skill", "render", "docs"}, "skill render docs writes a directory and needs --out"},
 		{[]string{"skill", "render", "docs", "--out", "x", "--server", "https://feedback.example.com"}, "--server does not apply to skill render docs"},
 		{[]string{"skill", "render", "skill-md", "--out", "x"}, "--out only applies to skill render docs, agent-plugin and marketplace"},

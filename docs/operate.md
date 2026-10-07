@@ -208,7 +208,7 @@ On every machine whose coding agents should file feedback, with the
 agentfeedback install                            # list the harnesses: detected, mode, skill, mcp, hook, reminder, docs; changes nothing (also --list, --json)
 agentfeedback install all                        # every detected harness: the skill, and a Stop hook where the harness has one
 agentfeedback install claude-code codex --with-reminder   # also a session-start hook printing agentfeedback skill reminder
-agentfeedback install opencode --mcp             # an MCP entry instead of the skill and the hook
+agentfeedback install opencode --mcp             # an MCP entry instead of the skill and the hook: stdio (agentfeedback mcp) for local, a URL for a server
 agentfeedback install claude-code --docs         # also the agentfeedback-docs skill: the reference docs, schemas and OpenAPI document for integrators and operators
 agentfeedback install all --dry-run              # print every file that would change, change nothing
 agentfeedback uninstall all                      # remove exactly what install added
@@ -227,8 +227,9 @@ server, `--with-reminder` or `--docs` replaces what the previous run added.
 The list (`--list`, or no harness named) shows, per harness wired with the
 skill and hook, the binary its hook runs and that binary's version
 (`binary`, `binary_version`; `missing` when the file is gone, `unknown` when
-it does not answer `version --json`); an MCP entry points at a URL and shows
-none. `install` warns on stderr and in the outcome's `warnings` when the
+it does not answer `version --json`). An MCP entry reads `stdio` or `url` in
+the `mcp` column; a stdio entry shows the binary it runs, a URL entry none.
+`install` warns on stderr and in the outcome's `warnings` when the
 binary it wires is not the `agentfeedback` on `PATH`, or none is on `PATH`:
 agents run the one on `PATH` and hooks the one wired, and the newer of two
 binaries makes the older one fail on the local database (see
@@ -238,7 +239,7 @@ On Windows `install` and `uninstall` refuse (exit 2). `install` (`--list`
 included) prints the manual steps for each detected harness, or each named
 one, on stderr and in the outcome's `manual` list: the skill path and a
 PowerShell command that writes it (`agentfeedback skill render skill-md`, as
-UTF-8; none for `vscode`, which has no skill path), the MCP entry (file, key and value) when a server URL is configured,
+UTF-8; none for `vscode`, which has no skill path), the MCP entry (file, key and value): the stdio entry for local, the URL entry when a server URL is configured,
 and the instruction-file text (`agentfeedback skill render agents-md`). Hooks
 are not wired on Windows; undo the steps by hand.
 
@@ -271,7 +272,7 @@ are not wired on Windows; undo the steps by hand.
   so `install gemini-cli --mcp` is refused. `install all` leaves such a
   harness out with a note instead of refusing.
 - **MCP header variables.** Antigravity and Cline document no
-  environment-variable syntax for MCP headers. Their entries reference
+  environment-variable syntax for MCP headers. Their URL entries reference
   `${AGENT_FEEDBACK_API_KEY}`, and install notes to check the connection: a
   401 means the reference was not expanded.
 - **The registry.** Install also records, per harness, the instruction
@@ -296,14 +297,18 @@ are not wired on Windows; undo the steps by hand.
   removes it; an edited file in it is refused like an edited skill.
 - **`--mcp`.** The MCP entry replaces the skill and the hook for that
   harness: the server's MCP instructions teach the agent, and nothing is
-  spooled without the CLI. Entries point at `<server>/mcp` and read the key
-  from `AGENT_FEEDBACK_API_KEY` in the harness's environment; install warns
-  when it is not set. `--with-reminder` does not apply with `--mcp`.
+  spooled without the CLI. The entry follows the server: for local it is a
+  stdio entry that runs the binary's resolved absolute path with the argument
+  `mcp` (`agentfeedback mcp`, the same tools on the local database, no key);
+  for a server it points at `<server>/mcp` and reads the key from
+  `AGENT_FEEDBACK_API_KEY` in the harness's environment, and install warns
+  when that is not set. Rerun install after moving the binary or changing
+  the server: the entry is replaced. `--with-reminder` does not apply with
+  `--mcp`.
 - **The server.** `--server local|cloud|URL`, else `url` in `config.toml`,
   else the server the last install recorded, else a prompt on a terminal
   (an empty answer means local), else local: with nothing named, install
-  wires the harnesses for local mode and records `local`. `--mcp` needs a
-  URL and is refused for local. A `--server` that differs from
+  wires the harnesses for local mode and records `local`. A `--server` that differs from
   `config.toml` is refused: install never changes the configured server
   (`doctor --init --force` does). Install never writes `config.toml`; when a
   server is named and the file does not exist, `next` holds the
@@ -380,12 +385,14 @@ are not wired on Windows; undo the steps by hand.
 - **Claude Code's MCP entry** is checked against `.claude.json`
   (`~/.claude.json`, or `$CLAUDE_CONFIG_DIR/.claude.json` when the variable
   is set; read only): an entry removed by hand is added again by install
-  and skipped by uninstall; one pointing at another URL is refused by
-  install and left in place by uninstall. When `claude` is missing or
+  and skipped by uninstall; one pointing at another URL, or running another
+  command, is refused by install and left in place by uninstall. When `claude` is missing or
   `claude mcp remove` fails, uninstall goes on and notes the command to run
   by hand:
   `claude mcp remove agentfeedback --scope user`.
-- **Codex** runs a new hook only after you trust it in `/hooks`.
+- **Codex** runs a new hook only after you trust it in `/hooks`. It passes a
+  stdio server only the variables `env_vars` lists, so its stdio entry lists
+  `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, `XDG_CACHE_HOME` and `AGENT_FEEDBACK_URL`.
 - **Cursor** also runs Claude Code's hooks and skills.
 - **Verification status.** The table's Verified column and `install --list`
   show how far each harness was checked: Claude Code by the live harness
@@ -512,7 +519,9 @@ Compose-level variables (`infra/agentfeedback/.env`): `API_KEY`,
   `X-Api-Key: <key>`) and checks it before anything else. Six tools:
   `submit_feedback`, `list_submissions`, `get_submission`, `stats`,
   `mark_processed`, `get_schema`, each answering with the REST body of its
-  route.
+  route. `agentfeedback mcp` serves the same tools over stdio on the local
+  database, with no key; it refuses when a server URL is configured (pass
+  `--local`, or point the harness at `<server>/mcp`).
 - `POST /mcp/{project}`: the same, with `project` preset for the
   connection; `submit_feedback`, `list_submissions` and `stats` then take no
   `project` argument. `get_submission` and `mark_processed` take ids and are

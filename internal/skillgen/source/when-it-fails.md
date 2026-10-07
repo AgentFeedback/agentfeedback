@@ -13,9 +13,24 @@ Call `GET {{server}}/api/v1/meta` with the same headers: `200` means the URL
 and the key work, `401` means the key is wrong, `429` means wait and retry,
 and no answer means the URL is wrong or the service is down.
 <!-- end -->
+<!-- only: curl -->
+
+```bash
+curl -sS -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer <API key>" "{{server}}/api/v1/meta"
+```
+<!-- end -->
+<!-- only: powershell -->
+
+```powershell
+try { (Invoke-WebRequest -UseBasicParsing -Uri '{{server}}/api/v1/meta' -Headers @{ Authorization = 'Bearer <API key>' }).StatusCode }
+catch { if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { $_.Exception.Message } }
+```
+<!-- end -->
 <!-- only: mcp -->
-A tool error that says `unauthorized` means the connection's key header is
-missing or wrong; the user fixes it in the MCP client's configuration.
+On a connection to a server, a tool error that says `unauthorized` means the
+connection's key header is missing or wrong; the user fixes it in the MCP
+client's configuration. The local `agentfeedback mcp` server (stdio, on this
+machine's database) needs no key; a tool error there names its cause.
 <!-- end -->
 
 Never work around a failure by writing the report somewhere else; tell the

@@ -44,7 +44,7 @@ func runSkill(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	}
 
 	fs := newFlagSet("skill render")
-	server := fs.String("server", "", "base URL named by the forms that carry one (prompt, mcp, agent-plugin)")
+	server := fs.String("server", "", "base URL named by the forms that carry one (prompt, prompt-powershell, mcp, agent-plugin)")
 	out := fs.String("out", "", "docs, agent-plugin and marketplace only: write into this new or empty directory")
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), "usage: agentfeedback %s\n%s", skillSynopsis, skillForms())

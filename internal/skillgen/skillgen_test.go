@@ -126,7 +126,7 @@ func TestServerOnlyInTheFormsThatCarryIt(t *testing.T) {
 			t.Errorf("%s: an unusable --server is not ignored", form)
 		}
 	}
-	if got := []string{FormPrompt, FormMCP}; !CarriesServer(got[0]) || !CarriesServer(got[1]) || CarriesServer(FormSkillMD) {
+	if !CarriesServer(FormPrompt) || !CarriesServer(FormPromptPowerShell) || !CarriesServer(FormMCP) || CarriesServer(FormSkillMD) {
 		t.Fatal("CarriesServer")
 	}
 }
@@ -156,6 +156,34 @@ func TestPromptIsHTTPOnly(t *testing.T) {
 		if strings.Contains(out, banned) {
 			t.Errorf("prompt assumes tooling: %q", banned)
 		}
+	}
+}
+
+// The prompt form writes the request for curl, the prompt-powershell form
+// for PowerShell; the forms that run the binary write neither.
+func TestPromptRecipes(t *testing.T) {
+	const curl, ps = "curl -sS -X POST", "Invoke-RestMethod -Method Post"
+	for form, want := range map[string][2]bool{
+		FormPrompt:           {true, false},
+		FormPromptPowerShell: {false, true},
+		FormSkillMD:          {false, false},
+		FormAgentsMD:         {false, false},
+		FormCursor:           {false, false},
+		FormMCP:              {false, false},
+	} {
+		out := render(t, form, testServer)
+		if strings.Contains(out, curl) != want[0] || strings.Contains(out, ps) != want[1] {
+			t.Errorf("%s: curl %v, PowerShell %v; want %v", form, strings.Contains(out, curl), strings.Contains(out, ps), want)
+		}
+	}
+	if got, want := Channels(FormPromptPowerShell), []string{ChannelHTTP, ChannelPowerShell}; !slices.Equal(got, want) {
+		t.Errorf("prompt-powershell channels %v, want %v", got, want)
+	}
+	if got, want := Channels(FormPrompt), []string{ChannelHTTP, ChannelCurl}; !slices.Equal(got, want) {
+		t.Errorf("prompt channels %v, want %v", got, want)
+	}
+	if render(t, FormPrompt, "") == render(t, FormPromptPowerShell, "") {
+		t.Error("prompt and prompt-powershell render the same")
 	}
 }
 

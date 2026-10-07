@@ -2,6 +2,7 @@ package harness
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -15,6 +16,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/pelletier/go-toml/v2"
 )
 
 // BackupSuffix is appended to a user file's name for the copy taken before
@@ -40,9 +43,10 @@ type Item struct {
 	// CreatedFrom is how many Path segments existed before install.
 	CreatedFrom int `json:"created_from,omitempty"`
 	// Args is the claude command that added an MCP entry, and URL the url
-	// that entry points at.
-	Args []string `json:"args,omitempty"`
-	URL  string   `json:"url,omitempty"`
+	// that entry points at, or Stdio the command and arguments it runs.
+	Args  []string `json:"args,omitempty"`
+	URL   string   `json:"url,omitempty"`
+	Stdio []string `json:"stdio,omitempty"`
 
 	content []byte
 }
@@ -51,7 +55,7 @@ type Item struct {
 func (a Item) same(b Item) bool {
 	return a.Kind == b.Kind && a.Role == b.Role && a.File == b.File && slices.Equal(a.Path, b.Path) &&
 		a.Key == b.Key && bytes.Equal(a.Value, b.Value) && strings.TrimPrefix(a.Text, "\n") == strings.TrimPrefix(b.Text, "\n") &&
-		a.SHA256 == b.SHA256 && slices.Equal(a.Args, b.Args) && a.URL == b.URL
+		a.SHA256 == b.SHA256 && slices.Equal(a.Args, b.Args) && a.URL == b.URL && slices.Equal(a.Stdio, b.Stdio)
 }
 
 // HarnessRecord is one wired harness in the manifest.
@@ -59,8 +63,9 @@ type HarnessRecord struct {
 	Mode     string `json:"mode"`
 	Reminder bool   `json:"reminder"`
 	Docs     bool   `json:"docs"`
-	// Binary is the agentfeedback binary the CLI-mode hooks of this harness
-	// run; empty for MCP mode and for records written before it was kept.
+	// Binary is the agentfeedback binary the CLI-mode hooks or the stdio MCP
+	// entry of this harness run; empty for a URL MCP entry and for records
+	// written before it was kept.
 	Binary string `json:"binary,omitempty"`
 	Items  []Item `json:"items"`
 }
@@ -361,9 +366,9 @@ func foreign(path, what string) error {
 // present reports whether item is in place in the planned state.
 func (p *plan) present(it Item) (bool, error) {
 	if it.Kind == KindClaudeMCP {
-		known, url, exists := p.claudeEntry()
+		known, entry, exists := p.claudeEntry()
 
-		return !known || (exists && (it.URL == "" || url == it.URL)), nil
+		return !known || (exists && entry.is(it)), nil
 	}
 	if it.Kind == KindSkillFile && p.env.symlinkedAncestor(it.File) != "" {
 		return false, nil
@@ -399,28 +404,58 @@ func (p *plan) present(it Item) (bool, error) {
 // claudeRemoveArgs removes the Claude Code user-scope entry install added.
 var claudeRemoveArgs = []string{"mcp", "remove", "agentfeedback", "--scope", "user"}
 
+// claudeMCP is what identifies a Claude Code MCP entry: its url, or the
+// command and arguments of a stdio entry.
+type claudeMCP struct {
+	URL     string   `json:"url"`
+	Command string   `json:"command"`
+	Args    []string `json:"args"`
+}
+
+// is reports whether the entry is the one item added; an item recorded
+// without a url or a command (an older manifest) matches any entry.
+func (c claudeMCP) is(it Item) bool {
+	switch {
+	case it.URL != "":
+		return c.URL == it.URL
+	case len(it.Stdio) > 0:
+		return c.URL == "" && slices.Equal(append([]string{c.Command}, c.Args...), it.Stdio)
+	}
+
+	return true
+}
+
+// describe is how the entry is named in a message.
+func (c claudeMCP) describe() string {
+	switch {
+	case c.URL != "":
+		return "points at " + c.URL
+	case c.Command != "":
+		return "runs " + strings.Join(append([]string{c.Command}, c.Args...), " ")
+	}
+
+	return "has neither a url nor a command"
+}
+
 // claudeEntry reads the user-scope agentfeedback entry from Claude Code's
 // .claude.json without changing it. known is false when the file cannot be
 // read or parsed; then the entry is assumed to be as the manifest records
 // it.
-func (p *plan) claudeEntry() (known bool, url string, exists bool) {
+func (p *plan) claudeEntry() (known bool, entry claudeMCP, exists bool) {
 	data, err := os.ReadFile(p.env.claudeJSON())
 	if err != nil {
-		return false, "", false
+		return false, entry, false
 	}
 	v, err := GetMember(data, []string{"mcpServers"}, "agentfeedback")
 	if err != nil {
-		return false, "", false
+		return false, entry, false
 	}
 	if v == nil {
-		return true, "", false
-	}
-	var entry struct {
-		URL string `json:"url"`
+		return true, entry, false
 	}
 	_ = json.Unmarshal(Standard(v), &entry)
 
-	return true, entry.URL, true
+	return true, entry, true
 }
 
 // claudeManual is the note for a Claude Code entry uninstall could not
@@ -454,7 +489,7 @@ func (p *plan) claudeForeign() error {
 // changed since it was written is refused; uninstall leaves it in place.
 func (p *plan) remove(s *step, it Item, uninstall bool) error {
 	if it.Kind == KindClaudeMCP {
-		known, url, exists := p.claudeEntry()
+		known, entry, exists := p.claudeEntry()
 		switch {
 		case known && !exists:
 			if uninstall {
@@ -462,14 +497,18 @@ func (p *plan) remove(s *step, it Item, uninstall bool) error {
 			}
 
 			return nil
-		case known && it.URL != "" && url != it.URL:
+		case known && !entry.is(it):
+			added := "at the URL"
+			if it.URL == "" {
+				added = "the entry"
+			}
 			if !uninstall {
 				return &Refusal{
-					Problem: "Claude Code's MCP server agentfeedback points at " + url + ", not at the URL agentfeedback install added",
+					Problem: "Claude Code's MCP server agentfeedback " + entry.describe() + ", not " + added + " agentfeedback install added",
 					Next:    "remove it with claude mcp remove agentfeedback --scope user, then run agentfeedback install again",
 				}
 			}
-			p.notes[s.name] = append(p.notes[s.name], "Claude Code's MCP server agentfeedback points at "+url+", not at the URL install added; it is left in place")
+			p.notes[s.name] = append(p.notes[s.name], "Claude Code's MCP server agentfeedback "+entry.describe()+", not "+added+" install added; it is left in place")
 
 			return nil
 		}
@@ -844,7 +883,7 @@ func (p *plan) install(name string, o Options) error {
 		final[i] = it
 	}
 	s.record = &HarnessRecord{Mode: o.Mode, Reminder: o.Reminder && o.Mode == ModeCLI, Docs: o.Docs, Items: final}
-	if o.Mode == ModeCLI {
+	if o.Mode == ModeCLI || o.stdio() {
 		s.record.Binary = o.Binary
 	}
 	p.man.Harnesses[name] = s.record
@@ -1022,8 +1061,9 @@ type HarnessStatus struct {
 	Hook     string `json:"hook"`
 	Reminder string `json:"reminder"`
 	Docs     string `json:"docs"`
-	// Binary is the agentfeedback binary a CLI-mode harness's hooks run,
-	// and BinaryVersion its version when Env.Version is set.
+	// Binary is the agentfeedback binary a CLI-mode harness's hooks or its
+	// stdio MCP entry run, and BinaryVersion its version when Env.Version is
+	// set.
 	Binary        string `json:"binary,omitempty"`
 	BinaryVersion string `json:"binary_version,omitempty"`
 	// Verification is the adapter's verification record; set by Status.
@@ -1589,8 +1629,22 @@ func (p *plan) status(name string) HarnessStatus {
 		return hs
 	}
 	hs.Mode = rec.Mode
+	// A wired MCP entry reads as its kind, taken from the recorded item: the
+	// record's Binary lags behind the items while a switch between a URL and
+	// a stdio entry is partly applied. Without CLI-mode hooks or a stdio
+	// entry no binary runs.
 	if rec.Mode == ModeCLI {
 		hs.Binary = rec.Binary
+	}
+	wired := map[string]string{RoleMCP: "url"}
+	for _, it := range rec.Items {
+		if it.Role != RoleMCP {
+			continue
+		}
+		if bin, ok := stdioCommand(it); ok {
+			wired[RoleMCP] = "stdio"
+			hs.Binary = cmp.Or(bin, rec.Binary)
+		}
 	}
 	col := map[string]*string{RoleSkill: &hs.Skill, RoleMCP: &hs.MCP, RoleHook: &hs.Hook, RoleReminder: &hs.Reminder, RoleDocs: &hs.Docs}
 	for _, it := range rec.Items {
@@ -1601,10 +1655,57 @@ func (p *plan) status(name string) HarnessStatus {
 			*c = "missing"
 		case *c == "-":
 			*c = "wired"
+			if w := wired[it.Role]; w != "" {
+				*c = w
+			}
 		}
 	}
 
 	return hs
+}
+
+// stdioCommand reports whether the MCP item records a stdio entry, and
+// the command that entry runs when the item says. A Claude item carries
+// Stdio; a JSON member or TOML block of a stdio entry has a command, which
+// no URL entry has.
+func stdioCommand(it Item) (string, bool) {
+	switch it.Kind {
+	case KindClaudeMCP:
+		if len(it.Stdio) > 0 {
+			return it.Stdio[0], true
+		}
+	case KindJSONMember:
+		var v struct {
+			Command json.RawMessage `json:"command"`
+		}
+		if json.Unmarshal(it.Value, &v) != nil || len(v.Command) == 0 {
+			return "", false
+		}
+		var bin string
+		if json.Unmarshal(v.Command, &bin) == nil {
+			return bin, true
+		}
+		var argv []string
+		if json.Unmarshal(v.Command, &argv) == nil && len(argv) > 0 {
+			return argv[0], true
+		}
+
+		return "", true
+	case KindTOMLBlock:
+		var m struct {
+			MCPServers map[string]struct {
+				Command *string `toml:"command"`
+			} `toml:"mcp_servers"`
+		}
+		if toml.Unmarshal([]byte(it.Text), &m) != nil {
+			return "", false
+		}
+		if c := m.MCPServers["agentfeedback"].Command; c != nil {
+			return *c, true
+		}
+	}
+
+	return "", false
 }
 
 // Status reports every known harness from the manifest and the files on

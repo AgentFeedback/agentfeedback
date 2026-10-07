@@ -9,8 +9,10 @@
 //
 // is kept only in the forms whose channel it names: cli (the forms that run
 // the binary), file (the same forms: the file inbox, for when the binary is
-// not on PATH), http (the prompt form, for agents with nothing but HTTP) and
-// mcp (the server's MCP instructions). {{server}} is the server's base URL.
+// not on PATH), http (the prompt forms, for agents with nothing but HTTP),
+// curl (the prompt form's request written for curl), powershell (the
+// prompt-powershell form's request written for PowerShell) and mcp (the
+// server's MCP instructions). {{server}} is the server's base URL.
 package skillgen
 
 import (
@@ -35,8 +37,10 @@ const (
 	FormSkillMD  = "skill-md"  // Agent Skills SKILL.md
 	FormAgentsMD = "agents-md" // snippet to paste into an AGENTS.md
 	FormCursor   = "cursor"    // Cursor .mdc rule
-	FormPrompt   = "prompt"    // plain prompt block with the HTTP call inline
+	FormPrompt   = "prompt"    // plain prompt block with the HTTP call inline, as curl
 	FormMCP      = "mcp"       // the MCP server's instructions
+
+	FormPromptPowerShell = "prompt-powershell" // the prompt form with the call in PowerShell
 )
 
 // The channels a fragment block can name.
@@ -45,25 +49,30 @@ const (
 	ChannelFile = "file"
 	ChannelHTTP = "http"
 	ChannelMCP  = "mcp"
+
+	ChannelCurl       = "curl"
+	ChannelPowerShell = "powershell"
 )
 
 // channels lists every channel a block may name.
-var channels = []string{ChannelCLI, ChannelFile, ChannelHTTP, ChannelMCP}
+var channels = []string{ChannelCLI, ChannelFile, ChannelHTTP, ChannelCurl, ChannelPowerShell, ChannelMCP}
 
 // formChannels are the channels each form shows: the forms that run the
 // binary also teach the file inbox, which is local to the same machine; the
-// prompt and mcp forms reach a server and never do.
+// prompt forms and mcp reach a server and never do.
 var formChannels = map[string][]string{
 	FormSkillMD:  {ChannelCLI, ChannelFile},
 	FormAgentsMD: {ChannelCLI, ChannelFile},
 	FormCursor:   {ChannelCLI, ChannelFile},
-	FormPrompt:   {ChannelHTTP},
+	FormPrompt:   {ChannelHTTP, ChannelCurl},
 	FormMCP:      {ChannelMCP},
+
+	FormPromptPowerShell: {ChannelHTTP, ChannelPowerShell},
 }
 
 // Forms lists the forms Render accepts, in help order.
 func Forms() []string {
-	return []string{FormSkillMD, FormAgentsMD, FormCursor, FormPrompt, FormMCP}
+	return []string{FormSkillMD, FormAgentsMD, FormCursor, FormPrompt, FormPromptPowerShell, FormMCP}
 }
 
 // Channels returns the channels a form shows, or nil for an unknown form.
@@ -71,7 +80,9 @@ func Channels(form string) []string { return slices.Clone(formChannels[form]) }
 
 // CarriesServer reports whether a form names the server's URL. The forms that
 // run the binary never do: the binary's configuration carries it.
-func CarriesServer(form string) bool { return form == FormPrompt || form == FormMCP }
+func CarriesServer(form string) bool {
+	return form == FormPrompt || form == FormPromptPowerShell || form == FormMCP
+}
 
 // serverPlaceholder stands for the URL in a form rendered without a server.
 const serverPlaceholder = "<server URL>"
@@ -340,7 +351,7 @@ func NormalizeServer(raw string) (string, error) {
 	return out, nil
 }
 
-// Render returns a form. server is the base URL the prompt and mcp forms name;
+// Render returns a form. server is the base URL the prompt forms and mcp name;
 // empty renders them with a placeholder, and the other forms ignore it.
 func Render(form, server string) ([]byte, error) {
 	chans := Channels(form)
@@ -386,8 +397,10 @@ func Render(form, server string) ([]byte, error) {
 	case FormCursor:
 		fmt.Fprintf(&b, "---\ndescription: %s\nalwaysApply: false\n---\n\n# %s\n\n%s\n",
 			yamlString(m.Description), m.Title, body)
-	case FormPrompt:
+	case FormPrompt, FormPromptPowerShell:
 		fmt.Fprintf(&b, "# %s\n\nYou can report friction to the AgentFeedback server at %s over plain HTTP. "+
+			"This needs a shell (curl, or PowerShell on Windows) or an HTTP tool that can set a request header; "+
+			"with neither, you cannot file to this server. "+
 			"The API key comes from the user or your configuration; never print it or put it in a report.\n\n%s\n",
 			m.Title, shown, body)
 	case FormMCP:

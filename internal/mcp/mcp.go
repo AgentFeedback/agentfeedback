@@ -1,9 +1,11 @@
-// Package mcp is the remote MCP server of the v1 contract (POST /mcp and
-// POST /mcp/{project} in docs/openapi.yaml): six tools over internal/core,
-// each one-to-one with a REST operation and answering with the same JSON
-// body, served stateless over the Streamable HTTP transport. Authentication,
-// the body limit and the error shape of transport failures belong to the
-// HTTP layer that mounts the handler.
+// Package mcp is the MCP server of the v1 contract: six tools over
+// internal/core, each one-to-one with a REST operation and answering with the
+// same JSON body. NewServer builds the server of one connection; two
+// transports serve it with the same tools. Handler serves it stateless over
+// Streamable HTTP (POST /mcp and POST /mcp/{project} in docs/openapi.yaml),
+// where authentication, the body limit and the error shape of transport
+// failures belong to the HTTP layer that mounts the handler. The CLI's
+// agentfeedback mcp serves it over stdio on the local database.
 package mcp
 
 import (
@@ -35,6 +37,9 @@ type Config struct {
 	// ObserveCreate, when set, is told the outcome of every submit_feedback
 	// call that reached core: created, or the error core returned.
 	ObserveCreate func(created bool, err error)
+	// CallContext, when set, derives the context of every tools/call; a
+	// transport without the HTTP middleware uses it to attach a request id.
+	CallContext func(ctx context.Context) context.Context
 }
 
 // Handler serves MCP for any base URL and project preset.
@@ -66,7 +71,7 @@ const maxServers = 256
 func New(cfg Config) *Handler {
 	h := &Handler{cfg: cfg, srvs: map[connection]*sdk.Server{}}
 	for _, c := range []connection{{"", ""}, {"", "p"}} {
-		if _, err := h.build(c, ""); err != nil {
+		if _, err := NewServer(cfg, c.base, c.preset, ""); err != nil {
 			panic("mcp: build server: " + err.Error())
 		}
 	}
@@ -108,7 +113,7 @@ func (h *Handler) lookup(c connection) (*sdk.Server, error) {
 	if s, ok := h.srvs[c]; ok {
 		return s, nil
 	}
-	s, err := h.build(c, h.cfg.Service.Meta().ServiceVersion)
+	s, err := NewServer(h.cfg, c.base, c.preset, h.cfg.Service.Meta().ServiceVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -133,14 +138,29 @@ func Instructions(base, extra string) (string, error) {
 	return text, nil
 }
 
-func (h *Handler) build(c connection, version string) (*sdk.Server, error) {
-	instructions, err := Instructions(c.base, h.cfg.Instructions)
+// NewServer builds the server of one connection, whatever the transport:
+// base is the normalised base URL the instructions name ("" renders the
+// placeholder), preset the normalised project ("" for none) and version the
+// service version the server reports.
+func NewServer(cfg Config, base, preset, version string) (*sdk.Server, error) {
+	instructions, err := Instructions(base, cfg.Instructions)
 	if err != nil {
 		return nil, err
 	}
 	s := sdk.NewServer(&sdk.Implementation{Name: "agentfeedback", Version: version},
 		&sdk.ServerOptions{Instructions: instructions})
-	t := &tools{svc: h.cfg.Service, preset: c.preset, errorBody: h.cfg.ErrorBody, observeCreate: h.cfg.ObserveCreate}
+	if cfg.CallContext != nil {
+		derive := cfg.CallContext
+		s.AddReceivingMiddleware(func(next sdk.MethodHandler) sdk.MethodHandler {
+			return func(ctx context.Context, method string, req sdk.Request) (sdk.Result, error) {
+				if method == "tools/call" {
+					ctx = derive(ctx)
+				}
+				return next(ctx, method, req)
+			}
+		})
+	}
+	t := &tools{svc: cfg.Service, preset: preset, errorBody: cfg.ErrorBody, observeCreate: cfg.ObserveCreate}
 	t.register(s)
 	return s, nil
 }

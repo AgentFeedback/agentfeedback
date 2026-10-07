@@ -184,8 +184,9 @@ server from the configuration of step 2.2. The harnesses it knows:
 detected one, only when the human agrees. It does not run on Windows (it
 refuses and lists the steps to wire each harness by hand under `manual`):
 there, and for a harness not in that list, go to step 2.5 instead. `vscode`
-takes only the MCP entry (`install vscode --mcp --json`, which needs the
-server URL of step 2.2); without one, wire VS Code with step 2.5. For Claude
+takes only the MCP entry (`install vscode --mcp --json`): a stdio entry
+running `agentfeedback mcp` on the local database, or with the server URL of
+step 2.2 an entry pointing at it. For Claude
 Code or Codex, ask the human whether they prefer a plugin; if so, go to step
 2.4 instead.
 

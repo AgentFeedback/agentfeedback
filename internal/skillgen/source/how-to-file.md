@@ -47,6 +47,11 @@ Send one HTTP request. The server at {{server}} fills in what you leave out.
   members listed above. Send `kind`: without it the report is stored as
   `unknown`.
 
+Any JSON object is accepted: members the envelope does not know are kept in
+the report's payload, never rejected.
+<!-- end -->
+<!-- only: curl -->
+
 The same request with curl, for example:
 
 ```bash
@@ -55,9 +60,19 @@ curl -sS -X POST "{{server}}/api/v1/submissions" \
   -H "Content-Type: application/json" \
   -d '{"kind": "friction", "summary": "README install step 3 references a flag that no longer exists", "category": "documentation", "model": "<your model id>"}'
 ```
+<!-- end -->
+<!-- only: powershell -->
 
-Any JSON object is accepted: members the envelope does not know are kept in
-the report's payload, never rejected.
+The same request in PowerShell (Windows PowerShell 5.1 or PowerShell 7), for
+example. The body is sent as UTF-8 bytes, so text beyond ASCII survives on
+5.1:
+
+```powershell
+$body = @{ kind = 'friction'; summary = 'README install step 3 references a flag that no longer exists'; category = 'documentation'; model = '<your model id>' } | ConvertTo-Json -Compress
+Invoke-RestMethod -Method Post -Uri '{{server}}/api/v1/submissions' `
+  -Headers @{ Authorization = 'Bearer <API key>' } `
+  -ContentType 'application/json' -Body ([Text.Encoding]::UTF8.GetBytes($body))
+```
 <!-- end -->
 <!-- only: mcp -->
 Call the `submit_feedback` tool with `kind` set to `friction`, a `summary`,

@@ -16,7 +16,6 @@ var catalogue = map[string]error{
 	"errInitModeFlags":            errInitModeFlags(),
 	"errLooseMode":                errLooseMode("/d/agentfeedback.db", "0644", 0o600),
 	"errLegacySpool":              errLegacySpool("/c", 2, "/d"),
-	"errInstallMCPLocal":          errInstallMCPLocal(),
 	"errUnknownCommand":           errUnknownCommand("x"),
 	"errFlags":                    errFlags("doctor", errors.New("flag provided but not defined: -x")),
 	"errArgs":                     errArgs("backup", "backup <dest.db>"),

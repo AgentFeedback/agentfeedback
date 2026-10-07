@@ -44,8 +44,9 @@ func TestWindows_XDGLayout(t *testing.T) {
 
 // windowsOutcome is the refusal install ends with on Windows.
 type windowsOutcome struct {
-	Status string       `json:"status"`
-	Manual []manualStep `json:"manual"`
+	Status   string       `json:"status"`
+	Manual   []manualStep `json:"manual"`
+	Warnings []string     `json:"warnings"`
 }
 
 func windowsInstall(t *testing.T, args ...string) (result, windowsOutcome) {
@@ -60,7 +61,8 @@ func windowsInstall(t *testing.T, args ...string) (result, windowsOutcome) {
 }
 
 // TestWindows_InstallManualSteps: install is refused on Windows with the
-// wiring by hand of each harness, the MCP entry only with a server URL.
+// wiring by hand of each harness, the MCP entry a stdio entry for local and
+// a URL entry for a server.
 func TestWindows_InstallManualSteps(t *testing.T) {
 	t.Run("local", func(t *testing.T) {
 		e := newInstallEnv(t)
@@ -72,8 +74,8 @@ func TestWindows_InstallManualSteps(t *testing.T) {
 		s := out.Manual[0]
 		skill := filepath.Join(e.home, ".claude", "skills", "agentfeedback", "SKILL.md")
 		if s.Harness != "claude-code" || s.SkillPath != skill || s.SkillCommand != "New-Item -ItemType Directory -Force -Path '"+filepath.Dir(skill)+"' | Out-Null; [IO.File]::WriteAllText('"+skill+"', (agentfeedback skill render skill-md | Out-String))" ||
-			s.RuleCommand != "agentfeedback skill render agents-md" || s.MCP != nil ||
-			!strings.Contains(strings.Join(s.Notes, "\n"), "the MCP entry needs a server URL; local mode has none yet") {
+			s.RuleCommand != "agentfeedback skill render agents-md" || s.MCP == nil ||
+			s.MCP.Command != "claude mcp add-json agentfeedback '{\"type\":\"stdio\",\"command\":\""+e.exe+"\",\"args\":[\"mcp\"]}' --scope user" {
 			t.Fatalf("%+v", s)
 		}
 		if !strings.Contains(r.stderr, "claude-code: wire by hand") || !strings.Contains(r.stderr, s.SkillCommand) {

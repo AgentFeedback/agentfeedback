@@ -3,7 +3,8 @@
 // its database, and doctor, submit (friction,
 // review or any kind), flush, version, schema, skill and the read and
 // processing commands (list, get, stats, done, undo, redact, rekind, export,
-// digest), ingest and migrate are client commands; install and uninstall wire the
+// digest), ingest and migrate are client commands; mcp serves the MCP tools
+// over stdio on the local database; install and uninstall wire the
 // client into the coding-agent harnesses. A bare invocation prints help.
 package main
 
@@ -62,6 +63,7 @@ var commands = []command{
 	{"skill", "skill render <form> [--server URL]: print the submission guidance in one form | skill render docs --out DIR: write the agentfeedback-docs skill | skill render agent-plugin|marketplace --out DIR: write the plugin bundle or a marketplace root | skill reminder: print the one-line session-start reminder", runSkill},
 	{"install", installSynopsis + ": wire the agentfeedback skill and Stop hook (or with --mcp an MCP entry) into the coding-agent harnesses; no harness named lists them", runInstall},
 	{"uninstall", uninstallSynopsis + ": remove exactly what install added, restoring untouched files from their backups", runUninstall},
+	{"mcp", mcpSynopsis + ": serve the MCP tools over stdio on the local database until stdin closes; stdout carries only the protocol", runMcp},
 	{"help", "print this help", nil},
 }
 

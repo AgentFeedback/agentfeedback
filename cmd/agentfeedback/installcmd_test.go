@@ -563,15 +563,14 @@ func TestInstall_ServerResolution(t *testing.T) {
 		}
 	})
 	t.Run("--mcp in local mode", func(t *testing.T) {
+		// Nothing configured resolves to local, whose MCP entry is a stdio
+		// entry: no URL and no key, so no key warning.
 		e := newInstallEnv(t)
-		before := snapshot(t, e.home)
-		r, out := installRun(t, "install", "claude-code", "--mcp")
-		msg, _ := out["message"].(string)
-		if r.code == 0 || !strings.Contains(msg, "the MCP entry needs a server URL; local mode has no HTTP endpoint yet") ||
-			!strings.Contains(msg, "run agentfeedback install without --mcp, or pass --server URL") {
+		r, out := installRun(t, "install", "omp", "--mcp")
+		if r.code != 0 || out["status"] != "installed" || manifestServer(t, e) != serverLocal ||
+			harnessField(t, out, "omp", "mcp") != "stdio" || strings.Contains(r.stderr, envAPIKey) {
 			t.Fatalf("%+v", r)
 		}
-		sameTree(t, "--mcp local", snapshot(t, e.home), before)
 	})
 	t.Run("--server local with a configured url", func(t *testing.T) {
 		e := newInstallEnv(t)

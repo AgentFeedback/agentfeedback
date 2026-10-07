@@ -93,8 +93,10 @@ type Adapter struct {
 	hook func(p *plan, o Options) ([]Item, []string)
 	// mcp is the MCP-mode items, with notes; nil when there is no entry.
 	mcp func(p *plan, o Options) ([]Item, []string, error)
-	// mcpValue is the JSON (or TOML) of the MCP entry for a URL.
+	// mcpValue is the JSON (or TOML) of the MCP entry for a URL, and
+	// mcpStdio that of the stdio entry running bin.
 	mcpValue func(url string) string
+	mcpStdio func(bin string) string
 	// files lists the configuration files (JSON, JSONC, TOML) and the whole
 	// files install owns, besides skills.
 	files        func(Env) (config, owned []string)
@@ -128,18 +130,43 @@ func bearer(ref string) string {
 	return string(obj("Authorization", str("Bearer "+ref)))
 }
 
+// mcpEntry is the MCP entry for o: the stdio entry for the local target,
+// else the URL entry, with urlNotes for a URL entry only.
+func (a *Adapter) mcpEntry(o Options, urlNotes []string) (string, []string) {
+	if o.stdio() {
+		return a.mcpStdio(o.Binary), nil
+	}
+
+	return a.mcpValue(o.Server + "/mcp"), urlNotes
+}
+
 // jsonMCP is an MCP entry written as the member agentfeedback at path of
-// the file file picks.
-func jsonMCP(file func(p *plan) (string, error), path []string, value func(url string) string, notes ...string) func(p *plan, o Options) ([]Item, []string, error) {
+// the file file picks; notes apply to both entries, urlNotes to a URL
+// entry only.
+func jsonMCP(a *Adapter, file func(p *plan) (string, error), notes, urlNotes []string) func(p *plan, o Options) ([]Item, []string, error) {
 	return func(p *plan, o Options) ([]Item, []string, error) {
 		f, err := file(p)
 		if err != nil {
 			return nil, nil, err
 		}
+		v, extra := a.mcpEntry(o, urlNotes)
 
-		return []Item{member(f, path, []byte(value(o.Server+"/mcp")), RoleMCP)}, notes, nil
+		return []Item{member(f, a.MCP.Path, []byte(v), RoleMCP)}, append(slices.Clone(notes), extra...), nil
 	}
 }
+
+// stdioArgs is the arguments of the stdio entry's command.
+const stdioArgs = `["mcp"]`
+
+// typedStdio is the stdio entry with a type member typ.
+func typedStdio(typ string) func(bin string) string {
+	return func(bin string) string {
+		return string(obj("type", str(typ), "command", str(bin), "args", stdioArgs))
+	}
+}
+
+// plainStdio is the stdio entry without a type member.
+func plainStdio(bin string) string { return string(obj("command", str(bin), "args", stdioArgs)) }
 
 func fixed(f func(Env) string) func(p *plan) (string, error) {
 	return func(p *plan) (string, error) { return f(p.env), nil }
@@ -237,6 +264,7 @@ var registry = []Adapter{
 		mcpValue: func(u string) string {
 			return string(obj("type", str("http"), "url", str(u), "headers", bearer("${AGENT_FEEDBACK_API_KEY}")))
 		},
+		mcpStdio: typedStdio("stdio"),
 		files: func(e Env) ([]string, []string) {
 			return []string{filepath.Join(e.claudeDir(), "settings.json")}, nil
 		},
@@ -276,9 +304,15 @@ var registry = []Adapter{
 			return items, []string{"Codex runs a new hook only after you trust it in /hooks"}
 		},
 		mcp: func(p *plan, o Options) ([]Item, []string, error) {
-			return []Item{{Kind: KindTOMLBlock, Role: RoleMCP, File: filepath.Join(p.env.codexHome(), "config.toml"), Text: codexBlock(o.Server)}}, nil, nil
+			text := codexBlock(o.Server)
+			if o.stdio() {
+				text = codexStdioBlock(o.Binary)
+			}
+
+			return []Item{{Kind: KindTOMLBlock, Role: RoleMCP, File: filepath.Join(p.env.codexHome(), "config.toml"), Text: text}}, nil, nil
 		},
 		mcpValue: func(u string) string { return codexBlock(strings.TrimSuffix(u, "/mcp")) },
+		mcpStdio: codexStdioBlock,
 		files: func(e Env) ([]string, []string) {
 			return []string{filepath.Join(e.codexHome(), "hooks.json"), filepath.Join(e.codexHome(), "config.toml")}, nil
 		},
@@ -320,6 +354,7 @@ var registry = []Adapter{
 		mcpValue: func(u string) string {
 			return string(obj("url", str(u), "headers", bearer("${env:AGENT_FEEDBACK_API_KEY}")))
 		},
+		mcpStdio: typedStdio("stdio"),
 		files: func(e Env) ([]string, []string) {
 			return []string{filepath.Join(e.Home, ".cursor", "mcp.json"), filepath.Join(e.Home, ".cursor", "hooks.json")}, nil
 		},
@@ -354,6 +389,9 @@ var registry = []Adapter{
 		mcpValue: func(u string) string {
 			return string(obj("type", str("remote"), "url", str(u), "enabled", "true", "oauth", "false",
 				"headers", bearer("{env:AGENT_FEEDBACK_API_KEY}")))
+		},
+		mcpStdio: func(bin string) string {
+			return string(obj("type", str("local"), "command", "["+str(bin)+","+str("mcp")+"]", "enabled", "true"))
 		},
 		files: func(e Env) ([]string, []string) {
 			oc := e.opencodeDir()
@@ -391,6 +429,7 @@ var registry = []Adapter{
 		mcpValue: func(u string) string {
 			return string(obj("type", str("http"), "url", str(u), "headers", bearer("${AGENT_FEEDBACK_API_KEY}")))
 		},
+		mcpStdio: typedStdio("stdio"),
 		files: func(e Env) ([]string, []string) {
 			return []string{filepath.Join(e.Home, ".omp", "agent", "mcp.json")}, []string{filepath.Join(e.Home, ".omp", "agent", "extensions", "agentfeedback.ts")}
 		},
@@ -426,6 +465,7 @@ var registry = []Adapter{
 		mcpValue: func(u string) string {
 			return string(obj("url", str(u), "headers", bearer("${AGENT_FEEDBACK_API_KEY}")))
 		},
+		mcpStdio: plainStdio,
 		files: func(e Env) ([]string, []string) {
 			return []string{filepath.Join(e.Home, ".pi", "agent", "mcp.json")}, []string{filepath.Join(e.Home, ".pi", "agent", "extensions", "agentfeedback.ts")}
 		},
@@ -460,6 +500,9 @@ var registry = []Adapter{
 		},
 		mcpValue: func(u string) string {
 			return string(obj("type", str("http"), "url", str(u), "headers", bearer("${AGENT_FEEDBACK_API_KEY}"), "tools", `["*"]`))
+		},
+		mcpStdio: func(bin string) string {
+			return string(obj("type", str("local"), "command", str(bin), "args", stdioArgs, "tools", `["*"]`))
 		},
 		files: func(e Env) ([]string, []string) {
 			return []string{filepath.Join(e.copilotDir(), "mcp-config.json")}, []string{e.copilotHookFile()}
@@ -502,6 +545,7 @@ var registry = []Adapter{
 		mcpValue: func(u string) string {
 			return string(obj("serverUrl", str(u), "headers", bearer("${AGENT_FEEDBACK_API_KEY}")))
 		},
+		mcpStdio: plainStdio,
 		files: func(e Env) ([]string, []string) {
 			return []string{filepath.Join(e.geminiDir(), "config", "hooks.json"), filepath.Join(e.geminiDir(), "config", "mcp_config.json")}, nil
 		},
@@ -537,6 +581,7 @@ var registry = []Adapter{
 		mcpValue: func(u string) string {
 			return string(obj("url", str(u), "transport", str("http"), "headers", bearer("${env:AGENT_FEEDBACK_API_KEY}")))
 		},
+		mcpStdio: plainStdio,
 		files: func(e Env) ([]string, []string) {
 			return []string{filepath.Join(e.devinDir(), "config.json"), filepath.Join(e.devinDir(), "mcp_config.json")}, nil
 		},
@@ -565,6 +610,7 @@ var registry = []Adapter{
 		mcpValue: func(u string) string {
 			return string(obj("url", str(u), "headers", bearer("${AGENT_FEEDBACK_API_KEY}")))
 		},
+		mcpStdio: plainStdio,
 		files: func(e Env) ([]string, []string) {
 			return []string{filepath.Join(e.Home, ".kiro", "settings", "mcp.json")}, nil
 		},
@@ -592,7 +638,8 @@ var registry = []Adapter{
 		mcpValue: func(u string) string {
 			return string(obj("type", str("streamableHttp"), "url", str(u), "headers", bearer("${AGENT_FEEDBACK_API_KEY}")))
 		},
-		files: func(e Env) ([]string, []string) { return []string{e.clineMCPFile()}, nil },
+		mcpStdio: plainStdio,
+		files:    func(e Env) ([]string, []string) { return []string{e.clineMCPFile()}, nil },
 		row: docsRow{
 			detected: "`cline`, `~/.cline`",
 			skill:    "`~/.cline/skills/agentfeedback/SKILL.md`",
@@ -617,6 +664,7 @@ var registry = []Adapter{
 		mcpValue: func(u string) string {
 			return string(obj("url", str(u), "headers", bearer("${AGENT_FEEDBACK_API_KEY}")))
 		},
+		mcpStdio: plainStdio,
 		files: func(e Env) ([]string, []string) {
 			return []string{filepath.Join(e.ampDir(), "settings.jsonc"), filepath.Join(e.ampDir(), "settings.json")}, nil
 		},
@@ -645,6 +693,7 @@ var registry = []Adapter{
 		mcpValue: func(u string) string {
 			return string(obj("type", str("http"), "url", str(u), "headers", bearer("${env:AGENT_FEEDBACK_API_KEY}")))
 		},
+		mcpStdio: typedStdio("stdio"),
 		files: func(e Env) ([]string, []string) {
 			return []string{filepath.Join(e.vscodeUserDir(), "mcp.json")}, nil
 		},
@@ -695,27 +744,35 @@ func init() {
 		if a.mcpValue != nil {
 			a.MCP.URLShape = a.mcpValue("<url>")
 		}
+		if a.mcpStdio != nil {
+			a.MCP.StdioShape = a.mcpStdio("<binary>")
+		}
 		if a.mcp != nil || a.mcpValue == nil {
 			continue
 		}
-		value := a.mcpValue
 		switch a.Name {
 		case "claude-code":
 			a.mcp = func(_ *plan, o Options) ([]Item, []string, error) {
-				u := o.Server + "/mcp"
+				v, _ := a.mcpEntry(o, nil)
+				it := Item{Kind: KindClaudeMCP, Role: RoleMCP, Args: []string{"mcp", "add-json", "agentfeedback", v, "--scope", "user"}}
+				if o.stdio() {
+					it.Stdio = []string{o.Binary, "mcp"}
+				} else {
+					it.URL = o.Server + "/mcp"
+				}
 
-				return []Item{{Kind: KindClaudeMCP, Role: RoleMCP, Args: []string{"mcp", "add-json", "agentfeedback", value(u), "--scope", "user"}, URL: u}}, nil, nil
+				return []Item{it}, nil, nil
 			}
 		case "opencode":
-			a.mcp = jsonMCP((*plan).opencodeConfig, a.MCP.Path, value)
+			a.mcp = jsonMCP(a, (*plan).opencodeConfig, nil, nil)
 		case "amp":
-			a.mcp = jsonMCP((*plan).ampConfig, a.MCP.Path, value)
+			a.mcp = jsonMCP(a, (*plan).ampConfig, nil, nil)
 		case "pi":
-			a.mcp = jsonMCP(fixed(a.MCP.File), a.MCP.Path, value, "the MCP entry needs pi 0.99.0 or later")
+			a.mcp = jsonMCP(a, fixed(a.MCP.File), []string{"the MCP entry needs pi 0.99.0 or later"}, nil)
 		case "antigravity", "cline":
-			a.mcp = jsonMCP(fixed(a.MCP.File), a.MCP.Path, value, undocumentedEnvNote(a.Name))
+			a.mcp = jsonMCP(a, fixed(a.MCP.File), nil, []string{undocumentedEnvNote(a.Name)})
 		default:
-			a.mcp = jsonMCP(fixed(a.MCP.File), a.MCP.Path, value)
+			a.mcp = jsonMCP(a, fixed(a.MCP.File), nil, nil)
 		}
 	}
 }

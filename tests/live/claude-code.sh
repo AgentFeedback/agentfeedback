@@ -3,8 +3,9 @@
 # image with no network. A server on loopback; then, with CLAUDE_CONFIG_DIR
 # unset and set to ~/.claude, each in a fresh HOME holding an unrelated MCP
 # entry and a settings.json with an unrelated key and Stop hook: install
-# --mcp, `claude mcp list` connects to it, a second install changes nothing,
-# uninstall removes only it; the skill and Stop hook install, reinstall
+# --mcp with the server's URL, `claude mcp list` connects to it, a second
+# install changes nothing, uninstall removes only it; the same with --server
+# local, whose stdio entry runs `agentfeedback mcp`; the skill and Stop hook install, reinstall
 # unchanged, the hook command runs, and uninstall restores settings.json byte
 # for byte. Claude loading the skill needs a model session and is not checked.
 set -euo pipefail
@@ -39,7 +40,7 @@ claude_() { timeout 60 claude "$@"; }
 
 check() {
   mode=$1
-  local home dir json list hook
+  local home dir json list hook bin
   home=/tmp/home-$mode
   dir="$home/.claude"
   mkdir -p "$dir"
@@ -69,6 +70,22 @@ check() {
   jq -e --arg u "$OTHER" '.mcpServers.other.url == $u' "$json" >/dev/null || fail "$mode: uninstall changed the unrelated entry"
   if [ "$mode" = set ] && [ -e "$home/.claude.json" ]; then fail "set: ~/.claude.json was written"; fi
   pass "$mode: uninstall removes only the agentfeedback entry"
+
+  bin=$(command -v agentfeedback)
+  expect installed install claude-code --mcp --server local
+  jq -e --arg b "$bin" '.mcpServers.agentfeedback | .type == "stdio" and .command == $b and .args == ["mcp"]' "$json" >/dev/null ||
+    fail "$mode: no stdio agentfeedback entry in $json: $(jq -c .mcpServers "$json")"
+  list=$(claude_ mcp list 2>&1)
+  grep -F "agentfeedback: $bin mcp - " <<<"$list" | grep -q ' Connected$' || fail "$mode: claude mcp list does not connect to the stdio agentfeedback: $list"
+  grep -qF "other: $OTHER" <<<"$list" || fail "$mode: the unrelated entry is gone: $list"
+  pass "$mode: install --mcp --server local writes a stdio entry to $json and claude mcp list connects"
+  expect unchanged install claude-code --mcp --server local
+  pass "$mode: a second install --mcp --server local changes nothing"
+  expect uninstalled uninstall claude-code
+  list=$(claude_ mcp list 2>&1)
+  if grep -qF agentfeedback <<<"$list"; then fail "$mode: claude mcp list still lists agentfeedback: $list"; fi
+  jq -e --arg u "$OTHER" '.mcpServers.other.url == $u' "$json" >/dev/null || fail "$mode: uninstall changed the unrelated entry"
+  pass "$mode: uninstall removes only the stdio agentfeedback entry"
 
   expect installed install claude-code --server "$URL"
   [ -f "$dir/skills/agentfeedback/SKILL.md" ] || fail "$mode: no skill in $dir/skills"

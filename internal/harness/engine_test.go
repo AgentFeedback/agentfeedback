@@ -479,3 +479,83 @@ func TestApply_FileReplacedByLinkUnderTheRun(t *testing.T) {
 		t.Errorf("the link's target changed:\n%s", got)
 	}
 }
+
+// TestLoadManifest_LegacyURLEntry: a manifest written before stdio entries
+// (a URL entry, no binary on the record) still reads as a URL entry.
+func TestLoadManifest_LegacyURLEntry(t *testing.T) {
+	e := testEnv(t)
+	put(t, e.ManifestPath(), `{
+  "version": 1,
+  "server": "https://feedback.example.test",
+  "binary": "/usr/local/bin/agentfeedback",
+  "harnesses": {
+    "omp": {
+      "mode": "mcp",
+      "reminder": false,
+      "docs": false,
+      "items": [
+        {
+          "kind": "json_member",
+          "role": "mcp",
+          "file": "`+filepath.Join(e.Home, ".omp", "agent", "mcp.json")+`",
+          "path": ["mcpServers"],
+          "key": "agentfeedback",
+          "value": {"type":"http","url":"https://feedback.example.test/mcp","headers":{"Authorization":"Bearer ${AGENT_FEEDBACK_API_KEY}"}},
+          "created_from": 0
+        }
+      ]
+    }
+  },
+  "files": {},
+  "dirs_created": []
+}
+`)
+	put(t, filepath.Join(e.Home, ".omp", "agent", "mcp.json"), `{"mcpServers": {"agentfeedback": {"type":"http","url":"https://feedback.example.test/mcp","headers":{"Authorization":"Bearer ${AGENT_FEEDBACK_API_KEY}"}}}}`)
+	st, err := e.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range st {
+		if s.Name == "omp" && (s.MCP != "url" || s.Binary != "") {
+			t.Fatalf("omp %+v", s)
+		}
+	}
+}
+
+// TestStatus_TransportFromItem: the MCP column and the binary follow the
+// recorded MCP item, not the record's Binary, which lags behind the items
+// while a switch between a URL and a stdio entry is partly applied.
+func TestStatus_TransportFromItem(t *testing.T) {
+	const bin = "/opt/af/agentfeedback"
+	stdioValue := plainStdio(bin)
+	urlValue := `{"type":"http","url":"https://feedback.example.test/mcp"}`
+	stdioText := codexStdioBlock(bin)
+	urlText := codexBlock("https://feedback.example.test")
+	for _, tc := range []struct {
+		name, recBinary, value, text, wantMCP, wantBinary string
+	}{
+		{"stdio item, empty binary", "", stdioValue, stdioText, "stdio", bin},
+		{"url item, stale binary", "/old/agentfeedback", urlValue, urlText, "url", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := testEnv(t)
+			mcpJSON := filepath.Join(e.Home, ".omp", "agent", "mcp.json")
+			config := filepath.Join(e.Home, ".codex", "config.toml")
+			put(t, mcpJSON, `{"mcpServers": {"agentfeedback": `+tc.value+`}}`)
+			put(t, config, tc.text)
+			man := newManifest()
+			man.Harnesses["omp"] = &HarnessRecord{Mode: ModeMCP, Binary: tc.recBinary, Items: []Item{
+				member(mcpJSON, []string{"mcpServers"}, []byte(tc.value), RoleMCP),
+			}}
+			man.Harnesses["codex"] = &HarnessRecord{Mode: ModeMCP, Binary: tc.recBinary, Items: []Item{
+				{Kind: KindTOMLBlock, Role: RoleMCP, File: config, Text: tc.text},
+			}}
+			p := newPlan(e, man)
+			for _, name := range []string{"omp", "codex"} {
+				if s := p.status(name); s.MCP != tc.wantMCP || s.Binary != tc.wantBinary {
+					t.Errorf("%s %+v", name, s)
+				}
+			}
+		})
+	}
+}

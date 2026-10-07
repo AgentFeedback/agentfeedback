@@ -6,14 +6,14 @@ How to change the service and the skills, verify, and release. Read
 ## Layout
 
 ```
-cmd/agentfeedback/              main: bare invocation prints help; server `serve` (internal/api; key from API_KEY or API_KEY_FILE), `serve --init` (api-key and serve.env), `server install --systemd|--launchd|--compose` (writes one service file, starts nothing), `import [--dry-run] <export.ndjson>` (restore keeping ids), `backup <dest.db>`; client `doctor`, `doctor --init`, `doctor --e2e` (submit, list, mark one install-check row, no spool), `submit` (friction|review|<kind>, --stdin, --dry-run), `flush`, `ingest` (the file inbox, also delivered by the start-up pass of every local-mode command), `version`, `schema`, `skill` (render, render docs, reminder), `install` and `uninstall` (wire the skill, Stop hook or MCP entry into the coding-agent harnesses through internal/harness), `flush --hook`, read and processing `list`, `get`, `stats`, `done`, `undo`, `redact`, `rekind`, `export` (streamed, trailer verified), `digest`, `migrate` (to cloud or a URL through its import route, target key from stdin), settings resolved flag > AGENT_FEEDBACK_* env > config.toml (API key: env > config only); no url configured means local mode: the same commands over the API handler in-process on the data-directory database (internal/localmode), `--local` and `--server URL` override per invocation; coverage.toml maps every OpenAPI operation, parameter and body property to a command, flag or argument, or lists it with a reason (checked by coverage_test.go)
+cmd/agentfeedback/              main: bare invocation prints help; server `serve` (internal/api; key from API_KEY or API_KEY_FILE), `serve --init` (api-key and serve.env), `server install --systemd|--launchd|--compose` (writes one service file, starts nothing), `import [--dry-run] <export.ndjson>` (restore keeping ids), `backup <dest.db>`; client `doctor`, `doctor --init`, `doctor --e2e` (submit, list, mark one install-check row, no spool), `submit` (friction|review|<kind>, --stdin, --dry-run), `flush`, `ingest` (the file inbox, also delivered by the start-up pass of every local-mode command), `mcp` (the MCP tools over stdio on the local database; refused in remote mode), `version`, `schema`, `skill` (render, render docs, reminder), `install` and `uninstall` (wire the skill, Stop hook or MCP entry into the coding-agent harnesses through internal/harness), `flush --hook`, read and processing `list`, `get`, `stats`, `done`, `undo`, `redact`, `rekind`, `export` (streamed, trailer verified), `digest`, `migrate` (to cloud or a URL through its import route, target key from stdin), settings resolved flag > AGENT_FEEDBACK_* env > config.toml (API key: env > config only); no url configured means local mode: the same commands over the API handler in-process on the data-directory database (internal/localmode), `--local` and `--server URL` override per invocation; coverage.toml maps every OpenAPI operation, parameter and body property to a command, flag or argument, or lists it with a reason (checked by coverage_test.go)
 internal/api/                   v1 HTTP transport over internal/core: mux, middleware, query grammar, Problem mapping, bundled openapi.json, /mcp (key, body limit, Error shape around internal/mcp), /skill and discovery; conformance test against docs/openapi.yaml
-internal/mcp/                   remote MCP server over internal/core (go-sdk, stateless Streamable HTTP): six tools answering with the REST bodies, strict argument decoding, the /mcp/{project} preset, server instructions from internal/skillgen; mounted by internal/api; coverage.toml maps every OpenAPI operation, parameter and body property to a tool and argument, or lists it with a reason (checked by coverage_test.go)
+internal/mcp/                   MCP server over internal/core (go-sdk): NewServer builds one connection's server, served stateless over Streamable HTTP by Handler and over stdio by `agentfeedback mcp`; six tools answering with the REST bodies, strict argument decoding, the /mcp/{project} preset, server instructions from internal/skillgen; mounted by internal/api; coverage.toml maps every OpenAPI operation, parameter and body property to a tool and argument, or lists it with a reason (checked by coverage_test.go), and its [transports] table names both transports, which coverage_test.go checks register the same tools
 internal/core/                  v1 service, no net/http: create with identity and dedupe, get, list, marks, redaction, stats, export, import and restore of format 2, meta; typed problems
 internal/store/                 SQLite for the v1 API: open + pragmas + the application_id stamp, the single init migration, hand-written SQL, query plans pinned by a test
 internal/harness/               harness wiring for install and uninstall: the six adapters, a byte-preserving JSON/JSONC editor, the Codex TOML block, backups, atomic writes and the install.json manifest
-internal/localmode/              the local-mode target: the v1 API handler in-process over a core.Service on the data-directory database, served to pkg/client through its transport seam; no MCP, metrics or health routes
-internal/skillgen/               skill generator: source/ (skill.json plus one Markdown fragment per teaching point) rendered into skill-md, agents-md, cursor, prompt and mcp; source/docs.json and the reference files rendered into the docs skill; source/plugin.json rendered into the agent-plugin bundle and the marketplace root; `skill render`
+internal/localmode/              the local-mode target: the v1 API handler in-process over a core.Service on the data-directory database, served to pkg/client through its transport seam; no /mcp, metrics or health routes; MCPServer builds the stdio MCP server over the same service
+internal/skillgen/               skill generator: source/ (skill.json plus one Markdown fragment per teaching point) rendered into skill-md, agents-md, cursor, prompt (curl), prompt-powershell and mcp; source/docs.json and the reference files rendered into the docs skill; source/plugin.json rendered into the agent-plugin bundle and the marketplace root; `skill render`
 pkg/schema/                     v1 schema engine: embedded schemas compiled at init, the x- keywords, guide validation, the text and date-time rules
 pkg/envelope/                   v1 decoder: token-stream parse (spellings, duplicates, UTF-8 repair), inference table, normalisation order, guide and recommended checks; the content_hash member set
 pkg/canonjson/                  v1 canonical JSON writer on the write path's JSON tree and its SHA-256; identity hashes and stored bytes are written with it
@@ -39,7 +39,7 @@ tests/skill/                    hermetic tests: run-tests.sh for install.sh (off
 tests/playbooks/                test_playbooks.py for scripts/playbooks.py (stub playbooks, no Docker); Dockerfile of the gate's clean machine (systemd, users stack and client)
 tests/ci/                       Dockerfile of the gate toolchain image: the Go toolchain go.mod pins, Node, uv, just, shellcheck and the Claude Code CLI; base images pinned by digest, CLIs by version
 tests/live/                     claude-code.sh, the live harness check's assertions (run by scripts/live-harness.sh)
-docs/                           api.md (contract of the running service), openapi.yaml (v1 contract of the next major release; embed.go makes it a Go package for internal/api), operate.md, develop.md, security.md, releases.md
+docs/                           api.md (contract of the running service), openapi.yaml (v1 contract of the next major release; embed.go makes it a Go package for internal/api), operate.md, develop.md, security.md, releases.md; recipes/ holds http-curl.md and http-powershell.md, the prompt forms rendered by `just skills`
 schemas/                        JSON Schema 2020-12: the submission envelope and the kind schemas (friction, review); embed.go makes them a Go package for pkg/schema
 conformance/                    the executable contract: decode fixtures, hash vectors, the warning list, a Python reference implementation (README inside)
 ```
@@ -66,7 +66,7 @@ just staticcheck    # staticcheck at the version pinned in the justfile
 just build-all      # CGO_ENABLED=0 cross-compile for linux, darwin, windows × amd64, arm64 into dist/<os>-<arch>/
 just test           # go test -race -count=1 ./...  (SQLite on temp files; no services needed)
 just fuzz           # go test -fuzz=FuzzDecode -fuzztime=30s ./pkg/envelope: the decoder on top of its seed corpus (every fixture body)
-just skills         # regenerate the checked-in skill renders: skills/agentfeedback/SKILL.md from internal/skillgen/source, skills/agentfeedback-docs/ from the reference files, the plugin bundle and both marketplace manifests
+just skills         # regenerate the checked-in skill renders: skills/agentfeedback/SKILL.md from internal/skillgen/source, skills/agentfeedback-docs/ from the reference files, the plugin bundle, both marketplace manifests and docs/recipes/
 just e2e            # live contract suite against a fresh `serve` on a temporary database (scripts/gate-e2e.sh, port 18080, E2E_ADDR overrides)
 just e2e-local      # the client commands in local mode against a temporary data directory, no server process (scripts/gate-local.sh)
 just run-local      # serve on 127.0.0.1:8090 with a database in ./local/
@@ -154,15 +154,19 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
 - **Skill renders are generated.** `skills/agentfeedback/SKILL.md` is the
   `skill-md` render of `internal/skillgen/source/`; edit the fragments, run
   `just skills`, and commit both. `skills/agentfeedback-docs/` is the `docs`
-  render of `docs/*.md`, `docs/openapi.yaml`, `schemas/` and
+  render of `docs/*.md`, `docs/recipes/*.md`, `docs/openapi.yaml`, `schemas/` and
   `AGENT-INSTALL*.md`, so a change to any of those files needs `just skills`
   and the render committed in the same commit. `plugins/agentfeedback/`,
   `.claude-plugin/marketplace.json` and `.agents/plugins/marketplace.json`
   are the `marketplace` render of `internal/skillgen/source/` and
   `skills/agentfeedback/scripts/install.sh`; `just skills` regenerates them
-  and they are committed with their source. Text outside a `<!-- only: … -->` block
-  reaches every form; the prompt form assumes nothing but HTTP, and no
-  checked-in render names a server URL.
+  and they are committed with their source. `docs/recipes/http-curl.md` and
+  `docs/recipes/http-powershell.md` are the `prompt` and `prompt-powershell`
+  renders; `GET /skill?format=prompt` serves the curl one with the server's
+  URL, `scripts/e2e.sh` runs its bash blocks, and the docs skill embeds both
+  (`just skills` writes them and rebuilds before rendering it). Text outside a
+  `<!-- only: … -->` block reaches every form; the prompt forms assume nothing
+  but HTTP and a shell, and no checked-in render names a server URL.
 - **Skill directories are copied as-is into harnesses.** No tests or tooling inside
   `skills/*/`; tests live in `tests/skill/`. Script comments state rules, not
   history: no dates, incident numbers or machine names.

@@ -17,9 +17,10 @@ import (
 	"github.com/agentfeedback/agentfeedback/v4/internal/skillgen"
 )
 
-// errorJSON is the Error body of err as a tool result carries it: a
-// *core.Problem 1:1, anything else a logged internal error.
-func errorJSON(ctx context.Context, err error) []byte {
+// ToolErrorBody is the Error body of err as a tool result carries it, over
+// either MCP transport: a *core.Problem 1:1, anything else a logged internal
+// error. The request id is the one attached to ctx.
+func ToolErrorBody(ctx context.Context, err error) []byte {
 	body := errorBody{Error: codeInternal, Message: "internal error", RequestID: RequestIDFromContext(ctx)}
 	var p *core.Problem
 	if errors.As(err, &p) {

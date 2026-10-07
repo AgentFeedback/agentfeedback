@@ -6,6 +6,7 @@ docs/
 !docs/embed.go
 !docs/openapi.yaml
 !docs/*.md
+!docs/recipes/*.md
 infra/
 scripts/
 skills/

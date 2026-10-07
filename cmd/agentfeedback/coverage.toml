@@ -168,13 +168,13 @@ command = "doctor"
 reason = "the document is for API tooling; the CLI is built against docs/openapi.yaml"
 
 [operations.postMcp]
-reason = "the MCP transport is for MCP clients; the CLI calls the REST routes"
+reason = "the CLI does not call the MCP routes; agentfeedback mcp serves the same tools over stdio on the local database"
 
 [operations.postMcpProject]
-reason = "the MCP transport is for MCP clients; the CLI calls the REST routes"
+reason = "the CLI does not call the MCP routes; agentfeedback mcp serves the same tools over stdio on the local database"
 
 [operations.postMcpProject.parameters]
-project = { reason = "selects the project of an MCP connection; the CLI does not speak MCP" }
+project = { reason = "selects the project of an MCP connection; the CLI does not call the MCP routes, and agentfeedback mcp serves the same tools over stdio on the local database with no preset" }
 
 # skill render prints the same guidance the route serves, from the embedded source.
 [operations.getSkill]

@@ -4,6 +4,11 @@
 > `main` implements the v1 contract, [openapi.yaml](openapi.yaml), and does not
 > answer the routes below.
 
+Hand-written HTTP calls against the v1 service follow the generated recipes
+[recipes/http-curl.md](recipes/http-curl.md) and
+[recipes/http-powershell.md](recipes/http-powershell.md), which need a shell or
+an HTTP tool that can set a header.
+
 The contract producers and processors integrate against. Self-contained: read
 this, then write the calls. Prefer the shipped client scripts in
 [`skills/agentfeedback/` at v3.0.0](https://github.com/AgentFeedback/agentfeedback/tree/v3.0.0/skills/agentfeedback); they implement
@@ -142,14 +147,6 @@ identical friction (same content, same reporter, `context` ignored) was stored
 within the last 24 hours; blind retries are safe. `400 create_friction_failed`
 on validation failure.
 
-```bash
-curl -sS -X POST "$AGENT_FEEDBACK_URL/api/v1/frictions" \
-  -H "Authorization: Bearer $AGENT_FEEDBACK_API_KEY" -H 'Content-Type: application/json' \
-  -d '{"machine_name":"workstation-a","coordinator_model":"claude-fable-5-1",
-       "category":"documentation","summary":"README install step references a flag that no longer exists",
-       "suggested_fix":"replace --legacy with --compat in README step 3","project":"example","harness":"claude-code"}'
-```
-
 ### POST /api/v1/reviews
 
 One record per completed multi-reviewer run: per-reviewer status, timing and
@@ -189,13 +186,6 @@ free-form JSON object payload. Nothing in the service interprets the payload.
 
 `201` new, `200` identical replay, `409 replay_mismatch` on different content
 under the same `(kind, key)`, `400 create_event_failed` on validation failure.
-
-```bash
-curl -sS -X POST "$AGENT_FEEDBACK_URL/api/v1/events" \
-  -H "X-Api-Key: $AGENT_FEEDBACK_API_KEY" -H 'Content-Type: application/json' \
-  -d '{"kind":"deploy","key":"workstation-a-20260917-200648","machine_name":"workstation-a",
-       "coordinator_model":"claude-fable-5-1","payload":{"service":"agentfeedback","image":"sha-0e840b2","ok":true}}'
-```
 
 ## Read endpoints
 
@@ -251,11 +241,6 @@ claim or lease; two concurrent processors can act on the same row.
 
 `400 bad_request` names any malformed parameter (`since must be RFC 3339`,
 `processed must be true or false`, `before_id must be a positive integer`, …).
-
-```bash
-curl -sS "$AGENT_FEEDBACK_URL/api/v1/submissions?family=friction&processed=false&include=payload&limit=100" \
-  -H "X-Api-Key: $AGENT_FEEDBACK_API_KEY"
-```
 
 ### GET /api/v1/submissions/{id}
 

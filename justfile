@@ -48,15 +48,22 @@ fuzz:
     go test -run='^$' -fuzz='^FuzzDecode$' -fuzztime=30s ./pkg/envelope
 
 # The checked-in skill renders: `just skills` writes them, `just ci` checks them.
-skill_renders := "skills/agentfeedback/SKILL.md skills/agentfeedback-docs plugins/agentfeedback .claude-plugin .agents/plugins"
+skill_renders := "skills/agentfeedback/SKILL.md skills/agentfeedback-docs plugins/agentfeedback .claude-plugin .agents/plugins docs/recipes"
 
-# Regenerate every checked-in skill render from internal/skillgen/source and the embedded reference files, including the plugin bundle and both marketplace manifests. Never edit a render by hand.
+# Regenerate every checked-in skill render from internal/skillgen/source and the embedded reference files, including the plugin bundle, both marketplace manifests and the HTTP recipes under docs/recipes. Never edit a render by hand.
 skills: build
     #!/usr/bin/env bash
     set -euo pipefail
     tmp=$(mktemp)
     tmpd=$(mktemp -d)
     trap 'rm -f "$tmp"; rm -rf "$tmpd"' EXIT
+    # The recipes are written first and the binary rebuilt, because the docs
+    # skill embeds them.
+    ./bin/agentfeedback skill render prompt > "$tmpd/http-curl.md"
+    ./bin/agentfeedback skill render prompt-powershell > "$tmpd/http-powershell.md"
+    mkdir -p docs/recipes
+    cp "$tmpd/http-curl.md" "$tmpd/http-powershell.md" docs/recipes/
+    go build -o bin/agentfeedback ./cmd/agentfeedback
     ./bin/agentfeedback skill render skill-md > "$tmp"
     ./bin/agentfeedback skill render docs --out "$tmpd/out"
     ./bin/agentfeedback skill render marketplace --out "$tmpd/mkt"

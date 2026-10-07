@@ -21,6 +21,8 @@ The reference docs, JSON Schemas, OpenAPI document and install playbooks of Agen
 - [references/docs/develop.md](references/docs/develop.md): Develop AgentFeedback
 - [references/docs/openapi.yaml](references/docs/openapi.yaml): AgentFeedback API (OpenAPI document)
 - [references/docs/operate.md](references/docs/operate.md): Operate AgentFeedback
+- [references/docs/recipes/http-curl.md](references/docs/recipes/http-curl.md): AgentFeedback
+- [references/docs/recipes/http-powershell.md](references/docs/recipes/http-powershell.md): AgentFeedback
 - [references/docs/releases.md](references/docs/releases.md): Releases
 - [references/docs/security.md](references/docs/security.md): Security
 - [references/schemas/envelope.v1.json](references/schemas/envelope.v1.json): JSON Schema: AgentFeedback submission envelope
