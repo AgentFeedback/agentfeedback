@@ -86,7 +86,8 @@ func resolveModeFrom(mf modeFlags, getenv func(string) string, file fileConfig) 
 var localTarget *localmode.Target
 
 // skipStartupPass is set by the commands that must not run the start-up
-// pass: flush, which is the pass, and doctor, which changes nothing. run
+// pass: flush and ingest, which run its halves themselves, and doctor,
+// which changes nothing. run
 // resets it.
 var skipStartupPass bool
 
@@ -151,8 +152,9 @@ func openLocalClient(m clientMode, getenv func(string) string, stderr io.Writer)
 // them). Ordering is best effort: when the pass fails and the database
 // frees up a moment later, the command's own write lands before the older
 // entry, which the next pass delivers; refusing the write to keep the order
-// would spool a report the database can take. This is the hook point for
-// the file inbox: its ingestion joins here when it ships.
+// would spool a report the database can take. Then it ingests the file
+// inbox (ingestInbox), as silently: every file's outcome is logged, and a
+// failure to read the inbox is one error line in the log.
 func startupPass(cfg client.Config) {
 	cfg.Stderr = io.Discard
 	c, err := client.New(cfg)
@@ -162,6 +164,7 @@ func startupPass(cfg client.Config) {
 	if client.HasDue(cfg.DataDir, nowFunc()) {
 		c.Flush(context.Background())
 	}
+	inboxPass(context.Background(), c, cfg.DataDir)
 }
 
 // newAPIClient resolves the mode and builds the client for it: the local

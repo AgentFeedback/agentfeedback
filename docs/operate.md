@@ -79,6 +79,9 @@ the only copy of a report:
 | `agentfeedback.db` (+ `-wal`, `-shm`) | the local-mode database, also the default of `serve`, `backup` and `import` |
 | `spool/` | submissions waiting to be delivered, one `af1-*.json` file each with its destination |
 | `rejected/` | submissions the destination refused for good (kept 30 days) |
+| `inbox/` | envelope files written by an agent that cannot run the binary, one `*.json` each (see below) |
+| `inbox/done/` | inbox files filed, renamed `<id>-<name>` |
+| `inbox/rejected/` | inbox files refused, each with a `<name>.reason` beside it |
 
 The client creates the directory `0700` and the database files `0600`
 (SQLite gives `-wal` and `-shm` the database file's mode). A directory or
@@ -96,6 +99,41 @@ On Windows that is `%USERPROFILE%\.local\share\agentfeedback\agentfeedback.db`
 for the database and `%USERPROFILE%\.config\agentfeedback\config.toml` for
 the config file; `agentfeedback doctor` prints both. Owner-only modes are not
 set or checked on Windows.
+
+### File inbox
+
+An agent that cannot run the binary writes one envelope, a JSON object as
+`POST /api/v1/submissions` takes it, into `inbox/<name>.json` under the data
+directory; the recipe is in the skill. Every local-mode command but `doctor`
+delivers the inbox, after the due spool entries, and prints nothing about
+it; the Stop hook (`flush --hook`) does it within its deadline. `agentfeedback
+ingest` does the same pass on demand, in either mode, and prints the counts
+(`--json` for one JSON object). Nothing watches the directory.
+
+- Each row gets `context.origin` `inbox` (a `context` that is not an object
+  is kept in the payload as `context_raw`). A file without a `key` gets one
+  derived from its name and bytes, so the same file delivered twice is one
+  row.
+- Filed (created or already stored): moved to `inbox/done/<id>-<name>`.
+  Refused (not one JSON object, over the 10 MiB create limit, refused by the
+  server, or a key that names another report): moved to
+  `inbox/rejected/<name>` (the time added when that name is taken), with
+  `<name>.reason` holding the outcome line and the server's error body. Not
+  delivered now (database busy, server unreachable, wrong key or URL): left
+  in place, and the pass stops there. A file that is not one JSON object and
+  was written in the last minute is left too, since a writer may still be
+  writing it.
+- Only regular files directly in `inbox/` whose names end in `.json` and do
+  not start with `.` are read, so a writer writes `.<name>.tmp` and renames
+  it. A symlink or any other entry is never read: `ingest` names it on
+  stderr, the client log records it, and it stays until removed. A file over
+  the create limit is refused from its size, unread. Every file operation
+  stays inside the inbox directory, and a file replaced under the same name
+  while it was being delivered is left for the next pass, not moved.
+- The writer creates `inbox/` `0700`; the client creates `done/` and
+  `rejected/` `0700` and writes `.reason` files `0600`. `doctor` reports
+  looser modes, as for the rest of the data directory. The inbox, like the
+  database, belongs to the one OS user who owns the data directory.
 
 ## Bare binary (no Docker)
 

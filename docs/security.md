@@ -26,7 +26,11 @@ is not multi-tenant and is not safe to expose directly to the internet.
   database in-process and never presents the server key: the key guards the
   network, and the one OS user who can read the database file can already
   write it. Local mode is for that one user; sharing a machine's queue with
-  others means running `serve` with a key.
+  others means running `serve` with a key. The file inbox
+  (`inbox/` in the data directory, `0700`) follows the same rule: a file
+  there is filed by the next command, so only that user may write it; the
+  client never follows a symlink out of it and never reads a file over the
+  create limit.
 
 ## What gets stored
 

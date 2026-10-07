@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -315,11 +316,11 @@ func TestBlocksStayInTheirChannel(t *testing.T) {
 	}
 	for _, form := range Forms() {
 		out := render(t, form, "")
-		own := Channel(form)
+		own := Channels(form)
 		for _, f := range frags {
-			ownText := f.text(own)
-			for _, other := range []string{ChannelCLI, ChannelHTTP, ChannelMCP} {
-				if other == own {
+			ownText := f.text(own...)
+			for _, other := range channels {
+				if slices.Contains(own, other) {
 					continue
 				}
 				for _, p := range paragraphs(strings.ReplaceAll(f.text(other), "{{server}}", serverPlaceholder)) {

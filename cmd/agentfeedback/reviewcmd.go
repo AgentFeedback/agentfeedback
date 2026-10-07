@@ -512,7 +512,8 @@ func reviewBases(pos []string) []string {
 // rejected; each submitted run prints its outcome line; it exits 0.
 func (s *submitter) sweep(pos []string) error {
 	if !s.dryRun {
-		// The sweep flushes first itself; it is the start-up pass.
+		// The sweep flushes first itself, and in local mode ingests the
+		// inbox: it is the start-up pass.
 		skipStartupPass = true
 		c, err := s.client()
 		if err != nil {
@@ -525,6 +526,11 @@ func (s *submitter) sweep(pos []string) error {
 				msg += ", stopped: " + rep.Stopped
 			}
 			s.warn(msg)
+		}
+		if m, err := resolveMode(s.mode, os.Getenv); err == nil && m.Mode == modeLocal {
+			if data, err := dataDir(os.Getenv); err == nil {
+				inboxPass(context.Background(), c, data)
+			}
 		}
 	}
 	bases := reviewBases(pos)

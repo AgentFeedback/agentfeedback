@@ -596,9 +596,9 @@ func cmpInt(a, b int) int {
 }
 
 // checkModes reports the paths under the data directory whose mode lets
-// other users in: the directory itself, spool/ and rejected/, and the
-// database files (the database, -wal and -shm), each that exists, as a
-// problem with the chmod to run. It runs in both modes, since the spool is
+// other users in: the directory itself, spool/, rejected/, the inbox with
+// its done/ and rejected/, and the database files (the database, -wal and
+// -shm), each that exists, as a problem with the chmod to run. It runs in both modes, since the spool is
 // the only copy of a pending report in either. Nothing is changed: the
 // client tightens what it creates and leaves what it finds. Modes mean
 // nothing on Windows.
@@ -618,6 +618,10 @@ func checkModes(data string, problem func(error)) []string {
 	check(data, 0o700)
 	check(client.SpoolDir(data), 0o700)
 	check(client.RejectedDir(data), 0o700)
+	inbox := client.InboxDir(data)
+	check(inbox, 0o700)
+	check(filepath.Join(inbox, inboxDone), 0o700)
+	check(filepath.Join(inbox, inboxRejected), 0o700)
 	for _, p := range localmode.Sidecars(filepath.Join(data, "agentfeedback.db")) {
 		check(p, 0o600)
 	}

@@ -3,7 +3,7 @@
 // its database, and doctor, submit (friction,
 // review or any kind), flush, version, schema, skill and the read and
 // processing commands (list, get, stats, done, undo, redact, rekind, export,
-// digest) and migrate are client commands; install and uninstall wire the
+// digest), ingest and migrate are client commands; install and uninstall wire the
 // client into the coding-agent harnesses. A bare invocation prints help.
 package main
 
@@ -46,6 +46,7 @@ var commands = []command{
 	{"doctor", "check the client setup: the mode (local database or server), the connection and the versions; doctor --e2e [--json]: submit, list and mark one install-check row", runDoctor},
 	{"submit", "submit friction --summary S [...] | submit <kind> --stdin [...] | submit review <run_dir> [--include-outputs] | submit review --sweep [<base>...]; --dry-run sends nothing, --scrub redacts known secret formats in the body's string values: file a submission, the outcome is the last line", runSubmit},
 	{"flush", "flush [--hook]: send the spooled submissions that are due and print the counts; --hook prints nothing, stops after 5 s and always exits 0", runFlush},
+	{"ingest", ingestSynopsis + ": submit the envelope files in the inbox (every local-mode command but doctor does this first) and print the counts", runIngest},
 	{"list", "list [filters] [--limit N] [--before-id N | --after-id N] [--include payload] [--all] [--json | --tsv]: list submissions, newest first", runList},
 	{"get", "get <id> [--json]: print one submission", runGet},
 	{"stats", "stats [filters] [--by a,b] [--top N] [--bucket day|week] [--json]: print aggregates", runStats},
@@ -70,6 +71,8 @@ First-time setup: printf '%%s' "$KEY" | agentfeedback doctor --init --url URL --
 
 Local mode: with no server URL configured, every client command works against the data directory
   ${XDG_DATA_HOME:-~/.local/share}/agentfeedback/agentfeedback.db with no server; --local forces it, --server URL targets a server once.
+  Envelope files dropped into ${XDG_DATA_HOME:-~/.local/share}/agentfeedback/inbox/*.json are submitted at the start
+  of every local-mode command, or by agentfeedback ingest, and moved to inbox/done/ or inbox/rejected/.
 client environment (flag > environment > config file):
   AGENT_FEEDBACK_URL       server base URL (doctor --url overrides it)
   AGENT_FEEDBACK_API_KEY   API key (environment or config file only, never a flag)

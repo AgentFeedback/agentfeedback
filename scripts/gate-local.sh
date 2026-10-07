@@ -79,6 +79,24 @@ jq -e '.flushed == 0 and .pending == 0 and .other_destination == 0' >/dev/null <
   fail "flush in local mode: unexpected report $out"
 pass "flush in local mode reports an empty spool"
 
+# The file inbox: an envelope file dropped by a writer without the binary is
+# filed by the next command, with origin inbox, and moved to done/.
+inbox="$DATA/agentfeedback/inbox"
+(umask 077 && mkdir -p "$inbox")
+printf '%s' '{"kind": "friction", "key": "gate-local-inbox", "summary": "from the inbox"}' >"$inbox/.gate.tmp"
+mv "$inbox/.gate.tmp" "$inbox/gate.json"
+out=$(af list --json) || fail "list --json after an inbox drop failed: $out"
+iid=$(jq -r '.submissions[] | select(.key == "gate-local-inbox") | .id' <<<"$out")
+[ -n "$iid" ] || fail "list after an inbox drop: no row with key gate-local-inbox: $out"
+out=$(af get "$iid" --json) || fail "get $iid --json failed: $out"
+jq -e '.context.origin == "inbox"' >/dev/null <<<"$out" || fail "the inbox row has no origin inbox: $out"
+[ -f "$inbox/done/$iid-gate.json" ] || fail "the inbox file was not moved to done/$iid-gate.json"
+[ ! -e "$inbox/gate.json" ] || fail "the inbox file is still in the inbox"
+out=$(af ingest --json) || fail "ingest --json failed: $out"
+jq -e '.ingested == 0 and .pending == 0 and .rejected == 0' >/dev/null <<<"$out" ||
+  fail "ingest after the start-up pass: unexpected report $out"
+pass "an inbox file is filed by the next command with origin inbox and moved to done/"
+
 # Modes are checked where the stat command speaks GNU; macOS stat has no -c.
 if stat -c %a "$DATA/agentfeedback" >/dev/null 2>&1; then
   dirmode=$(stat -c %a "$DATA/agentfeedback")

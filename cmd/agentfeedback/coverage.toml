@@ -10,6 +10,8 @@
 #     command = "<cli command name>"        the command that calls it, or that
 #                                           serves the same content locally
 #     reason = "<why the CLI has no command>"
+#     also = ["<cli command name>", ...]    optional: other commands that send
+#                                           through it without their own flags
 #   [operations.<operationId>.parameters]   every parameter (query, path, header, cookie)
 #   [operations.<operationId>.body]         every request-body property
 #     <name> = { flag = "--name" }          set by this flag
@@ -19,8 +21,10 @@
 # Another client surface reuses the format with tool and argument in place of
 # command and flag.
 
+# ingest submits the inbox files as written, through the same operation.
 [operations.createSubmission]
 command = "submit"
+also = ["ingest"]
 
 [operations.createSubmission.body]
 kind = { arg = "<kind>" }

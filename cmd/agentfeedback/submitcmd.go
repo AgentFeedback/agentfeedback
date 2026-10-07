@@ -662,6 +662,11 @@ func runFlush(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return err
 	}
 	rep := c.Flush(context.Background())
+	if local, err := localMode(*mf); err == nil && local {
+		if data, err := dataDir(os.Getenv); err == nil {
+			inboxPass(context.Background(), c, data)
+		}
+	}
 
 	return writeJSON(stdout, flushReport{
 		Flushed: rep.Flushed, Duplicates: rep.Duplicates, Pending: rep.Pending, Rejected: rep.Rejected,
@@ -671,23 +676,29 @@ func runFlush(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 }
 
 // flushNothingLocal reports whether this flush is in local mode with an
-// empty spool, in which case opening (and on a fresh machine creating) the
-// local database would be a side effect of a no-op. Any entry, due or not,
-// bound here or elsewhere, is reported by the flush itself.
+// empty spool and no inbox file, in which case opening (and on a fresh
+// machine creating) the local database would be a side effect of a no-op.
+// Any entry, due or not, bound here or elsewhere, is reported by the flush
+// itself. In local mode a flush also ingests the inbox, silently, as the
+// start-up pass does.
 func flushNothingLocal(mf modeFlags) (bool, error) {
-	m, err := resolveMode(mf, os.Getenv)
-	if err != nil {
+	local, err := localMode(mf)
+	if err != nil || !local {
 		return false, err
-	}
-	if m.Mode != modeLocal {
-		return false, nil
 	}
 	data, err := dataDir(os.Getenv)
 	if err != nil {
 		return false, err
 	}
 
-	return !client.HasEntries(data), nil
+	return !client.HasEntries(data) && !inboxHasCandidates(data), nil
+}
+
+// localMode reports whether mf and the configuration select local mode.
+func localMode(mf modeFlags) (bool, error) {
+	m, err := resolveMode(mf, os.Getenv)
+
+	return m.Mode == modeLocal, err
 }
 
 // The flush --hook deadlines, both from the start of the command and under
@@ -741,10 +752,12 @@ func runFlushHook(mf modeFlags) {
 }
 
 // flushHookBody is the work runFlushHook bounds; it returns the failure to
-// log, or nil. An empty spool returns before the config is read; data is the
-// data directory the spool lives in.
+// log, or nil. An empty spool and an empty inbox return before the config
+// is read; data is the data directory the spool and the inbox live in. In
+// local mode the inbox is ingested after the flush, within the same
+// deadline.
 func flushHookBody(ctx context.Context, data string, mf modeFlags) error {
-	if !flushHookHasDue(data, nowFunc()) {
+	if !flushHookHasDue(data, nowFunc()) && !inboxHasCandidates(data) {
 		return nil
 	}
 	if ctx.Err() != nil {
@@ -768,6 +781,14 @@ func flushHookBody(ctx context.Context, data string, mf modeFlags) error {
 		return errors.New("the flush stopped: " + rep.Stopped)
 	case ctx.Err() != nil:
 		return errors.New("the flush ran past its deadline")
+	}
+	// The inbox goes last and only with a second to spare: a file it cannot
+	// finish is left for the next command.
+	if dl, ok := ctx.Deadline(); ok && time.Until(dl) < time.Second {
+		return nil
+	}
+	if local, err := localMode(mf); err == nil && local {
+		inboxPass(ctx, c, data)
 	}
 
 	return nil

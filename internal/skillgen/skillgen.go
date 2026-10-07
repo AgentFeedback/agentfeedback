@@ -8,7 +8,8 @@
 //	<!-- end -->
 //
 // is kept only in the forms whose channel it names: cli (the forms that run
-// the binary), http (the prompt form, for agents with nothing but HTTP) and
+// the binary), file (the same forms: the file inbox, for when the binary is
+// not on PATH), http (the prompt form, for agents with nothing but HTTP) and
 // mcp (the server's MCP instructions). {{server}} is the server's base URL.
 package skillgen
 
@@ -41,16 +42,23 @@ const (
 // The channels a fragment block can name.
 const (
 	ChannelCLI  = "cli"
+	ChannelFile = "file"
 	ChannelHTTP = "http"
 	ChannelMCP  = "mcp"
 )
 
-var formChannel = map[string]string{
-	FormSkillMD:  ChannelCLI,
-	FormAgentsMD: ChannelCLI,
-	FormCursor:   ChannelCLI,
-	FormPrompt:   ChannelHTTP,
-	FormMCP:      ChannelMCP,
+// channels lists every channel a block may name.
+var channels = []string{ChannelCLI, ChannelFile, ChannelHTTP, ChannelMCP}
+
+// formChannels are the channels each form shows: the forms that run the
+// binary also teach the file inbox, which is local to the same machine; the
+// prompt and mcp forms reach a server and never do.
+var formChannels = map[string][]string{
+	FormSkillMD:  {ChannelCLI, ChannelFile},
+	FormAgentsMD: {ChannelCLI, ChannelFile},
+	FormCursor:   {ChannelCLI, ChannelFile},
+	FormPrompt:   {ChannelHTTP},
+	FormMCP:      {ChannelMCP},
 }
 
 // Forms lists the forms Render accepts, in help order.
@@ -58,8 +66,8 @@ func Forms() []string {
 	return []string{FormSkillMD, FormAgentsMD, FormCursor, FormPrompt, FormMCP}
 }
 
-// Channel returns the channel a form teaches, or "" for an unknown form.
-func Channel(form string) string { return formChannel[form] }
+// Channels returns the channels a form shows, or nil for an unknown form.
+func Channels(form string) []string { return slices.Clone(formChannels[form]) }
 
 // CarriesServer reports whether a form names the server's URL. The forms that
 // run the binary never do: the binary's configuration carries it.
@@ -195,7 +203,7 @@ func parseFragment(id, text string) (Fragment, error) {
 				return f, fmt.Errorf("%s: block names no channel", where)
 			}
 			for _, c := range open {
-				if c != ChannelCLI && c != ChannelHTTP && c != ChannelMCP {
+				if !slices.Contains(channels, c) {
 					return f, fmt.Errorf("%s: unknown channel %q", where, c)
 				}
 			}
@@ -227,11 +235,11 @@ func parseFragment(id, text string) (Fragment, error) {
 	return f, nil
 }
 
-// text returns the fragment as a channel sees it.
-func (f Fragment) text(channel string) string {
+// text returns the fragment as a form showing the given channels sees it.
+func (f Fragment) text(shown ...string) string {
 	var out []string
 	for _, l := range f.lines {
-		if l.channels == nil || slices.Contains(l.channels, channel) {
+		if l.channels == nil || slices.ContainsFunc(l.channels, func(c string) bool { return slices.Contains(shown, c) }) {
 			out = append(out, l.text)
 		}
 	}
@@ -335,8 +343,8 @@ func NormalizeServer(raw string) (string, error) {
 // Render returns a form. server is the base URL the prompt and mcp forms name;
 // empty renders them with a placeholder, and the other forms ignore it.
 func Render(form, server string) ([]byte, error) {
-	channel := Channel(form)
-	if channel == "" {
+	chans := Channels(form)
+	if chans == nil {
 		return nil, fmt.Errorf("%w %q", ErrUnknownForm, form)
 	}
 	m, frags, err := Source()
@@ -355,7 +363,7 @@ func Render(form, server string) ([]byte, error) {
 
 	parts := make([]string, 0, len(frags))
 	for _, f := range frags {
-		parts = append(parts, strings.ReplaceAll(f.text(channel), "{{server}}", shown))
+		parts = append(parts, strings.ReplaceAll(f.text(chans...), "{{server}}", shown))
 	}
 	body := strings.Join(parts, "\n\n")
 

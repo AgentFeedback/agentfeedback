@@ -20,9 +20,11 @@ type coverageFile struct {
 }
 
 // opCoverage is one operation: the command that calls it or the reason none
-// does, and an entry per parameter and body property.
+// does, the other commands that send through it, and an entry per parameter
+// and body property.
 type opCoverage struct {
 	Command    string                    `toml:"command"`
+	Also       []string                  `toml:"also"`
 	Reason     string                    `toml:"reason"`
 	Parameters map[string]*fieldCoverage `toml:"parameters"`
 	Body       map[string]*fieldCoverage `toml:"body"`
@@ -198,7 +200,15 @@ func cliProblems(cov *coverageFile) []string {
 	usage := map[string]string{}
 	flagRE := map[string]*regexp.Regexp{}
 	for id, oc := range cov.Operations {
-		if oc == nil || oc.Command == "" {
+		if oc == nil {
+			continue
+		}
+		for _, name := range oc.Also {
+			if !slices.ContainsFunc(commands, func(c command) bool { return c.name == name && c.run != nil }) {
+				add("operation %s: also-command %q is not in the router", id, name)
+			}
+		}
+		if oc.Command == "" {
 			continue
 		}
 		i := slices.IndexFunc(commands, func(c command) bool { return c.name == oc.Command && c.run != nil })
