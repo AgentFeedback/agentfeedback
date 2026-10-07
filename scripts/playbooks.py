@@ -492,11 +492,19 @@ def stage_release(tag: str, source: str, work: Path) -> str | None:
         stage = work / "tree"
         stage.mkdir()
         commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, check=True, capture_output=True, text=True).stdout.strip()
-        env = dict(os.environ, CGO_ENABLED="0", GOOS="linux", GOARCH=arch)
-        subprocess.run(
-            ["go", "build", "-trimpath", "-ldflags", f"-s -w -X main.version={version} -X main.commit={commit}", "-o", str(stage / "agentfeedback"), "./cmd/agentfeedback"],
-            cwd=ROOT, env=env, check=True,
-        )
+        # Built in the toolchain container into a directory of its own under
+        # the repository's dist/, which the container can write.
+        (ROOT / "dist").mkdir(exist_ok=True)
+        built = Path(tempfile.mkdtemp(prefix="playbooks-tree.", dir=ROOT / "dist"))
+        try:
+            subprocess.run(
+                ["bash", str(ROOT / "scripts/in-container.sh"), "env", "CGO_ENABLED=0", "GOOS=linux", f"GOARCH={arch}",
+                 "go", "build", "-trimpath", "-ldflags", f"-s -w -X main.version={version} -X main.commit={commit}", "-o", str(built / "agentfeedback"), "./cmd/agentfeedback"],
+                cwd=ROOT, check=True,
+            )
+            shutil.copy(built / "agentfeedback", stage)
+        finally:
+            shutil.rmtree(built, ignore_errors=True)
         shutil.copy(ROOT / "LICENSE", stage)
         shutil.copy(ROOT / "README.md", stage)
         archive = f"agentfeedback_{version}_linux_{arch}.tar.gz"

@@ -95,11 +95,48 @@ e2e-local: build
 playbooks tag source="github" *flags:
     python3 scripts/playbooks.py run "$@"
 
-# Every gate in order. There is no hosted CI: this is the merge gate, run on the tree that merges.
+# The merge gate: every gate of ci-host inside the toolchain container, then the live Claude Code check. There is no hosted CI: this runs on the tree that merges, and touches nothing on the machine but the repository and Docker.
 ci:
+    bash scripts/in-container.sh just ci-host
+    bash scripts/live-harness.sh
+
+# Run a recipe or a command inside the toolchain container: `just box test`, `just box go test ./pkg/client`; `just box -- <command>` when the command shares a recipe's name. Recipes that start containers themselves run on the host instead.
+[positional-arguments]
+box +args:
     #!/usr/bin/env bash
     set -euo pipefail
-    snapshot() { { git diff HEAD --; git ls-files --others --exclude-standard -z | xargs -0 -r sha256sum; } | sha256sum; }
+    case "$1" in
+        --) shift; exec bash scripts/in-container.sh "$@" ;;
+        ci|live-harness|playbooks|docker-build|release|release-check|box)
+            echo "just box: $1 starts its own containers; run just $1 on the host" >&2
+            exit 2 ;;
+    esac
+    for recipe in $(just --summary); do
+        if [ "$recipe" = "$1" ]; then
+            exec bash scripts/in-container.sh just "$@"
+        fi
+    done
+    exec bash scripts/in-container.sh "$@"
+
+# Install, list and uninstall the agentfeedback MCP entry, skill and Stop hook with the real Claude Code CLI in a network-less container, against a server on its loopback.
+live-harness:
+    bash scripts/live-harness.sh
+
+# Every gate in order on the host itself. For debugging only: `just ci` runs this inside the toolchain container and is the merge gate.
+ci-host:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    want=$(sed -n 's/^toolchain //p' go.mod)
+    if [ "$(go env GOVERSION)" != "$want" ]; then
+        echo "just ci: go is $(go env GOVERSION), go.mod pins $want; update tests/ci/Dockerfile or go.mod so they agree" >&2
+        exit 1
+    fi
+    if [ "${AF_CI_CONTAINER:-}" = 1 ]; then
+        echo "just ci: toolchain $(go env GOVERSION), node $(node --version), $(uv --version), shellcheck $(shellcheck --version | sed -n 's/^version: //p'), $(just --version), claude $(claude --version)" >&2
+    fi
+    # Untracked files and their content; a nested repository (a linked
+    # worktree under the checkout) is listed as a directory and skipped.
+    snapshot() { { git diff HEAD --; git ls-files --others --exclude-standard -z | { grep -zv '/$' || true; } | xargs -0 -r sha256sum; } | sha256sum; }
     before=$(snapshot)
     just check
     after=$(snapshot)
@@ -124,6 +161,9 @@ ci:
     if command -v claude >/dev/null 2>&1; then
         claude plugin validate --strict plugins/agentfeedback
         claude plugin validate --strict .
+    elif [ "${AF_CI_CONTAINER:-}" = 1 ]; then
+        echo "just ci: claude is missing from the toolchain image; rebuild it (AF_CI_IMAGE_REBUILD=1)" >&2
+        exit 1
     else
         echo "just ci: claude is not on PATH; claude plugin validate skipped (validate plugins/agentfeedback and the repository root by hand)" >&2
     fi
@@ -137,8 +177,13 @@ ci:
     python3 tests/skill/triage-playbooks.py
     python3 tests/playbooks/test_playbooks.py
     python3 scripts/playbooks.py check
-    shellcheck -x scripts/*.sh
+    shellcheck -x scripts/*.sh tests/live/*.sh
     just contract
+    if [ "$(snapshot)" != "$before" ]; then
+        echo "just ci: a gate changed the tree" >&2
+        git status --short >&2
+        exit 1
+    fi
 
 # Build the Docker image tagged agentfeedback from source. The published image is built by the release step (GoReleaser).
 docker-build:

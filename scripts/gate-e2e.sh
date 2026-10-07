@@ -13,6 +13,7 @@ KEY="${E2E_API_KEY:-gate-e2e-key}"
 [ -x "$BIN" ] || { echo "gate-e2e: $BIN missing; run just build" >&2; exit 1; }
 
 workdir=$(mktemp -d)
+mkdir -p "$workdir/home"
 server_pid=
 cleanup() {
   if [ -n "$server_pid" ]; then
@@ -75,12 +76,12 @@ check "restores every record" '(.dry_run | not) and .imported == $n and .conflic
 # shellcheck disable=SC2016
 check "re-run is a no-op" '.imported == 0 and .skipped == $n and .conflicts == []'
 
-# The client binary files one friction against the live server, with isolated
-# config and cache directories and none of the caller's AGENT_FEEDBACK_*
-# settings.
-out=$(env -u AGENT_FEEDBACK_URL -u AGENT_FEEDBACK_API_KEY -u AGENT_FEEDBACK_MACHINE \
-  -u AGENT_FEEDBACK_MODEL -u AGENT_FEEDBACK_HARNESS -u AGENT_FEEDBACK_SESSION_ID \
+# The client binary files one friction against the live server from an empty
+# environment: its own HOME, config, cache and data directories (where a
+# failed submission would spool), and none of the caller's variables.
+out=$(env -i PATH="$PATH" HOME="$workdir/home" \
   XDG_CONFIG_HOME="$workdir/xdg-config" XDG_CACHE_HOME="$workdir/xdg-cache" \
+  XDG_DATA_HOME="$workdir/xdg-data" \
   AGENT_FEEDBACK_URL="http://$ADDR" AGENT_FEEDBACK_API_KEY="$KEY" \
   "$BIN" submit friction --summary x) || fail "submit friction failed: $out"
 tail -n 1 <<<"$out" | jq -e '.outcome == "submitted" and (.id | type) == "number"' >/dev/null ||

@@ -11,17 +11,15 @@ BIN="$ROOT/bin/agentfeedback"
 workdir=$(mktemp -d)
 trap 'rm -rf "$workdir"' EXIT
 DATA="$workdir/xdg-data"
-mkdir -p "$workdir/xdg-config" "$workdir/xdg-cache" "$DATA"
+mkdir -p "$workdir/home" "$workdir/xdg-config" "$workdir/xdg-cache" "$DATA"
 
 fail() { echo "gate-local: $*" >&2; exit 1; }
 pass() { echo "PASS  $*"; }
 
-# af runs the binary with none of the caller's AGENT_FEEDBACK_* settings and
-# isolated config, cache and data directories.
+# af runs the binary from an empty environment: none of the caller's variables,
+# its own HOME and isolated config, cache and data directories.
 af() {
-  env -u AGENT_FEEDBACK_URL -u AGENT_FEEDBACK_API_KEY -u AGENT_FEEDBACK_MACHINE \
-    -u AGENT_FEEDBACK_MODEL -u AGENT_FEEDBACK_HARNESS -u AGENT_FEEDBACK_SESSION_ID \
-    -u AGENT_FEEDBACK_REVIEW_DIRS \
+  env -i PATH="$PATH" HOME="$workdir/home" \
     XDG_CONFIG_HOME="$workdir/xdg-config" XDG_CACHE_HOME="$workdir/xdg-cache" \
     XDG_DATA_HOME="$DATA" \
     "$BIN" "$@"
@@ -90,6 +88,7 @@ if stat -c %a "$DATA/agentfeedback" >/dev/null 2>&1; then
   pass "the data directory is 0700 and the database 0600"
 fi
 
+command -v pgrep >/dev/null 2>&1 || fail "pgrep is required to check that no server process ran"
 if pgrep -f "$BIN serve" >/dev/null; then
   fail "a $BIN serve process is running; local mode must not start a server"
 fi

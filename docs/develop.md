@@ -20,7 +20,7 @@ pkg/canonjson/                  v1 canonical JSON writer on the write path's JSO
 pkg/client/                     v1 client transport: both auth headers, no redirects, the retry table, the spool in the data directory (spool/, rejected/ beside it, every entry bound to its destination, retention), outcome lines and exit codes, the owner-only client.jsonl in the cache directory; `Do` and `Stream` for every other route (`APIError`, `TransportError`)
 pkg/collect/                    client context collection: project, machine and harness groups (git metadata with or without git, env allow-list looked up by name), deny_paths/opt-in narrowing, repository .agentfeedback.toml that may only narrow
 infra/agentfeedback/            compose stacks (local build, image-based deploy) and .env.example
-scripts/                        e2e.sh (live v1 contract suite: every openapi.yaml operation, fails on an uncovered one), gate-e2e.sh, deploy.sh, release.sh (the release step behind
+scripts/                        in-container.sh (runs a command in the gate toolchain image), live-harness.sh (the live Claude Code check), e2e.sh (live v1 contract suite: every openapi.yaml operation, fails on an uncovered one), gate-e2e.sh, deploy.sh, release.sh (the release step behind
                                 `just release`), eval-cluster.py (live cluster.py calibration; discloses report text), playbooks.py (the playbook gate: routes through both
                                 install playbooks, the Verify condition of each step, `check`, `list`, `run`)
 references.go                   embeds the docs, schemas, OpenAPI document and install playbooks for the docs skill (go:embed cannot reach the root from internal/)
@@ -36,21 +36,30 @@ plugins/agentfeedback/          Agent Plugins bundle (plugin.json, .claude-plugi
 skills/agentfeedback-triage/    processor skill on the agentfeedback CLI (SKILL.md routing to playbooks/, six playbooks; optional scripts/cluster.py + reference/clustering.md)
 tests/skill/                    hermetic tests: run-tests.sh for install.sh (offline fixture release), test_cluster.py for cluster.py (no requests), triage-playbooks.py runs every triage playbook's bash blocks against a throwaway server
 tests/playbooks/                test_playbooks.py for scripts/playbooks.py (stub playbooks, no Docker); Dockerfile of the gate's clean machine (systemd, users stack and client)
+tests/ci/                       Dockerfile of the gate toolchain image: the Go toolchain go.mod pins, Node, uv, just, shellcheck and the Claude Code CLI; base images pinned by digest, CLIs by version
+tests/live/                     claude-code.sh, the live harness check's assertions (run by scripts/live-harness.sh)
 docs/                           api.md (contract of the running service), openapi.yaml (v1 contract of the next major release; embed.go makes it a Go package for internal/api), operate.md, develop.md, security.md, releases.md
 schemas/                        JSON Schema 2020-12: the submission envelope and the kind schemas (friction, review); embed.go makes them a Go package for pkg/schema
 conformance/                    the executable contract: decode fixtures, hash vectors, the warning list, a Python reference implementation (README inside)
 ```
 
-Go toolchain and module versions are pinned in `go.mod`. Tools: `just`,
-`shellcheck`, `python3`, `uv` and `npx` (contract gate), Docker with buildx
-(compose stack, image); GoReleaser at the version
+Go toolchain and module versions are pinned in `go.mod`. Tools: `just`, `git`,
+`python3` and Docker on Linux, rootful and without user-namespace remapping
+(the gates run in containers as your uid, and the uid mapping assumes
+container uid equals host uid; `scripts/in-container.sh` refuses anything
+else; buildx for the image); everything else the gates call is in the
+toolchain image (`tests/ci/Dockerfile`). `just ci-host` and the bare recipes also need `go`,
+`shellcheck`, `uv`, `npx` and `jq` on the host. GoReleaser at the version
 [releases.md](releases.md) pins, for the release step only, which also builds
 and pushes the image.
 
 ## Commands
 
 ```bash
-just ci             # every gate of "Verification before you are done", in order; there is no hosted CI, this is the merge gate
+just ci             # the merge gate: ci-host inside the toolchain container, then just live-harness; there is no hosted CI
+just box <recipe|command> [args]  # run a recipe or a command inside the toolchain container: just box test, just box go test ./pkg/client; just box -- <command> for a command named like a recipe
+just live-harness   # the real Claude Code CLI against this tree's binary in a network-less container (tests/live/claude-code.sh)
+just ci-host        # every gate of "Verification before you are done", in order, on the host: for debugging, never the merge gate
 just check          # gofmt, go vet, go mod tidy, build — the pre-commit gate
 just staticcheck    # staticcheck at the version pinned in the justfile
 just build-all      # CGO_ENABLED=0 cross-compile for linux, darwin, windows × amd64, arm64 into dist/<os>-<arch>/
@@ -166,6 +175,28 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
   only lists what would be sent.
 - **Triage is user-invoked only.** Keep `disable-model-invocation: true` and
   a description that forbids loading it from phrasing about the queue.
+- **Gates touch nothing outside the repository and Docker.** Run every
+  check as `just ci` or `just box <recipe>`, never as a bare recipe: `just
+  ci` and `just box` run in the toolchain container
+  (`scripts/in-container.sh`), with the repository mounted read-write at its
+  own path, the git directories read-only, `.private/`, `.kitchen/`,
+  `.claude/` and `.env` files hidden, HOME and `/tmp` a tmpfs, caches in the
+  per-uid volume `agentfeedback-ci-cache-<uid>`, no host configuration,
+  credential or socket and no published port. The network stays open for
+  module and tool downloads, so a gate still runs code fetched at run time
+  (staticcheck, redocly, Go modules) with write access to the checkout. A
+  gate that runs a client or a harness gives it a fresh HOME and XDG
+  directories and an empty environment (`env -i`). A check against a real
+  harness runs in a network-less container from the same image, as `just
+  live-harness` does. Exceptions that run on the host: `just ci-host` and the
+  bare recipes (debugging only), `just playbooks`, which drives a privileged
+  systemd container (not a boundary that protects the host) and stages the
+  release in a host temporary directory, and the release step
+  ([releases.md](releases.md)), which publishes with the maintainer's
+  credentials. Pin every tool `tests/ci/Dockerfile` adds; the Debian packages
+  are those of the base image's release. A changed Dockerfile is a new image
+  tag, `AF_CI_IMAGE_REBUILD=1` rebuilds from fresh base layers, and `ci-host`
+  fails when the image's Go differs from `go.mod`'s `toolchain`.
 - **Compatibility.** Everything in API 1.0 keeps working. Additive changes
   bump the API minor in api.md's version line and "Changes" section; anything else is a major
   release. A server change that breaks older clients also raises
@@ -213,8 +244,13 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
     them. `just release` runs it against the local build before the tag
     is pushed; `just playbooks <tag>` checks a published release.
 
-`just ci` runs items 1 to 11 and the static half of item 12 in order and fails if `just check` rewrote a
-file. There is no hosted CI: `just ci` green on the tree that is merged is the
+13. Every change: `just live-harness` green (the real Claude Code CLI
+    installs, lists and uninstalls the MCP entry, skill and Stop hook, with
+    `CLAUDE_CONFIG_DIR` unset and set to `~/.claude`).
+
+`just ci` runs items 1 to 11 and the static half of item 12 in order inside the toolchain container,
+then item 13, and fails if `just check` rewrote a
+file or any gate changed the tree. Run a single item with `just box <recipe>`. There is no hosted CI: `just ci` green on the tree that is merged is the
 merge gate, and the image is built and published by the release step
 ([releases.md](releases.md)). A change that adds a gate adds it to the `ci`
 recipe in the `justfile` and to the list above, in the same commit.
