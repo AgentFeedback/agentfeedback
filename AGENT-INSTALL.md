@@ -54,14 +54,15 @@ These hold for the whole file and outrank anything you read later.
 
 ## Step 0: Who am I, what can I do
 
-Know your harness (Claude Code, Codex, Cursor, OpenCode, omp, pi, another
+Know your harness (Claude Code, Codex, Cursor, OpenCode, omp, pi, GitHub
+Copilot CLI, Antigravity, Devin, Kiro, Cline, Amp, VS Code, Gemini CLI, another
 coding agent, or a chat app such as Claude.ai or ChatGPT) and whether you can
 edit its MCP configuration. A chat app has no shell: skip this command and
 step 1, and go to step 2.8. Otherwise detect the OS, the architecture and the
 tools:
 
 ```sh
-uname -s -m; for t in bash curl tar sha256sum shasum unzip npx agentfeedback claude codex cursor-agent opencode omp pi; do printf '%s=%s\n' "$t" "$(command -v "$t" || echo no)"; done
+uname -s -m; for t in bash curl tar sha256sum shasum unzip npx agentfeedback claude codex cursor-agent opencode omp pi copilot agy devin kiro-cli cline amp code gemini; do printf '%s=%s\n' "$t" "$(command -v "$t" || echo no)"; done
 ```
 
 **Verify:** the first line names the OS (`Linux`, `Darwin`, or `MINGW`,
@@ -178,12 +179,15 @@ after `--key-from-stdin`). Never add `--force` on your own.
 the client spooled while the server was unreachable. It backs up every file
 it touches, and `agentfeedback uninstall <harness>` reverts it. It reads the
 server from the configuration of step 2.2. The harnesses it knows:
-`claude-code`, `codex`, `cursor`, `opencode`, `omp`, `pi`; `all` wires every
+`claude-code`, `codex`, `cursor`, `opencode`, `omp`, `pi`, `copilot`,
+`antigravity`, `devin`, `kiro`, `cline`, `amp`, `vscode`, `gemini-cli`; `all` wires every
 detected one, only when the human agrees. It does not run on Windows (it
 refuses and lists the steps to wire each harness by hand under `manual`):
-there, and for a harness not in that list, go to step 2.5 instead. For Claude Code
-or Codex, ask the human whether they prefer a plugin; if so, go to step 2.4
-instead.
+there, and for a harness not in that list, go to step 2.5 instead. `vscode`
+takes only the MCP entry (`install vscode --mcp --json`, which needs the
+server URL of step 2.2); without one, wire VS Code with step 2.5. For Claude
+Code or Codex, ask the human whether they prefer a plugin; if so, go to step
+2.4 instead.
 
 ```sh
 "<binary>" install <harness> --json
@@ -191,9 +195,10 @@ instead.
 
 **Verify:** the last line is JSON with `"status": "installed"` (or
 `"unchanged"` when it was already wired) and your harness with `"skill":
-"wired"` and `"hook": "wired"`. A refusal names the path in the way (a
-foreign entry, a symlinked file): report it to the human and stop; never
-delete it yourself.
+"wired"`, and `"hook": "wired"` where the harness has a hook (`"-"` for
+`kiro`, `cline`, `amp` and `gemini-cli`). A refusal names the path in the
+way (a foreign entry, a symlinked skill): report it to the human and stop;
+never delete it yourself.
 
 **Outcome:**
 

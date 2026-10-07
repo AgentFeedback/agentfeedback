@@ -174,6 +174,29 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 		}
 	}
 	names = dedupe(names)
+	mode := harness.ModeCLI
+	if *mcp {
+		mode = harness.ModeMCP
+	}
+	// Under all, a detected harness that cannot be wired in this mode is
+	// left out with a note; one named beside all is refused by the run.
+	var skipped []harness.HarnessStatus
+	if slices.Contains(pos, "all") {
+		kept := names[:0:0]
+		for _, n := range names {
+			if ok, reason := harness.Supports(n, mode); !ok && !slices.Contains(pos, n) {
+				skipped = append(skipped, harness.HarnessStatus{Name: n, Mode: "-", Skill: "-", MCP: "-", Hook: "-", Reminder: "-", Docs: "-",
+					Notes: []string{reason + "; it was left out of install all"}})
+
+				continue
+			}
+			kept = append(kept, n)
+		}
+		names = kept
+		if len(names) == 0 {
+			return printInstallOutcome(stdout, installOutcome{}, errInstallNoneSupported(skipped, mode))
+		}
+	}
 	// Detection is read before the run, which may create a harness's
 	// directory.
 	undetected := map[string]bool{}
@@ -193,12 +216,10 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 	if err != nil {
 		return printInstallOutcome(stdout, installOutcome{}, err)
 	}
-	mode := harness.ModeCLI
 	if *mcp && srv == serverLocal {
 		return printInstallOutcome(stdout, installOutcome{}, errInstallMCPLocal())
 	}
 	if *mcp {
-		mode = harness.ModeMCP
 		if os.Getenv(envAPIKey) == "" {
 			fmt.Fprintf(stderr, "agentfeedback install: warning: %s is not set here; the harnesses read the key from it, so set it in the environment they start from\n", envAPIKey)
 		}
@@ -228,6 +249,7 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 			}
 		}
 	}
+	out.Harnesses = append(out.Harnesses, skipped...)
 	if !configExists && srv != serverLocal {
 		out.Next = append(out.Next, `printf '%s' "$KEY" | agentfeedback doctor --init --url `+srv+` --key-from-stdin`)
 	}
@@ -383,10 +405,14 @@ func listHarnesses(env harness.Env, asJSON bool, stdout io.Writer) error {
 
 		return s
 	}
-	fmt.Fprintln(tw, "HARNESS\tDETECTED\tMODE\tSKILL\tMCP\tHOOK\tREMINDER\tDOCS\tBINARY\tVERSION")
+	fmt.Fprintln(tw, "HARNESS\tDETECTED\tMODE\tSKILL\tMCP\tHOOK\tREMINDER\tDOCS\tVERIFIED\tBINARY\tVERSION")
 	for _, h := range st {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", h.Name, h.Detected, h.Mode, h.Skill, h.MCP, h.Hook, h.Reminder, h.Docs,
-			dash(h.Binary), dash(h.BinaryVersion))
+		verified := "-"
+		if v := h.Verification; v != nil {
+			verified = v.Level + " " + v.Date
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", h.Name, h.Detected, h.Mode, h.Skill, h.MCP, h.Hook, h.Reminder, h.Docs,
+			verified, dash(h.Binary), dash(h.BinaryVersion))
 	}
 
 	return tw.Flush()
@@ -496,4 +522,26 @@ const serverLocal = "local"
 func errInstallMCPLocal() error {
 	return usageErr("the MCP entry needs a server URL; local mode has no HTTP endpoint yet",
 		"run agentfeedback install without --mcp, or pass --server URL")
+}
+
+// errInstallNoneSupported is install all when every detected harness was
+// left out because it cannot be wired in mode.
+func errInstallNoneSupported(skipped []harness.HarnessStatus, mode string) error {
+	with, other, flag := "without --mcp", harness.ModeMCP, "--mcp"
+	if mode == harness.ModeMCP {
+		with, other, flag = "with --mcp", harness.ModeCLI, "no --mcp"
+	}
+	var parts []string
+	next := "name a harness that can be, or run agentfeedback install all with " + flag
+	for _, h := range skipped {
+		_, reason := harness.Supports(h.Name, mode)
+		parts = append(parts, h.Name+": "+reason)
+		if ok, _ := harness.Supports(h.Name, other); ok && mode == harness.ModeCLI {
+			next = "run agentfeedback install " + h.Name + " --mcp"
+		} else if ok && mode == harness.ModeMCP {
+			next = "run agentfeedback install " + h.Name + " without --mcp"
+		}
+	}
+
+	return usageErr("no detected harness can be wired "+with+": "+strings.Join(parts, "; "), next)
 }

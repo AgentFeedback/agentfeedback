@@ -63,9 +63,6 @@ type Env struct {
 	claudeAtSet       bool
 }
 
-// names is the registry in display order.
-var names = []string{"claude-code", "codex", "cursor", "opencode", "omp", "pi"}
-
 // Names lists every harness the package knows.
 func Names() []string { return append([]string(nil), names...) }
 
@@ -178,42 +175,13 @@ func (e Env) ManifestPath() string {
 	return filepath.Join(e.xdgConfig(), "agentfeedback", "install.json")
 }
 
-// configDir is the directory whose presence marks the harness as installed.
-func (e Env) configDir(name string) string {
-	switch name {
-	case "claude-code":
-		return e.claudeDir()
-	case "codex":
-		return e.codexHome()
-	case "cursor":
-		return filepath.Join(e.Home, ".cursor")
-	case "opencode":
-		return e.opencodeDir()
-	case "omp":
-		return filepath.Join(e.Home, ".omp")
-	case "pi":
-		return filepath.Join(e.Home, ".pi")
-	}
-
-	return ""
-}
-
-func binaries(name string) []string {
-	switch name {
-	case "claude-code":
-		return []string{"claude"}
-	case "codex":
-		return []string{"codex"}
-	case "cursor":
-		return []string{"cursor-agent", "agent"}
-	}
-
-	return []string{name}
-}
-
 // Detect reports how the harness was found: "binary", "dir" or "no".
 func (e Env) Detect(name string) string {
-	for _, b := range binaries(name) {
+	a := adapterOf(name)
+	if a == nil {
+		return "no"
+	}
+	for _, b := range a.Binaries {
 		p, err := e.LookPath(b)
 		if err != nil {
 			continue
@@ -229,43 +197,47 @@ func (e Env) Detect(name string) string {
 
 		return "binary"
 	}
-	if info, err := os.Stat(e.configDir(name)); err == nil && info.IsDir() {
-		return "dir"
+	for _, d := range a.ConfigDirs(e) {
+		if info, err := os.Stat(d); err == nil && info.IsDir() {
+			return "dir"
+		}
 	}
 
 	return "no"
 }
 
-// skillsDir is the directory the harness reads skills from.
-func (e Env) skillsDir(name string) string {
-	var dir string
-	switch name {
-	case "claude-code":
-		dir = filepath.Join(e.claudeDir(), "skills")
-	case "codex":
-		dir = filepath.Join(e.Home, ".agents", "skills")
-	case "cursor":
-		dir = filepath.Join(e.Home, ".cursor", "skills")
-	case "opencode":
-		dir = filepath.Join(e.opencodeDir(), "skills")
-	case "omp":
-		dir = filepath.Join(e.Home, ".omp", "agent", "skills")
-	case "pi":
-		dir = filepath.Join(e.Home, ".pi", "agent", "skills")
+// SkillPath is the SKILL.md install writes for the harness, in its first
+// skills directory; "" for a harness without one.
+func (e Env) SkillPath(name string) string {
+	d := e.skillDirs(name)
+	if len(d) == 0 {
+		return ""
 	}
 
-	return dir
+	return filepath.Join(d[0], "agentfeedback", "SKILL.md")
 }
 
-// SkillPath is the SKILL.md install writes for the harness.
-func (e Env) SkillPath(name string) string {
-	return filepath.Join(e.skillsDir(name), "agentfeedback", "SKILL.md")
+// SkillPaths is every SKILL.md install writes for the harness, one per
+// skills directory.
+func (e Env) SkillPaths(name string) []string {
+	var out []string
+	for _, d := range e.skillDirs(name) {
+		out = append(out, filepath.Join(d, "agentfeedback", "SKILL.md"))
+	}
+
+	return out
 }
 
 // DocsDir is the agentfeedback-docs skill directory install --docs writes
-// for the harness.
+// for the harness, in its first skills directory; "" for a harness without
+// one.
 func (e Env) DocsDir(name string) string {
-	return filepath.Join(e.skillsDir(name), "agentfeedback-docs")
+	d := e.skillDirs(name)
+	if len(d) == 0 {
+		return ""
+	}
+
+	return filepath.Join(d[0], "agentfeedback-docs")
 }
 
 // docsFiles is the docs skill tree; a variable so tests can stand in for
@@ -333,8 +305,14 @@ func (p *plan) desired(name string, o Options) (desire, error) {
 	if err != nil {
 		return d, err
 	}
-	for _, f := range files {
-		d.items = append(d.items, fileItem(KindSkillFile, RoleDocs, filepath.Join(p.env.DocsDir(name), filepath.FromSlash(f.Path)), f.Data))
+	dirs := p.env.skillDirs(name)
+	if len(dirs) == 0 {
+		d.notes = append(d.notes, name+" has no skill directory; --docs added nothing for it")
+	}
+	for _, dir := range dirs {
+		for _, f := range files {
+			d.items = append(d.items, fileItem(KindSkillFile, RoleDocs, filepath.Join(dir, "agentfeedback-docs", filepath.FromSlash(f.Path)), f.Data))
+		}
 	}
 
 	return d, nil
@@ -342,40 +320,24 @@ func (p *plan) desired(name string, o Options) (desire, error) {
 
 // wiring is the skill and hook, or the MCP entry, of the mode.
 func (p *plan) wiring(name string, o Options) (desire, error) {
-	e := p.env
 	var d desire
-	flush := o.Binary + " flush --hook"
-	remind := o.Binary + " skill reminder"
-	mcpURL := o.Server + "/mcp"
+	a := adapterOf(name)
+	if a == nil {
+		return d, fmt.Errorf("unknown harness %q", name)
+	}
+	if r := a.refusal(o.Mode); r != nil {
+		return d, r
+	}
 	if o.Mode == ModeMCP {
 		if o.Reminder {
 			d.notes = append(d.notes, "--with-reminder does not apply with --mcp: the server's MCP instructions replace the skill")
 		}
-		switch name {
-		case "claude-code":
-			cfg := obj("type", str("http"), "url", str(mcpURL), "headers", string(obj("Authorization", str("Bearer ${AGENT_FEEDBACK_API_KEY}"))))
-			d.items = append(d.items, Item{Kind: KindClaudeMCP, Role: RoleMCP, Args: []string{"mcp", "add-json", "agentfeedback", string(cfg), "--scope", "user"}, URL: mcpURL})
-		case "codex":
-			d.items = append(d.items, Item{Kind: KindTOMLBlock, Role: RoleMCP, File: filepath.Join(e.codexHome(), "config.toml"), Text: codexBlock(o.Server)})
-		case "cursor":
-			v := obj("url", str(mcpURL), "headers", string(obj("Authorization", str("Bearer ${env:AGENT_FEEDBACK_API_KEY}"))))
-			d.items = append(d.items, member(filepath.Join(e.Home, ".cursor", "mcp.json"), []string{"mcpServers"}, v))
-		case "opencode":
-			v := obj("type", str("remote"), "url", str(mcpURL), "enabled", "true", "oauth", "false",
-				"headers", string(obj("Authorization", str("Bearer {env:AGENT_FEEDBACK_API_KEY}"))))
-			file, err := p.opencodeConfig()
-			if err != nil {
-				return d, err
-			}
-			d.items = append(d.items, member(file, []string{"mcp"}, v))
-		case "omp":
-			v := obj("type", str("http"), "url", str(mcpURL), "headers", string(obj("Authorization", str("Bearer ${AGENT_FEEDBACK_API_KEY}"))))
-			d.items = append(d.items, member(filepath.Join(e.Home, ".omp", "agent", "mcp.json"), []string{"mcpServers"}, v))
-		case "pi":
-			v := obj("url", str(mcpURL), "headers", string(obj("Authorization", str("Bearer ${AGENT_FEEDBACK_API_KEY}"))))
-			d.items = append(d.items, member(filepath.Join(e.Home, ".pi", "agent", "mcp.json"), []string{"mcpServers"}, v))
-			d.notes = append(d.notes, "the MCP entry needs pi 0.99.0 or later")
+		items, notes, err := a.mcp(p, o)
+		if err != nil {
+			return d, err
 		}
+		d.items = append(d.items, items...)
+		d.notes = append(d.notes, notes...)
 
 		return d, nil
 	}
@@ -384,39 +346,16 @@ func (p *plan) wiring(name string, o Options) (desire, error) {
 	if err != nil {
 		return d, err
 	}
-	d.items = append(d.items, fileItem(KindSkillFile, RoleSkill, e.SkillPath(name), skill))
-	switch name {
-	case "claude-code":
-		f := filepath.Join(e.claudeDir(), "settings.json")
-		d.items = append(d.items, element(f, []string{"hooks", "Stop"}, commandHook(flush), RoleHook))
-		if o.Reminder {
-			d.items = append(d.items, element(f, []string{"hooks", "SessionStart"}, commandHook(remind), RoleReminder))
-		}
-	case "codex":
-		f := filepath.Join(e.codexHome(), "hooks.json")
-		d.items = append(d.items, element(f, []string{"hooks", "Stop"}, commandHook(flush), RoleHook))
-		if o.Reminder {
-			d.items = append(d.items, element(f, []string{"hooks", "SessionStart"}, commandHook(remind), RoleReminder))
-		}
-		d.notes = append(d.notes, "Codex runs a new hook only after you trust it in /hooks")
-	case "cursor":
-		f := filepath.Join(e.Home, ".cursor", "hooks.json")
-		d.items = append(d.items, element(f, []string{"hooks", "stop"}, obj("command", str(flush), "timeout", "5"), RoleHook))
-		if o.Reminder {
-			d.items = append(d.items, element(f, []string{"hooks", "sessionStart"}, obj("command", str(remind), "timeout", "5"), RoleReminder))
-		}
-	case "opencode":
-		d.items = append(d.items, fileItem(KindPluginFile, RoleHook, filepath.Join(e.opencodeDir(), "plugins", "agentfeedback.js"), opencodePlugin(o.Binary)))
-	case "omp":
-		d.items = append(d.items, fileItem(KindPluginFile, RoleHook, filepath.Join(e.Home, ".omp", "agent", "extensions", "agentfeedback.ts"), ompExtension(o.Binary)))
-	case "pi":
-		d.items = append(d.items, fileItem(KindPluginFile, RoleHook, filepath.Join(e.Home, ".pi", "agent", "extensions", "agentfeedback.ts"), piExtension(o.Binary)))
+	for _, dir := range a.SkillDirs(p.env) {
+		d.items = append(d.items, fileItem(KindSkillFile, RoleSkill, filepath.Join(dir, "agentfeedback", "SKILL.md"), skill))
 	}
-	switch name {
-	case "opencode", "omp", "pi":
-		if o.Reminder {
-			d.notes = append(d.notes, "the session-start reminder is not supported for "+name+"; nothing was added for it")
-		}
+	if a.hook != nil {
+		items, notes := a.hook(p, o)
+		d.items = append(d.items, items...)
+		d.notes = append(d.notes, notes...)
+	}
+	if o.Reminder && !a.Hook.Reminder {
+		d.notes = append(d.notes, "the session-start reminder is not supported for "+name+"; nothing was added for it")
 	}
 
 	return d, nil
@@ -440,8 +379,8 @@ func (e Env) ManualMCP(name, server string) (Item, error) {
 	return Item{}, fmt.Errorf("no MCP entry for harness %q", name)
 }
 
-func member(file string, path []string, value []byte) Item {
-	return Item{Kind: KindJSONMember, Role: RoleMCP, File: file, Path: path, Key: "agentfeedback", Value: value}
+func member(file string, path []string, value []byte, role string) Item {
+	return Item{Kind: KindJSONMember, Role: role, File: file, Path: path, Key: "agentfeedback", Value: value}
 }
 
 func element(file string, path []string, value []byte, role string) Item {
@@ -541,23 +480,14 @@ export default function (pi: any) {
 // candidateFiles lists every file install can write for any harness under
 // this environment.
 func (e Env) candidateFiles() []string {
-	oc := e.opencodeDir()
-	out := []string{
-		filepath.Join(e.claudeDir(), "settings.json"),
-		filepath.Join(e.codexHome(), "hooks.json"),
-		filepath.Join(e.codexHome(), "config.toml"),
-		filepath.Join(e.Home, ".cursor", "mcp.json"),
-		filepath.Join(e.Home, ".cursor", "hooks.json"),
-		filepath.Join(oc, "opencode.jsonc"),
-		filepath.Join(oc, "opencode.json"),
-		filepath.Join(oc, "plugins", "agentfeedback.js"),
-		filepath.Join(e.Home, ".omp", "agent", "mcp.json"),
-		filepath.Join(e.Home, ".omp", "agent", "extensions", "agentfeedback.ts"),
-		filepath.Join(e.Home, ".pi", "agent", "mcp.json"),
-		filepath.Join(e.Home, ".pi", "agent", "extensions", "agentfeedback.ts"),
-	}
-	for _, n := range names {
-		out = append(out, e.SkillPath(n))
+	var out []string
+	for _, a := range registry {
+		config, owned := a.files(e)
+		out = append(out, config...)
+		out = append(out, owned...)
+		for _, d := range a.SkillDirs(e) {
+			out = append(out, filepath.Join(d, "agentfeedback", "SKILL.md"))
+		}
 	}
 
 	return out
@@ -593,12 +523,14 @@ func (e Env) validateManifest(m *Manifest, mpath string) error {
 	// The docs skill's files follow the binary's version, so any clean path
 	// beneath a docs directory is accepted, and so are its directories.
 	var docsDirs []string
-	for _, n := range names {
-		dd := e.DocsDir(n)
-		docsDirs = append(docsDirs, dd)
-		dirs[dd] = true
-		for _, d := range ancestors(dd, e.Home) {
-			dirs[d] = true
+	for _, a := range registry {
+		for _, sd := range a.SkillDirs(e) {
+			dd := filepath.Join(sd, "agentfeedback-docs")
+			docsDirs = append(docsDirs, dd)
+			dirs[dd] = true
+			for _, d := range ancestors(dd, e.Home) {
+				dirs[d] = true
+			}
 		}
 	}
 	underDocs := func(x string) bool {

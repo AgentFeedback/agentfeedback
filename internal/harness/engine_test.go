@@ -420,3 +420,62 @@ func TestLoadManifest_LegacyRecordKeepsItsBinary(t *testing.T) {
 		t.Fatalf("binaries: %v", got)
 	}
 }
+
+func TestApply_RetargetedLinkUnderTheRun(t *testing.T) {
+	e := testEnv(t)
+	settings := filepath.Join(e.Home, ".claude", "settings.json")
+	real := filepath.Join(e.Home, "a.json")
+	other := filepath.Join(e.Home, "b.json")
+	put(t, real, "{\n  \"model\": \"a\"\n}\n")
+	put(t, other, "{\n  \"model\": \"b\"\n}\n")
+	if err := os.MkdirAll(filepath.Dir(settings), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, settings); err != nil {
+		t.Fatal(err)
+	}
+	beforeRename = func(path string) {
+		if path == settings {
+			_ = os.Remove(settings)
+			_ = os.Symlink(other, settings)
+		}
+	}
+	t.Cleanup(func() { beforeRename = nil })
+	res, err := e.Run(cliRequest("claude-code"))
+	var r *Refusal
+	if !errors.As(err, &r) || r.Problem != settings+" changed while installing" {
+		t.Fatalf("%v", err)
+	}
+	if _, err := os.Stat(settings + BackupSuffix); err == nil {
+		t.Fatal("the backup of a file the run could not write was left")
+	}
+	if slices.Contains(res.Backups, settings+BackupSuffix) {
+		t.Errorf("backups lists a deleted backup: %v", res.Backups)
+	}
+	if got, _ := os.ReadFile(real); string(got) != "{\n  \"model\": \"a\"\n}\n" {
+		t.Errorf("the old target changed:\n%s", got)
+	}
+}
+
+func TestApply_FileReplacedByLinkUnderTheRun(t *testing.T) {
+	e := testEnv(t)
+	settings := filepath.Join(e.Home, ".claude", "settings.json")
+	doc := "{\n  \"model\": \"a\"\n}\n"
+	put(t, settings, doc)
+	copyOf := filepath.Join(e.Home, "copy.json")
+	put(t, copyOf, doc)
+	beforeRename = func(path string) {
+		if path == settings {
+			_ = os.Remove(settings)
+			_ = os.Symlink(copyOf, settings)
+		}
+	}
+	t.Cleanup(func() { beforeRename = nil })
+	var r *Refusal
+	if _, err := e.Run(cliRequest("claude-code")); !errors.As(err, &r) || r.Problem != settings+" changed while installing" {
+		t.Fatalf("%v", err)
+	}
+	if got, _ := os.ReadFile(copyOf); string(got) != doc {
+		t.Errorf("the link's target changed:\n%s", got)
+	}
+}

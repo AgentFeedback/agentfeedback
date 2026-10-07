@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -82,7 +84,9 @@ func putFile(t *testing.T, path, data string, mode fs.FileMode) {
 	}
 }
 
-// snapshot is every directory and file under root with its content.
+// snapshot is every directory under root, and every file with its content
+// and, under "<file> (mode)", its mode; a symbolic link is recorded as
+// "-> target" and not followed.
 func snapshot(t *testing.T, root string) map[string]string {
 	t.Helper()
 	out := map[string]string{}
@@ -91,13 +95,24 @@ func snapshot(t *testing.T, root string) map[string]string {
 			return err
 		}
 		rel, _ := filepath.Rel(root, path)
-		if d.IsDir() {
+		info, err := os.Lstat(path)
+		if err != nil {
+			return err
+		}
+		switch {
+		case d.IsDir():
 			out[rel+"/"] = ""
 
 			return nil
+		case info.Mode()&fs.ModeSymlink != 0:
+			target, err := os.Readlink(path)
+			out[rel] = "-> " + target
+
+			return err
 		}
 		data, err := os.ReadFile(path)
 		out[rel] = string(data)
+		out[rel+" (mode)"] = info.Mode().String()
 
 		return err
 	})
@@ -167,6 +182,58 @@ url = "https://other.example.test/mcp" # another server
 `, 0o644)
 	putFile(t, filepath.Join(h, ".omp", "agent", "mcp.json"), "{\r\n  \"mcpServers\": {}\r\n}\r\n", 0o644)
 	putFile(t, filepath.Join(h, ".pi", "agent", "settings.json"), "{}\n", 0o644)
+	putFile(t, filepath.Join(h, ".copilot", "mcp-config.json"), `{
+  "mcpServers": {
+    "other": { "type": "local", "command": "other", "tools": ["*"] }
+  }
+}
+`, 0o600)
+	putFile(t, filepath.Join(h, ".gemini", "config", "hooks.json"), `{
+  "notify": {
+    "enabled": true,
+    "Stop": [{ "hooks": [{ "type": "command", "command": "notify-send done" }] }]
+  }
+}
+`, 0o644)
+	putFile(t, filepath.Join(h, ".gemini", "config", "mcp_config.json"), `{
+  "mcpServers": {
+    "other": { "serverUrl": "https://other.example.test/mcp" }
+  }
+}
+`, 0o644)
+	putFile(t, filepath.Join(h, ".config", "devin", "config.json"), `{
+  "model": "swe-1",
+  "hooks": {
+    "Stop": [{ "hooks": [{ "type": "command", "command": "notify-send done" }] }]
+  }
+}
+`, 0o644)
+	putFile(t, filepath.Join(h, ".config", "devin", "mcp_config.json"), `{
+  // servers for every session
+  "mcpServers": {
+    "other": { "url": "https://other.example.test/mcp", "transport": "http" }
+  }
+}
+`, 0o644)
+	putFile(t, filepath.Join(h, ".kiro", "settings", "mcp.json"), "{\n  \"mcpServers\": {}\n}\n", 0o644)
+	putFile(t, filepath.Join(h, ".cline", "data", "settings", "cline_mcp_settings.json"), `{
+  "mcpServers": {
+    "other": { "type": "stdio", "command": "other", "disabled": false }
+  }
+}
+`, 0o644)
+	putFile(t, filepath.Join(h, ".config", "amp", "settings.json"), `{
+  "amp.notifications.enabled": false
+}
+`, 0o644)
+	putFile(t, filepath.Join(h, ".config", "Code", "User", "mcp.json"), `{
+  // user-level servers
+  "servers": {
+    "other": { "type": "stdio", "command": "other" }
+  },
+  "inputs": []
+}
+`, 0o644)
 }
 
 func installRun(t *testing.T, args ...string) (result, map[string]any) {
@@ -200,6 +267,15 @@ func TestInstall_EveryAdapterRoundTrip(t *testing.T) {
 					}
 					before := snapshot(t, e.home)
 
+					if ok, _ := harness.Supports(name, mode); !ok {
+						r, out := installRun(t, args...)
+						if r.code != 1 || out["status"] != "error" || !strings.Contains(fmt.Sprint(out["message"]), name+" has no") {
+							t.Fatalf("install: %+v", r)
+						}
+						sameTree(t, "after a refusal", snapshot(t, e.home), before)
+
+						return
+					}
 					r, out := installRun(t, args...)
 					if r.code != 0 || out["status"] != "installed" {
 						t.Fatalf("install: %+v", r)
@@ -222,7 +298,11 @@ func TestInstall_EveryAdapterRoundTrip(t *testing.T) {
 						}
 					}
 					// The seeded files each combination edits in place.
-					edits := map[string]bool{"claude-code/cli": true, "codex/mcp": true, "cursor/cli": true, "cursor/mcp": true, "opencode/mcp": true, "omp/mcp": true}
+					edits := map[string]bool{
+						"claude-code/cli": true, "codex/mcp": true, "cursor/cli": true, "cursor/mcp": true, "opencode/mcp": true, "omp/mcp": true,
+						"copilot/mcp": true, "antigravity/cli": true, "antigravity/mcp": true, "devin/cli": true, "devin/mcp": true,
+						"kiro/mcp": true, "cline/mcp": true, "amp/mcp": true, "vscode/mcp": true,
+					}
 					if want := seeded && edits[name+"/"+mode]; want != (len(backups) == 1) {
 						t.Errorf("backups %v, want one: %v", backups, want)
 					}
@@ -586,7 +666,7 @@ func TestInstall_ChangesNothing(t *testing.T) {
 				}
 			case args[len(args)-1] == "--json":
 				var v struct{ Harnesses []harness.HarnessStatus }
-				if err := json.Unmarshal([]byte(r.stdout), &v); err != nil || len(v.Harnesses) != 6 {
+				if err := json.Unmarshal([]byte(r.stdout), &v); err != nil || len(v.Harnesses) != len(harness.Names()) {
 					t.Fatalf("json: %s", r.stdout)
 				}
 			case args[0] == "install":
@@ -1284,7 +1364,7 @@ func TestInstall_ManifestValidation(t *testing.T) {
 func TestInstall_AllPlusNamed(t *testing.T) {
 	e := newInstallEnv(t)
 	e.seed(t)
-	for _, d := range []string{".codex", ".cursor", ".config/opencode", ".omp", ".pi"} {
+	for _, d := range []string{".codex", ".cursor", ".config/opencode", ".omp", ".pi", ".copilot", ".config/devin", ".kiro", ".cline", ".config/amp", ".config/Code"} {
 		if err := os.RemoveAll(filepath.Join(e.home, d)); err != nil {
 			t.Fatal(err)
 		}
@@ -1315,12 +1395,83 @@ func TestInstall_SymlinkedConfig(t *testing.T) {
 	}
 	before := snapshot(t, e.home)
 	r, out := installRun(t, "install", "claude-code")
-	msg := fmt.Sprint(out["message"])
-	if r.code != 1 || !strings.Contains(msg, path+" is a symbolic link; agentfeedback install edits only regular files") ||
-		!strings.Contains(msg, "replace the link with the file it points to") {
+	if r.code != 0 || out["status"] != "installed" {
 		t.Fatalf("%+v", r)
 	}
-	sameTree(t, "after a refused symlink", snapshot(t, e.home), before)
+	if got, err := os.Readlink(path); err != nil || got != real {
+		t.Fatalf("the link is %q (%v), want %q", got, err, real)
+	}
+	data, _ := os.ReadFile(real)
+	if !strings.Contains(string(data), e.exe+" flush --hook") {
+		t.Fatalf("the target lacks the hook:\n%s", data)
+	}
+	backup, err := os.ReadFile(path + harness.BackupSuffix)
+	if err != nil || string(backup) != before["dotfiles-settings.json"] {
+		t.Fatalf("backup %q %v", backup, err)
+	}
+	if r, _ := installRun(t, "install", "claude-code"); r.code != 0 {
+		t.Fatalf("second install: %+v", r)
+	}
+	if r, out := installRun(t, "uninstall", "claude-code"); r.code != 0 || out["status"] != "uninstalled" {
+		t.Fatalf("uninstall: %+v", r)
+	}
+	sameTree(t, "after uninstall", snapshot(t, e.home), before)
+
+	// Every configuration file kind: a JSONC member, a TOML block, a JSON
+	// member at the top level.
+	for _, tt := range []struct{ harness, file, mode string }{
+		{"cursor", ".cursor/mcp.json", "--mcp"},
+		{"codex", ".codex/config.toml", "--mcp"},
+		{"antigravity", ".gemini/config/hooks.json", ""},
+	} {
+		t.Run(tt.harness, func(t *testing.T) {
+			e := newInstallEnv(t)
+			e.seed(t)
+			path := filepath.Join(e.home, filepath.FromSlash(tt.file))
+			real := filepath.Join(e.home, "dotfiles", filepath.Base(tt.file))
+			putFile(t, real, "", 0o644)
+			if err := os.Rename(path, real); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(real, path); err != nil {
+				t.Fatal(err)
+			}
+			before := snapshot(t, e.home)
+			args := []string{"install", tt.harness}
+			if tt.mode != "" {
+				args = append(args, tt.mode)
+			}
+			if r, _ := installRun(t, args...); r.code != 0 {
+				t.Fatalf("%+v", r)
+			}
+			if data, _ := os.ReadFile(real); string(data) == before[filepath.Join("dotfiles", filepath.Base(tt.file))] {
+				t.Fatal("the target was not edited")
+			}
+			if r, _ := installRun(t, "uninstall", tt.harness); r.code != 0 {
+				t.Fatalf("uninstall: %+v", r)
+			}
+			sameTree(t, "after uninstall", snapshot(t, e.home), before)
+		})
+	}
+}
+
+func TestInstall_DanglingSymlinkedConfig(t *testing.T) {
+	e := newInstallEnv(t)
+	e.seed(t)
+	path := filepath.Join(e.home, ".claude", "settings.json")
+	gone := filepath.Join(e.home, "gone.json")
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(gone, path); err != nil {
+		t.Fatal(err)
+	}
+	before := snapshot(t, e.home)
+	r, out := installRun(t, "install", "claude-code")
+	if r.code != 1 || fmt.Sprint(out["message"]) != path+" is a symbolic link to "+gone+", which does not exist; create the target or remove the link." {
+		t.Fatalf("%+v", r)
+	}
+	sameTree(t, "after a refused dangling link", snapshot(t, e.home), before)
 }
 
 func TestInstall_ManifestValidationBackupAndDirs(t *testing.T) {
@@ -1490,6 +1641,7 @@ func TestInstall_Docs(t *testing.T) {
 				}
 				got := snapshot(t, dir)
 				delete(got, "./")
+				maps.DeleteFunc(got, func(k, _ string) bool { return strings.HasSuffix(k, " (mode)") })
 				sameTree(t, "docs skill", got, docsTree(t))
 				if m := readManifest(t, e); !m.Harnesses[name].Docs {
 					t.Error("the manifest does not record docs")
@@ -1848,3 +2000,308 @@ func TestUninstall_CheckpointKeepsClaudeLocation(t *testing.T) {
 }
 
 func readLogFile(path string) string { data, _ := os.ReadFile(path); return string(data) }
+
+// compactJSON is doc in compact form, for comparing JSON values.
+func compactJSON(t *testing.T, doc []byte) string {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := json.Compact(&buf, harness.Standard(doc)); err != nil {
+		t.Fatalf("%s: %v", doc, err)
+	}
+
+	return buf.String()
+}
+
+func TestInstall_SecondWaveContent(t *testing.T) {
+	const url = "https://feedback.example.test/mcp"
+	e := newInstallEnv(t)
+	h := e.home
+	flush := e.exe + " flush --hook"
+	member := func(file string, path []string, want string) {
+		t.Helper()
+		data, err := os.ReadFile(filepath.Join(h, filepath.FromSlash(file)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		v, err := harness.GetMember(data, path, "agentfeedback")
+		if err != nil || v == nil {
+			t.Fatalf("%s: no agentfeedback under %v (%v):\n%s", file, path, err, data)
+		}
+		if got := compactJSON(t, v); got != want {
+			t.Errorf("%s:\n got %s\nwant %s", file, got, want)
+		}
+	}
+	skill := func(dirs ...string) {
+		t.Helper()
+		want, _ := skillgen.Render(skillgen.FormSkillMD, "")
+		for _, d := range dirs {
+			got, err := os.ReadFile(filepath.Join(h, filepath.FromSlash(d), "agentfeedback", "SKILL.md"))
+			if err != nil || string(got) != string(want) {
+				t.Errorf("%s: skill missing or different (%v)", d, err)
+			}
+		}
+	}
+	run := func(args ...string) map[string]any {
+		t.Helper()
+		if args[0] == "install" {
+			args = append(args, "--server", "https://feedback.example.test")
+		}
+		r, out := installRun(t, args...)
+		if r.code != 0 {
+			t.Fatalf("%v: %+v", args, r)
+		}
+
+		return out
+	}
+
+	out := run("install", "copilot", "antigravity", "devin", "kiro", "cline", "amp", "gemini-cli", "--with-reminder")
+	skill(".copilot/skills", ".gemini/config/skills", ".gemini/antigravity-cli/skills", ".config/devin/skills", ".kiro/skills", ".cline/skills", ".config/amp/skills", ".gemini/skills")
+	hook, _ := os.ReadFile(filepath.Join(h, ".copilot", "hooks", "agentfeedback.json"))
+	wantHook := "{\n  \"version\": 1,\n  \"hooks\": {\n    \"agentStop\": [\n      {\n        \"type\": \"command\",\n        \"bash\": " +
+		string(mustJSON(t, flush)) + ",\n        \"timeoutSec\": 5\n      }\n    ]\n  }\n}\n"
+	if string(hook) != wantHook {
+		t.Errorf("copilot hook:\n%s\nwant\n%s", hook, wantHook)
+	}
+	member(".gemini/config/hooks.json", nil, `{"enabled":true,"Stop":[{"hooks":[{"type":"command","command":`+string(mustJSON(t, flush))+`,"timeout":5}]}]}`)
+	devin, _ := os.ReadFile(filepath.Join(h, ".config", "devin", "config.json"))
+	if ok, err := harness.HasElement(devin, []string{"hooks", "Stop"}, []byte(`{"hooks":[{"type":"command","command":`+string(mustJSON(t, flush))+`,"timeout":5}]}`)); err != nil || !ok {
+		t.Errorf("devin config.json lacks the Stop hook (%v):\n%s", err, devin)
+	}
+	for _, f := range []string{".kiro/settings/mcp.json", ".cline/data/settings/cline_mcp_settings.json", ".config/amp/settings.json", ".gemini/config/mcp_config.json", ".copilot/mcp-config.json"} {
+		if _, err := os.Stat(filepath.Join(h, filepath.FromSlash(f))); err == nil {
+			t.Errorf("%s written in CLI mode", f)
+		}
+	}
+	notes := notesOf(out)
+	for _, n := range []string{"copilot", "antigravity", "devin", "kiro", "cline", "amp", "gemini-cli"} {
+		if !strings.Contains(notes, "the session-start reminder is not supported for "+n+"; nothing was added for it") {
+			t.Errorf("no reminder note for %s: %q", n, notes)
+		}
+	}
+	run("uninstall", "all")
+
+	out = run("install", "copilot", "antigravity", "devin", "kiro", "cline", "amp", "vscode", "--mcp")
+	key := `"headers":{"Authorization":"Bearer ${AGENT_FEEDBACK_API_KEY}"}`
+	member(".copilot/mcp-config.json", []string{"mcpServers"}, `{"type":"http","url":"`+url+`",`+key+`,"tools":["*"]}`)
+	member(".gemini/config/mcp_config.json", []string{"mcpServers"}, `{"serverUrl":"`+url+`",`+key+`}`)
+	member(".config/devin/mcp_config.json", []string{"mcpServers"}, `{"url":"`+url+`","transport":"http","headers":{"Authorization":"Bearer ${env:AGENT_FEEDBACK_API_KEY}"}}`)
+	member(".kiro/settings/mcp.json", []string{"mcpServers"}, `{"url":"`+url+`",`+key+`}`)
+	member(".cline/data/settings/cline_mcp_settings.json", []string{"mcpServers"}, `{"type":"streamableHttp","url":"`+url+`",`+key+`}`)
+	member(".config/amp/settings.json", []string{"amp.mcpServers"}, `{"url":"`+url+`",`+key+`}`)
+	member(".config/Code/User/mcp.json", []string{"servers"}, `{"type":"http","url":"`+url+`","headers":{"Authorization":"Bearer ${env:AGENT_FEEDBACK_API_KEY}"}}`)
+	notes = notesOf(out)
+	for _, n := range []string{"antigravity", "cline"} {
+		if !strings.Contains(notes, n+" documents no environment-variable syntax for MCP headers; check that it connects (a 401 means the key reference was not expanded)") {
+			t.Errorf("no header note for %s: %q", n, notes)
+		}
+	}
+	run("uninstall", "all")
+
+	// Amp's settings.jsonc wins when it exists.
+	putFile(t, filepath.Join(h, ".config", "amp", "settings.jsonc"), "{\n  // mine\n}\n", 0o644)
+	run("install", "amp", "--mcp")
+	member(".config/amp/settings.jsonc", []string{"amp.mcpServers"}, `{"url":"`+url+`",`+key+`}`)
+	if _, err := os.Stat(filepath.Join(h, ".config", "amp", "settings.json")); err == nil {
+		t.Error("settings.json written beside settings.jsonc")
+	}
+	run("uninstall", "all")
+}
+
+func TestInstall_AllLeavesOutUnsupported(t *testing.T) {
+	for _, mode := range []string{"cli", "mcp"} {
+		t.Run(mode, func(t *testing.T) {
+			e := newInstallEnv(t)
+			putFile(t, filepath.Join(e.bin, "gemini"), "#!/bin/sh\n", 0o755)
+			if err := os.MkdirAll(filepath.Join(e.home, ".config", "Code", "User"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			args := []string{"install", "all", "--server", "https://feedback.example.test"}
+			left, wired := "vscode", "gemini-cli"
+			if mode == "mcp" {
+				args = append(args, "--mcp")
+				left, wired = "gemini-cli", "vscode"
+			}
+			r, out := installRun(t, args...)
+			if r.code != 0 || out["status"] != "installed" {
+				t.Fatalf("%+v", r)
+			}
+			m := readManifest(t, e)
+			if len(m.Harnesses) != 1 || m.Harnesses[wired] == nil {
+				t.Fatalf("harnesses %v", m.Harnesses)
+			}
+			_, reason := harness.Supports(left, mode)
+			if !strings.Contains(notesOf(out), reason+"; it was left out of install all") {
+				t.Errorf("notes %q", notesOf(out))
+			}
+		})
+	}
+}
+
+func TestInstall_ListShowsVerification(t *testing.T) {
+	newInstallEnv(t)
+	r := runCLI(t, "", "install", "--list")
+	if !strings.Contains(r.stdout, "DOCS  VERIFIED") || !strings.Contains(r.stdout, "live-checked 2026-10-07") {
+		t.Errorf("table: %s", r.stdout)
+	}
+	r = runCLI(t, "", "install", "--list", "--json")
+	var v struct{ Harnesses []harness.HarnessStatus }
+	if err := json.Unmarshal([]byte(r.stdout), &v); err != nil {
+		t.Fatal(err)
+	}
+	for _, h := range v.Harnesses {
+		want, _ := harness.Verification(h.Name)
+		if h.Verification == nil || *h.Verification != want {
+			t.Errorf("%s: verification %+v", h.Name, h.Verification)
+		}
+	}
+}
+
+func TestUninstall_CreatedFileNowLinked(t *testing.T) {
+	e := newInstallEnv(t)
+	if r, _ := installRun(t, "install", "cursor", "--mcp", "--server", "https://feedback.example.test"); r.code != 0 {
+		t.Fatalf("%+v", r)
+	}
+	path := filepath.Join(e.home, ".cursor", "mcp.json")
+	real := filepath.Join(e.home, "dotfiles", "mcp.json")
+	if err := os.MkdirAll(filepath.Dir(real), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(path, real); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, path); err != nil {
+		t.Fatal(err)
+	}
+	r, out := installRun(t, "uninstall", "cursor")
+	if r.code != 0 {
+		t.Fatalf("%+v", r)
+	}
+	data, err := os.ReadFile(real)
+	if err != nil {
+		t.Fatalf("the target was removed: %v", err)
+	}
+	if v, err := harness.GetMember(data, []string{"mcpServers"}, "agentfeedback"); err != nil || v != nil {
+		t.Errorf("the target still holds the entry (%v):\n%s", err, data)
+	}
+	if got, err := os.Readlink(path); err != nil || got != real {
+		t.Errorf("the link is %q (%v)", got, err)
+	}
+	if !strings.Contains(notesOf(out), path+" is now a symbolic link; only the agentfeedback entries were removed") {
+		t.Errorf("notes %q", notesOf(out))
+	}
+}
+
+func TestInstall_TwoConfigsOneFile(t *testing.T) {
+	e := newInstallEnv(t)
+	shared := filepath.Join(e.home, "dotfiles", "mcp.json")
+	putFile(t, shared, "{\n  \"mcpServers\": {}\n}\n", 0o644)
+	cursor := filepath.Join(e.home, ".cursor", "mcp.json")
+	vscode := filepath.Join(e.home, ".config", "Code", "User", "mcp.json")
+	for _, l := range []string{cursor, vscode} {
+		if err := os.MkdirAll(filepath.Dir(l), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(shared, l); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := snapshot(t, e.home)
+	r, out := installRun(t, "install", "cursor", "vscode", "--mcp", "--server", "https://feedback.example.test")
+	if r.code != 1 || fmt.Sprint(out["message"]) != vscode+" and "+cursor+" both link to "+shared+"; wire one of the two harnesses by hand, or give each its own file." {
+		t.Fatalf("%+v", r)
+	}
+	sameTree(t, "after a refusal", snapshot(t, e.home), before)
+}
+
+func TestInstall_AllNoneSupported(t *testing.T) {
+	e := newInstallEnv(t)
+	if err := os.MkdirAll(filepath.Join(e.home, ".config", "Code", "User"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	before := snapshot(t, e.home)
+	r, out := installRun(t, "install", "all", "--server", "https://feedback.example.test")
+	msg := fmt.Sprint(out["message"])
+	if r.code != 2 || !strings.HasPrefix(msg, "no detected harness can be wired without --mcp: vscode: vscode has no skill directory of its own") ||
+		!strings.Contains(msg, "run agentfeedback install vscode --mcp") {
+		t.Fatalf("%+v", r)
+	}
+	sameTree(t, "after a refusal", snapshot(t, e.home), before)
+}
+
+func TestUninstall_LinkedPluginFileLeftInPlace(t *testing.T) {
+	e := newInstallEnv(t)
+	if r, _ := installRun(t, "install", "opencode", "--server", "https://feedback.example.test"); r.code != 0 {
+		t.Fatalf("%+v", r)
+	}
+	plugin := filepath.Join(e.home, ".config", "opencode", "plugins", "agentfeedback.js")
+	copyOf := filepath.Join(e.home, "plugin-copy.js")
+	data, _ := os.ReadFile(plugin)
+	putFile(t, copyOf, string(data), 0o644)
+	if err := os.Remove(plugin); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(copyOf, plugin); err != nil {
+		t.Fatal(err)
+	}
+	if r, _ := installRun(t, "install", "opencode"); r.code != 1 {
+		t.Fatalf("install over the link: %+v", r)
+	}
+	r, out := installRun(t, "uninstall", "opencode")
+	if r.code != 0 || !strings.Contains(notesOf(out), plugin+" is a symbolic link; it is left in place") {
+		t.Fatalf("%+v", r)
+	}
+	if got, err := os.Readlink(plugin); err != nil || got != copyOf {
+		t.Errorf("link %q %v", got, err)
+	}
+	if _, err := os.Stat(filepath.Join(e.home, ".config", "agentfeedback", "install.json")); err == nil {
+		t.Error("the manifest is left")
+	}
+}
+
+func TestInstall_ConfigLinkedToDirectory(t *testing.T) {
+	e := newInstallEnv(t)
+	e.seed(t)
+	path := filepath.Join(e.home, ".claude", "settings.json")
+	dir := filepath.Join(e.home, "somedir")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(dir, path); err != nil {
+		t.Fatal(err)
+	}
+	before := snapshot(t, e.home)
+	r, out := installRun(t, "install", "claude-code")
+	if r.code != 1 || fmt.Sprint(out["message"]) != path+" is a symbolic link to "+dir+", which is not a regular file; point the link at a regular file or remove it." {
+		t.Fatalf("%+v", r)
+	}
+	sameTree(t, "after a refusal", snapshot(t, e.home), before)
+}
+
+func TestInstall_SymlinkedManifestStillWritten(t *testing.T) {
+	e := newInstallEnv(t)
+	e.seed(t)
+	if r, _ := installRun(t, "install", "claude-code"); r.code != 0 {
+		t.Fatalf("%+v", r)
+	}
+	mpath := filepath.Join(e.home, ".config", "agentfeedback", "install.json")
+	real := filepath.Join(e.home, "dotfiles", "install.json")
+	data, err := os.ReadFile(mpath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	putFile(t, real, string(data), 0o600)
+	if err := os.Remove(mpath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, mpath); err != nil {
+		t.Fatal(err)
+	}
+	// A run that changes the manifest is not refused because the manifest is
+	// a link.
+	if r, out := installRun(t, "install", "claude-code", "--with-reminder"); r.code != 0 || out["status"] != "installed" {
+		t.Fatalf("%+v", r)
+	}
+}

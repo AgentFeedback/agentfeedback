@@ -58,7 +58,14 @@ IMAGE = "agentfeedback-playbooks"
 TAG_RE = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.(0|[1-9][0-9]*))?$")
 PLACEHOLDER_RE = re.compile(r"<[A-Za-z_]+>")
 KEY_RE = re.compile(r"[0-9a-f]{64}")
-HARNESSES = ("claude-code", "codex", "cursor", "opencode", "omp", "pi")
+# The harnesses client step 2.3 wires with the skill: every install harness
+# but vscode, which takes only the MCP entry.
+HARNESSES = (
+    "claude-code", "codex", "cursor", "opencode", "omp", "pi",
+    "copilot", "antigravity", "devin", "kiro", "cline", "amp", "gemini-cli",
+)
+# Harnesses install wires without a hook; their hook column reads "-".
+NO_HOOK = ("kiro", "cline", "amp", "gemini-cli")
 STEP_TIMEOUT = 300  # seconds for one step's command
 SETUP_TIMEOUT = 900  # seconds for the image build
 
@@ -232,7 +239,7 @@ def x_install(out: str, c: Ctx) -> None:
     h = c.values["harness"]
     entry = next((e for e in v.get("harnesses", []) if e.get("name") == h), None)
     need(entry is not None, f"{h} is not in the outcome: {v}")
-    need(entry.get("skill") == "wired" and entry.get("hook") == "wired", f"{h} is not wired: {entry}")
+    need(entry.get("skill") == "wired" and entry.get("hook") == ("-" if h in NO_HOOK else "wired"), f"{h} is not wired: {entry}")
 
 
 def x_doctor(out: str, c: Ctx) -> None:
@@ -256,7 +263,7 @@ def x_list(out: str, c: Ctx) -> None:
     h = c.values["harness"]
     entry = next((e for e in v.get("harnesses", []) if e.get("name") == h), None)
     need(entry is not None, f"{h} is not listed: {v}")
-    need(entry.get("mode") == "cli" and entry.get("skill") == "wired" and entry.get("hook") == "wired", f"{h} listed as {entry}")
+    need(entry.get("mode") == "cli" and entry.get("skill") == "wired" and entry.get("hook") == ("-" if h in NO_HOOK else "wired"), f"{h} listed as {entry}")
 
 
 def x_user(out: str, c: Ctx) -> None:

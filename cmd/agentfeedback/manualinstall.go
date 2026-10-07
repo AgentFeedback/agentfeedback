@@ -68,9 +68,24 @@ func manualSteps(pos []string, serverFlag string, stderr io.Writer) []manualStep
 			SkillPath:   env.SkillPath(n),
 			RuleCommand: "agentfeedback skill render agents-md",
 		}
-		s.SkillCommand = "New-Item -ItemType Directory -Force -Path " + psQuote(filepath.Dir(s.SkillPath)) + " | Out-Null; " +
-			"[IO.File]::WriteAllText(" + psQuote(s.SkillPath) + ", (agentfeedback skill render skill-md | Out-String))"
+		if s.SkillPath == "" {
+			_, reason := harness.Supports(n, harness.ModeCLI)
+			s.Notes = append(s.Notes, reason)
+		} else {
+			var cmds []string
+			for i, p := range env.SkillPaths(n) {
+				cmds = append(cmds, "New-Item -ItemType Directory -Force -Path "+psQuote(filepath.Dir(p))+" | Out-Null; "+
+					"[IO.File]::WriteAllText("+psQuote(p)+", (agentfeedback skill render skill-md | Out-String))")
+				if i > 0 {
+					s.Notes = append(s.Notes, "also "+filepath.Dir(p))
+				}
+			}
+			s.SkillCommand = strings.Join(cmds, "; ")
+		}
+		mcpOK, mcpReason := harness.Supports(n, harness.ModeMCP)
 		switch {
+		case !mcpOK:
+			s.Notes = append(s.Notes, mcpReason)
 		case srvErr != nil:
 			s.Notes = append(s.Notes, "the MCP entry cannot be computed: "+oneLine(srvErr.Error()))
 		case srv == "" || srv == serverLocal:
@@ -110,7 +125,9 @@ func printManualSteps(w io.Writer, steps []manualStep) {
 	}
 	for _, s := range steps {
 		fmt.Fprintf(w, "%s%s: wire by hand:\n", prefix, s.Harness)
-		fmt.Fprintf(w, "  skill: %s\n", s.SkillCommand)
+		if s.SkillCommand != "" {
+			fmt.Fprintf(w, "  skill: %s\n", s.SkillCommand)
+		}
 		if m := s.MCP; m != nil {
 			switch {
 			case m.Command != "":

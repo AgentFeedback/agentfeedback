@@ -207,10 +207,25 @@ type fileState struct {
 	mode    fs.FileMode
 	cur     []byte
 	present bool
+	// target is the file a symbolic link at path resolves to; reads and
+	// writes go to it, and path stays the file's identity.
+	target string
+	// planned marks a file read by plan.load; only those are checked for a
+	// link that appeared during the run (the manifest is not).
+	planned bool
 	// planned on finalize
 	backupNew    bool
 	backupDelete string
 	owner        string
+}
+
+// dest is the file written: the link's target, or path itself.
+func (f *fileState) dest() string {
+	if f.target != "" {
+		return f.target
+	}
+
+	return f.path
 }
 
 func (f *fileState) changed() bool {
@@ -245,7 +260,12 @@ func (p *plan) load(path string) (*fileState, error) {
 	case err != nil:
 		return nil, &FileError{Path: path, Err: err}
 	case info.Mode()&fs.ModeSymlink != 0:
-		return nil, p.symlinkRefusal(path)
+		if !p.env.configFiles()[path] {
+			return nil, p.symlinkRefusal(path)
+		}
+		if err := p.loadLinked(f); err != nil {
+			return nil, err
+		}
 	case !info.Mode().IsRegular():
 		return nil, &Refusal{Problem: path + " is not a regular file", Next: "replace it with a regular file or remove it"}
 	default:
@@ -255,10 +275,58 @@ func (p *plan) load(path string) (*fileState, error) {
 		}
 		f.exists, f.orig, f.mode = true, data, info.Mode().Perm()
 	}
-	f.cur, f.present = bytes.Clone(f.orig), f.exists
+	f.cur, f.present, f.planned = bytes.Clone(f.orig), f.exists, true
+	dest := filepath.Clean(f.dest())
+	for _, other := range sortedKeys(p.files) {
+		o := p.files[other]
+		if filepath.Clean(o.dest()) != dest {
+			continue
+		}
+		problem := path + " and " + other + " are the same file " + dest
+		if f.target != "" && o.target != "" {
+			problem = path + " and " + other + " both link to " + dest
+		}
+
+		return nil, &Refusal{Problem: problem, Next: "wire one of the two harnesses by hand, or give each its own file"}
+	}
 	p.files[path] = f
 
 	return f, nil
+}
+
+// loadLinked reads the configuration file a symbolic link at f.path points
+// to; a dangling link and a target that is not a regular file are refused.
+func (p *plan) loadLinked(f *fileState) error {
+	target, err := filepath.EvalSymlinks(f.path)
+	if errors.Is(err, fs.ErrNotExist) {
+		dest, _ := os.Readlink(f.path)
+
+		return &Refusal{Problem: f.path + " is a symbolic link to " + dest + ", which does not exist", Next: "create the target or remove the link"}
+	}
+	if err != nil {
+		return &FileError{Path: f.path, Err: err}
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		return &FileError{Path: f.path, Err: err}
+	}
+	if !info.Mode().IsRegular() {
+		return &Refusal{Problem: f.path + " is a symbolic link to " + target + ", which is not a regular file", Next: "point the link at a regular file or remove it"}
+	}
+	data, err := os.ReadFile(target)
+	if err != nil {
+		return &FileError{Path: f.path, Err: err}
+	}
+	f.exists, f.orig, f.mode, f.target = true, data, info.Mode().Perm(), target
+
+	return nil
+}
+
+// isLink reports whether path is a symbolic link.
+func isLink(path string) bool {
+	info, err := os.Lstat(path)
+
+	return err == nil && info.Mode()&fs.ModeSymlink != 0
 }
 
 // symlinkRefusal refuses a symbolic link: a linked skill is removed, a
@@ -266,7 +334,7 @@ func (p *plan) load(path string) (*fileState, error) {
 func (p *plan) symlinkRefusal(path string) error {
 	next := "wire this harness by hand from the table in docs/operate.md, or replace the link with the file it points to"
 	switch filepath.Base(path) {
-	case "SKILL.md", "agentfeedback", "agentfeedback-docs", "agentfeedback.js", "agentfeedback.ts":
+	case "SKILL.md", "agentfeedback", "agentfeedback-docs", "agentfeedback.js", "agentfeedback.ts", "agentfeedback.json":
 		next = "remove it, then run agentfeedback install again"
 	}
 	if p.env.skillRootOf(path) != "" {
@@ -415,6 +483,11 @@ func (p *plan) remove(s *step, it Item, uninstall bool) error {
 		// Removals are planned before additions, so a replaced entry is
 		// removed before its successor is added.
 		s.first = append(s.first, claudeRemoveArgs)
+
+		return nil
+	}
+	if it.Kind == KindPluginFile && uninstall && isLink(it.File) {
+		p.notes[s.name] = append(p.notes[s.name], it.File+" is a symbolic link; it is left in place")
 
 		return nil
 	}
@@ -629,26 +702,30 @@ func (p *plan) add(s *step, it *Item) error {
 // skills directory that file lies beneath (agentfeedback for SKILL.md,
 // agentfeedback-docs for the docs skill's files).
 func (p *plan) skillRoot(harness, file string) string {
-	skills := p.env.skillsDir(harness)
-	rel, err := filepath.Rel(skills, file)
-	if err != nil || rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return filepath.Dir(file)
-	}
-	first, _, _ := strings.Cut(rel, string(filepath.Separator))
+	for _, skills := range p.env.skillDirs(harness) {
+		rel, err := filepath.Rel(skills, file)
+		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			continue
+		}
+		first, _, _ := strings.Cut(rel, string(filepath.Separator))
 
-	return filepath.Join(skills, first)
+		return filepath.Join(skills, first)
+	}
+
+	return filepath.Dir(file)
 }
 
 // skillRootOf is the skill directory path is or lies beneath: the entry of
 // any harness's skills directory holding it, or "" outside every one.
 func (e Env) skillRootOf(path string) string {
 	sep := string(filepath.Separator)
-	for _, n := range names {
-		skills := e.skillsDir(n)
-		if rel, ok := strings.CutPrefix(path, skills+sep); ok && rel != "" {
-			first, _, _ := strings.Cut(rel, sep)
+	for _, a := range registry {
+		for _, skills := range a.SkillDirs(e) {
+			if rel, ok := strings.CutPrefix(path, skills+sep); ok && rel != "" {
+				first, _, _ := strings.Cut(rel, sep)
 
-			return filepath.Join(skills, first)
+				return filepath.Join(skills, first)
+			}
 		}
 	}
 
@@ -796,7 +873,7 @@ func (p *plan) uninstall(name string) error {
 			continue
 		}
 		// A file reached through a link is left in place and forgotten.
-		if it.Kind == KindSkillFile && p.env.symlinkedAncestor(it.File) != "" {
+		if (it.Kind == KindSkillFile && p.env.symlinkedAncestor(it.File) != "") || (it.Kind == KindPluginFile && isLink(it.File)) {
 			delete(p.man.Files, it.File)
 
 			continue
@@ -884,6 +961,11 @@ func (p *plan) settle(f *fileState, rec *FileRecord) error {
 
 		return nil
 	}
+	if rec.Created && f.target != "" {
+		p.notes[owner] = append(p.notes[owner], f.path+" is now a symbolic link; only the agentfeedback entries were removed")
+
+		return nil
+	}
 	if rec.Created {
 		f.cur, f.present = nil, false
 
@@ -942,9 +1024,11 @@ type HarnessStatus struct {
 	Docs     string `json:"docs"`
 	// Binary is the agentfeedback binary a CLI-mode harness's hooks run,
 	// and BinaryVersion its version when Env.Version is set.
-	Binary        string   `json:"binary,omitempty"`
-	BinaryVersion string   `json:"binary_version,omitempty"`
-	Notes         []string `json:"notes,omitempty"`
+	Binary        string `json:"binary,omitempty"`
+	BinaryVersion string `json:"binary_version,omitempty"`
+	// Verification is the adapter's verification record; set by Status.
+	Verification *Verified `json:"verification,omitempty"`
+	Notes        []string  `json:"notes,omitempty"`
 }
 
 // Result is what a run did, or with DryRun would do.
@@ -1388,22 +1472,34 @@ func mkdirs(dir string, perm fs.FileMode) ([]string, error) {
 }
 
 func changedSince(f *fileState) error {
-	data, err := os.ReadFile(f.path)
+	changed := &Refusal{Problem: f.path + " changed while installing", Next: "run agentfeedback install or uninstall again"}
+	// A link retargeted, or a file replaced by a link, is a change too.
+	if f.target != "" {
+		if t, err := filepath.EvalSymlinks(f.path); err != nil || t != f.target {
+			return changed
+		}
+	} else if info, err := os.Lstat(f.path); f.planned && err == nil && info.Mode()&fs.ModeSymlink != 0 {
+		return changed
+	}
+	data, err := os.ReadFile(f.dest())
 	exists := err == nil
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return &FileError{Path: f.path, Err: err}
 	}
 	if exists != f.exists || !bytes.Equal(data, f.orig) {
-		return &Refusal{Problem: f.path + " changed while installing", Next: "run agentfeedback install or uninstall again"}
+		return changed
 	}
 
 	return nil
 }
 
 // writeAtomic writes f.cur through a temporary file in the same directory,
-// keeping f.mode, and refuses when the file changed since it was read.
+// keeping f.mode, and refuses when the file changed since it was read. A
+// linked file is written in its target's directory and renamed onto the
+// target, so the link stays.
 func writeAtomic(f *fileState) error {
-	tmp, err := os.CreateTemp(filepath.Dir(f.path), "."+filepath.Base(f.path)+"-*")
+	dest := f.dest()
+	tmp, err := os.CreateTemp(filepath.Dir(dest), "."+filepath.Base(dest)+"-*")
 	if err != nil {
 		return &FileError{Path: f.path, Err: err}
 	}
@@ -1428,11 +1524,11 @@ func writeAtomic(f *fileState) error {
 	if err := changedSince(f); err != nil {
 		return err
 	}
-	if err := os.Rename(name, f.path); err != nil {
+	if err := os.Rename(name, dest); err != nil {
 		return &FileError{Path: f.path, Err: err}
 	}
 
-	return syncDir(filepath.Dir(f.path))
+	return syncDir(filepath.Dir(dest))
 }
 
 // beforeRename, when set, runs just before writeAtomic's final check; tests
@@ -1443,7 +1539,7 @@ func removeChecked(f *fileState) error {
 	if err := changedSince(f); err != nil {
 		return err
 	}
-	if err := os.Remove(f.path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	if err := os.Remove(f.dest()); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return &FileError{Path: f.path, Err: err}
 	}
 
@@ -1524,6 +1620,9 @@ func (e Env) Status() ([]HarnessStatus, error) {
 	versions := map[string]string{}
 	for i := range out {
 		out[i].Detected = e.Detect(out[i].Name)
+		if v, ok := Verification(out[i].Name); ok {
+			out[i].Verification = &v
+		}
 		if e.Version == nil || out[i].Binary == "" {
 			continue
 		}

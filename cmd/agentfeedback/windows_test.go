@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -132,6 +133,32 @@ func TestWindows_InstallManualSteps(t *testing.T) {
 		r, out := windowsInstall(t, "install", "--list")
 		if r.code != 2 || out.Status != "error" || len(out.Manual) != 1 || out.Manual[0].Harness != "claude-code" {
 			t.Fatalf("%+v", r)
+		}
+	})
+	t.Run("second wave", func(t *testing.T) {
+		e := newInstallEnv(t)
+		stubWindows(t)
+		r, out := windowsInstall(t, "install", "vscode", "antigravity", "gemini-cli", "--server", "https://feedback.example.test")
+		if r.code != 2 || len(out.Manual) != 3 {
+			t.Fatalf("%+v", r)
+		}
+		vscode, agy, gemini := out.Manual[0], out.Manual[1], out.Manual[2]
+		if vscode.SkillPath != "" || vscode.SkillCommand != "" || vscode.MCP == nil || vscode.MCP.Key != "agentfeedback" ||
+			!strings.Contains(strings.Join(vscode.Notes, "\n"), "vscode has no skill directory of its own") {
+			t.Fatalf("vscode %+v", vscode)
+		}
+		first := filepath.Join(e.home, ".gemini", "config", "skills", "agentfeedback")
+		second := filepath.Join(e.home, ".gemini", "antigravity-cli", "skills", "agentfeedback")
+		cmd := func(dir string) string {
+			return "New-Item -ItemType Directory -Force -Path '" + dir + "' | Out-Null; [IO.File]::WriteAllText('" +
+				filepath.Join(dir, "SKILL.md") + "', (agentfeedback skill render skill-md | Out-String))"
+		}
+		if agy.SkillPath != filepath.Join(first, "SKILL.md") || agy.SkillCommand != cmd(first)+"; "+cmd(second) ||
+			!slices.Contains(agy.Notes, "also "+second) {
+			t.Fatalf("antigravity %+v", agy)
+		}
+		if gemini.MCP != nil || len(gemini.Notes) == 0 || gemini.Notes[0] != "gemini-cli has no MCP entry in agentfeedback install" {
+			t.Fatalf("gemini-cli %+v", gemini)
 		}
 	})
 	t.Run("unknown name", func(t *testing.T) {
