@@ -50,10 +50,15 @@ archives:
           mode: 0644
           mtime: "{{ .CommitDate }}"
 
+# SHA256SUMS covers the six archives and install.sh, so a downloader can check
+# the installer against the release before running it (AGENT-INSTALL.md step
+# 2.1). Integrity only: the release is not signed.
 checksum:
   name_template: SHA256SUMS
   algorithm: sha256
   ids: [agentfeedback]
+  extra_files:
+    - glob: ./skills/agentfeedback/scripts/install.sh
 
 # The container image: the linux binaries above copied into the runtime stage
 # of the repository's Dockerfile (BINARY_FROM=prebuilt). dockers_v2 builds and

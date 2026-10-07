@@ -6,7 +6,10 @@ placeholder and release rewrites. No Docker; the container run is
 Usage: python3 tests/playbooks/test_playbooks.py
 """
 
+import hashlib
 import importlib.util
+import shutil
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -162,6 +165,8 @@ class Commands(unittest.TestCase):
     def test_pin_published_tag(self):
         cmd = pb.pin_release(self.INSTALL, "v4.0.0-rc.1", None)
         self.assertIn(f"{pb.RELEASES}/download/v4.0.0-rc.1/install.sh", cmd)
+        self.assertIn(f"{pb.RELEASES}/download/v4.0.0-rc.1/SHA256SUMS", cmd)
+        self.assertNotIn("latest/download", cmd)
         self.assertIn('bash "$d/install.sh" --version v4.0.0-rc.1', cmd)
         self.assertEqual(cmd.count("--version"), 1)
         self.assertIn("--proto '=https'", cmd)
@@ -169,12 +174,48 @@ class Commands(unittest.TestCase):
     def test_pin_file_release(self):
         cmd = pb.pin_release(self.INSTALL, "v4.0.0", "file:///release")
         self.assertIn("file:///release/download/v4.0.0/install.sh", cmd)
+        self.assertIn("file:///release/download/v4.0.0/SHA256SUMS", cmd)
         self.assertIn("--proto '=file'", cmd)
         self.assertNotIn("github.com", cmd)
+        self.assertNotIn("=https", cmd)
 
     def test_pin_refuses_other_shape(self):
         with self.assertRaises(pb.GateError):
             pb.pin_release("curl https://example.com/install.sh | sh", "v4.0.0", None)
+        # SHA256SUMS fetched from another release than install.sh.
+        with self.assertRaises(pb.GateError):
+            pb.pin_release(self.INSTALL.replace("latest/download/SHA256SUMS", "download/v1/SHA256SUMS"), "v4.0.0", None)
+        # Both downloaded, but install.sh run without the check.
+        unchecked = self.INSTALL.replace(pb.VERIFY_LINE + " && ", "").split(" && (cd ")[0] + ' && bash "$d/install.sh")'
+        self.assertNotEqual(unchecked, self.INSTALL)
+        with self.assertRaisesRegex(pb.GateError, "before running it"):
+            pb.pin_release(unchecked, "v4.0.0", None)
+
+    @unittest.skipUnless(shutil.which("curl") and (shutil.which("sha256sum") or shutil.which("shasum")), "needs curl and sha256sum or shasum")
+    def test_install_runs_only_when_its_checksum_matches(self):
+        """Step 2.1's command, pinned to a file:// release whose install.sh
+        is a stand-in that prints a path: it runs only when SHA256SUMS lists
+        it with its checksum."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            rel = Path(tmp) / "download" / "v4.0.0"
+            rel.mkdir(parents=True)
+            script = b"echo /stand-in/agentfeedback\n"
+            (rel / "install.sh").write_bytes(script)
+            digest = hashlib.sha256(script).hexdigest()
+            archive = f"{'0' * 64}  agentfeedback_4.0.0_linux_amd64.tar.gz\n"
+            cmd = pb.pin_release(self.INSTALL, "v4.0.0", f"file://{tmp}")
+            run = lambda: subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, timeout=30)
+            (rel / "SHA256SUMS").write_text(f"{archive}{digest}  install.sh\n")
+            r = run()
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout.splitlines(), ["install.sh: OK", "/stand-in/agentfeedback"])
+            # No install.sh line: nothing printed. A wrong one: FAILED.
+            for sums, stdout in ((archive, []), (f"{archive}{'1' * 64}  install.sh\n", ["install.sh: FAILED"])):
+                (rel / "SHA256SUMS").write_text(sums)
+                r = run()
+                self.assertNotEqual(r.returncode, 0)
+                self.assertEqual(r.stdout.splitlines(), stdout)
 
     def skipped(self, route, environ):
         docs = pb.read_docs()
@@ -220,10 +261,11 @@ class Verify(unittest.TestCase):
 
     def test_binary(self):
         c = self.ctx()
-        pb.x_binary("/home/u/.local/bin/agentfeedback\n", c)
+        pb.x_binary("install.sh: OK\n/home/u/.local/bin/agentfeedback\n", c)
         self.assertEqual(c.values["binary"], "/home/u/.local/bin/agentfeedback")
-        with self.assertRaises(pb.GateError):
-            pb.x_binary("installed\n", c)
+        for out in ("install.sh: OK\ninstalled\n", "/home/u/.local/bin/agentfeedback\n", "install.sh: FAILED\n"):
+            with self.assertRaises(pb.GateError):
+                pb.x_binary(out, c)
 
     def test_install_and_list(self):
         c = self.ctx(harness="claude-code")
@@ -261,10 +303,6 @@ class Verify(unittest.TestCase):
         self.assertEqual(pb.redact("k=" + "a" * 64), "k=[REDACTED]")
 
 
-if __name__ == "__main__":
-    unittest.main(verbosity=1)
-
-
 class Staging(unittest.TestCase):
     def test_release_directory(self):
         import tempfile
@@ -291,3 +329,7 @@ class Staging(unittest.TestCase):
             work.mkdir()
             with self.assertRaisesRegex(pb.GateError, "no linux archive"):
                 pb.stage_release("v4.0.1", str(src), work)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=1)

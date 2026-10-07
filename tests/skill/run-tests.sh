@@ -42,7 +42,8 @@ chk() { # chk <desc> <ok 0|1>
 }
 
 # release <tag> [members...]: archives for linux and darwin x amd64 and arm64
-# holding a stand-in binary that prints its version, plus SHA256SUMS.
+# holding a stand-in binary that prints its version, plus install.sh and a
+# SHA256SUMS listing the archives and install.sh, as a published release does.
 release() {
   local v=${1#v} dir="$REL/download/$1" stage os arch
   shift
@@ -56,8 +57,8 @@ release() {
       tar -czf "$dir/agentfeedback_${v}_${os}_${arch}.tar.gz" -C "$stage" "${@:-agentfeedback}" LICENSE README.md
     done
   done
-  (cd "$dir" && sums agentfeedback_*.tar.gz >SHA256SUMS)
   cp "$INSTALL" "$dir/install.sh"
+  (cd "$dir" && sums agentfeedback_*.tar.gz install.sh >SHA256SUMS)
 }
 latest() { # latest <tag>: point latest/download at a release
   rm -rf "$REL/latest"; mkdir -p "$REL/latest"
@@ -93,6 +94,8 @@ run
 chk "unpinned: installs the latest stable release to ~/.local/bin and prints its path" \
   "$([ "$rc" = 0 ] && [ "$out" = "$home/.local/bin/agentfeedback" ] && [ "$(installed)" = 1 ] &&
      [ "$("$home/.local/bin/agentfeedback")" = "agentfeedback 1.2.3 (fixture)" ] && echo 1 || echo 0)"
+chk "unpinned: SHA256SUMS listing install.sh beside the archives does not disturb the archive's line" \
+  "$([ "$rc" = 0 ] && grep -q '  install\.sh$' "$REL/latest/download/SHA256SUMS" && echo 1 || echo 0)"
 chk "unpinned: leaves only the binary in ~/.local/bin (no staging file)" \
   "$([ "$(ls -A "$home/.local/bin")" = agentfeedback ] && echo 1 || echo 0)"
 chk "unpinned: says which version it installed and that ~/.local/bin is not on PATH" \

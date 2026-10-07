@@ -57,7 +57,7 @@ playbooks rely on the names:
 |---|---|
 | `agentfeedback_<version>_<os>_<arch>.tar.gz` | `os` `linux` or `darwin`, `arch` `amd64` or `arm64`: the binary `agentfeedback`, `LICENSE`, `README.md` |
 | `agentfeedback_<version>_windows_<arch>.zip` | the same with `agentfeedback.exe` |
-| `SHA256SUMS` | SHA-256 of the six archives, in `sha256sum` format |
+| `SHA256SUMS` | SHA-256 of the six archives and `install.sh`, in `sha256sum` format; the client playbook checks `install.sh` against it before running it. It proves the assets belong together, not who published them: the release is not signed |
 | `install.sh` | `skills/agentfeedback/scripts/install.sh` from the tagged commit |
 
 `<version>` is the tag without the `v`. The binaries are static
@@ -86,7 +86,9 @@ flags.
    exists, that `origin` is this repository, a clean `main` equal to
    `origin/main`, that the tag exists neither locally nor on `origin`, that
    `gh` can push, `goreleaser check`, and `just ci`. The preflight then builds
-   a snapshot of all six targets into `dist/release/`, verifies its checksums,
+   a snapshot of all six targets into `dist/release/`, checks that its
+   `SHA256SUMS` lists exactly the six archives and `install.sh` and that
+   every line matches (the `install.sh` line against the committed file),
    builds the two snapshot images and smoke-tests them (each platform's binary
    prints the snapshot version, and the image started with no arguments
    answers `/ready`), and stops. `just release` instead builds the release against a local tag
@@ -107,7 +109,7 @@ flags.
    exactly when the tag is one, `latest` exactly when it is stable, exactly
    the assets above, `SHA256SUMS` byte-identical to the local build's,
    `install.sh` identical to the committed one, and every downloaded archive
-   matching `SHA256SUMS`; then the image as a puller sees it: every tag names
+   and `install.sh` matching its `SHA256SUMS` line; then the image as a puller sees it: every tag names
    the same index, which holds `linux/amd64` and `linux/arm64`, and each
    platform's binary prints the version. Last, it prints the release URL. Deploy the SHA or the version tag,
    never `latest`.
@@ -115,15 +117,16 @@ flags.
 ### Verifying a release
 
 ```bash
-gh release download vX.Y.Z --repo AgentFeedback/agentfeedback --pattern 'agentfeedback_*' --pattern SHA256SUMS
+gh release download vX.Y.Z --repo AgentFeedback/agentfeedback --pattern 'agentfeedback_*' --pattern SHA256SUMS --pattern install.sh
 sha256sum -c SHA256SUMS          # Linux
 shasum -a 256 -c SHA256SUMS      # macOS
 ```
 
 Without `gh`, download from
 `https://github.com/AgentFeedback/agentfeedback/releases/download/vX.Y.Z/<asset>`.
-To check one archive only, feed its line to the same command:
-`grep ' agentfeedback_X.Y.Z_linux_amd64.tar.gz$' SHA256SUMS | sha256sum -c`.
+To check one asset only, feed its line to the same command:
+`grep ' install\.sh$' SHA256SUMS | sha256sum -c` (`shasum -a 256 -c` on
+macOS). Releases before 4.0.0 list only the archives.
 
 ### Reproducing a release
 

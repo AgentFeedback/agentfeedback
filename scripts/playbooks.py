@@ -214,6 +214,8 @@ def x_platform(out: str, c: Ctx) -> None:
 
 
 def x_binary(out: str, c: Ctx) -> None:
+    lines = out.splitlines()
+    need(bool(lines) and lines[0] == "install.sh: OK", f"install.sh was not verified against SHA256SUMS first: {lines[:1]!r}")
     path = last(out)
     need(path.startswith("/") and path.endswith("/agentfeedback"), f"the last line is not the binary's path: {path!r}")
     c.values["binary"] = path
@@ -422,14 +424,27 @@ def substitute(cmd: str, values: dict[str, str]) -> str:
     return cmd
 
 
+# Step 2.1 keeps the install.sh line of SHA256SUMS for `sha256sum -c`.
+VERIFY_LINE = "grep ' install\\.sh$' \"$d/SHA256SUMS\" >\"$d/install.sh.sha256\""
+
+
 def pin_release(cmd: str, tag: str, file_root: str | None) -> str:
     """Client step 2.1 as its prose says for a named tag, and, for a local
     release, with the release root replaced by its file:// copy."""
-    need(cmd.count("latest/download/install.sh") == 1 and cmd.count('bash "$d/install.sh"') == 1, "step 2.1's command no longer has the shape the gate pins")
+    run = cmd.find('bash "$d/install.sh"')
+    need(
+        cmd.count("latest/download/install.sh") == 1 and cmd.count("latest/download/SHA256SUMS") == 1 and cmd.count("latest/download") == 2 and cmd.count('bash "$d/install.sh"') == 1,
+        "step 2.1's command no longer has the shape the gate pins",
+    )
+    # install.sh runs only after its SHA256SUMS line is checked.
+    need(
+        all(0 <= cmd.find(s) < run for s in (VERIFY_LINE, "sha256sum -c install.sh.sha256", "shasum -a 256 -c install.sh.sha256")),
+        "step 2.1's command no longer checks install.sh against SHA256SUMS before running it",
+    )
     cmd = cmd.replace("latest/download", f"download/{tag}").replace('bash "$d/install.sh"', f'bash "$d/install.sh" --version {tag}')
     if file_root:
         need(f"--proto '=https'" in cmd and RELEASES in cmd, "step 2.1's command no longer has the shape the gate pins")
-        cmd = cmd.replace("--proto '=https'", "--proto '=file'").replace(RELEASES, file_root)
+        cmd = cmd.replace("--proto '=https'", "--proto '=file'").replace("--proto-redir '=https'", "--proto-redir '=file'").replace(RELEASES, file_root)
     return cmd
 
 
@@ -510,7 +525,9 @@ def stage_release(tag: str, source: str, work: Path) -> str | None:
         archive = f"agentfeedback_{version}_linux_{arch}.tar.gz"
         subprocess.run(["tar", "-czf", str(dest / archive), "-C", str(stage), "agentfeedback", "LICENSE", "README.md"], check=True)
         digest = hashlib.sha256((dest / archive).read_bytes()).hexdigest()
-        (dest / "SHA256SUMS").write_text(f"{digest}  {archive}\n")
+        script = hashlib.sha256((ROOT / "skills/agentfeedback/scripts/install.sh").read_bytes()).hexdigest()
+        # As GoReleaser writes it: the archives and install.sh, sorted by name.
+        (dest / "SHA256SUMS").write_text(f"{digest}  {archive}\n{script}  install.sh\n")
     else:
         src = Path(source)
         need((src / "SHA256SUMS").is_file(), f"{src} has no SHA256SUMS: not a release directory")

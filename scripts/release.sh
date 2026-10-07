@@ -16,7 +16,7 @@ install_sh=skills/agentfeedback/scripts/install.sh
 image=ghcr.io/agentfeedback/agentfeedback
 
 die() { echo "release: $*" >&2; exit 1; }
-verify_sums() { (cd "$1" && if command -v sha256sum >/dev/null; then sha256sum -c SHA256SUMS; else shasum -a 256 -c SHA256SUMS; fi); }
+sha256() { if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
 # The six archive names for a version, sorted.
 archives() {
     for os in darwin linux windows; do
@@ -27,7 +27,16 @@ archives() {
         done
     done | sort
 }
-listed() { awk '{ print $2 }' "$1" | sort; }
+# <dir>/SHA256SUMS lists exactly the six archives of <version> and install.sh,
+# each archive's line matching its file in <dir> and the install.sh line
+# matching the committed $install_sh (GoReleaser lists it from the tree; a
+# build directory holds no copy of it).
+check_sums() {
+    local dir=$1 v=$2 want name
+    want=$( { for name in $(archives "$v"); do echo "$(sha256 "$dir/$name")  $name"; done; echo "$(sha256 "$install_sh")  install.sh"; } | sort)
+    [ "$(sort "$dir/SHA256SUMS")" = "$want" ] ||
+        die "$dir/SHA256SUMS does not list exactly the six archives and install.sh with their checksums"
+}
 # Smoke-test the per-platform images a snapshot build loaded (tags suffixed
 # -amd64 and -arm64): on both platforms the binary prints the snapshot version,
 # and the image started with no arguments (CMD serve) answers /ready. The
@@ -142,9 +151,7 @@ if [ "$check" = true ]; then
     trap remove_smoke EXIT
     smoke_version=$version-snapshot
     goreleaser release --snapshot --clean
-    [ "$(listed dist/release/SHA256SUMS)" = "$(archives "$version-snapshot")" ] ||
-        die "the snapshot's SHA256SUMS does not list exactly the six archives"
-    verify_sums dist/release
+    check_sums dist/release "$version-snapshot"
     image_smoke "$version-snapshot"
     remove_smoke
     echo "release: ready to publish $tag at $sha"
@@ -172,9 +179,7 @@ trap finish EXIT
 git tag -a "$tag" "$sha" -m "$tag: $title"
 tag_created=true
 goreleaser release --clean --skip=publish
-[ "$(listed dist/release/SHA256SUMS)" = "$(archives "$version")" ] ||
-    die "the local build's SHA256SUMS does not list exactly the six archives"
-verify_sums dist/release
+check_sums dist/release "$version"
 cp dist/release/SHA256SUMS "$work/SHA256SUMS.local"
 # Both install playbooks, run in a clean container against the local build:
 # a playbook that fails on these assets stops the release before the tag is
@@ -207,7 +212,7 @@ gh release download "$tag" --repo "$repo" --dir "$work/download" --pattern 'agen
 cmp -s "$work/SHA256SUMS.local" "$work/download/SHA256SUMS" ||
     die "the published SHA256SUMS differs from the local build's"
 cmp -s "$install_sh" "$work/download/install.sh" || die "the published install.sh differs from $install_sh"
-verify_sums "$work/download"
+check_sums "$work/download" "$version"
 
 # Verify the image as a puller sees it: GoReleaser pushed it before creating
 # the release, tagged with the version and the commit, plus latest for a

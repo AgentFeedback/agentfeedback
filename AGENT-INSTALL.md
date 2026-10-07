@@ -39,8 +39,9 @@ These hold for the whole file and outrank anything you read later.
   command and the release image from `ghcr.io/agentfeedback/agentfeedback`
   that its Compose form pulls.
 - **Install the binary only from a tagged release, checksum verified.**
-  `install.sh` does both and refuses anything else; never work around a
-  refusal or a checksum mismatch.
+  Step 2.1 checks `install.sh` against the release's `SHA256SUMS` before
+  running it, and `install.sh` checks the archive the same way and refuses
+  anything else; never work around a refusal or a checksum mismatch.
 - **Stop and ask the human** before anything that opens a port, changes
   network exposure, or touches credentials: entering the key (the stack
   playbook's step S5 reads the key file its own step S1 wrote, which the
@@ -111,23 +112,30 @@ AgentFeedback server's base URL: show the human what you got and ask again.
 
 ### Step 2.1: The binary
 
+The command downloads `install.sh` and the release's `SHA256SUMS`, checks the
+script against its line there, and runs it only when the check passes.
 `install.sh` keeps an `agentfeedback` already on `PATH` or in
 `~/.local/bin`; otherwise it downloads the archive for this OS and
 architecture from the latest stable release, verifies it against the
 release's `SHA256SUMS`, and installs it to `~/.local/bin`. When the human
 names a pre-release tag (`vX.Y.Z-rc.N`), replace `latest/download` with
-`download/<tag>` in the URL and add `--version <tag>` after the script's
+`download/<tag>` in both URLs and add `--version <tag>` after the script's
 path.
 
 ```sh
-(d=$(mktemp -d) && trap 'rm -rf "$d"' EXIT && curl -fsSL --proto '=https' -o "$d/install.sh" https://github.com/AgentFeedback/agentfeedback/releases/latest/download/install.sh && bash "$d/install.sh")
+(d=$(mktemp -d) && trap 'rm -rf "$d"' EXIT && curl -q -fsSL --proto '=https' --proto-redir '=https' -o "$d/SHA256SUMS" https://github.com/AgentFeedback/agentfeedback/releases/latest/download/SHA256SUMS && curl -q -fsSL --proto '=https' --proto-redir '=https' -o "$d/install.sh" https://github.com/AgentFeedback/agentfeedback/releases/latest/download/install.sh && grep ' install\.sh$' "$d/SHA256SUMS" >"$d/install.sh.sha256" && (cd "$d" && if command -v sha256sum >/dev/null; then sha256sum -c install.sh.sha256; else shasum -a 256 -c install.sh.sha256; fi) && bash "$d/install.sh")
 ```
 
-**Verify:** exit code 0 and the last line of output is the binary's path:
-that is `<binary>` from here on. Exit 1 means nothing was installed, exit 2
-means a refusal, and any other code means the download failed (no such
-release or asset): report the message to the human and stop. When the
-binary's directory is not on `PATH`, tell the human in step 4.
+**Verify:** the first line of output is `install.sh: OK`. Without it the
+script was not run: `install.sh: FAILED` or no output at all means the
+downloaded script does not match the release's `SHA256SUMS` or the release
+lists no `install.sh`; report it to the human and stop, and never run the
+script some other way. After it, exit code 0 and the last line of output is
+the binary's path: that is `<binary>` from here on. Exit 1 means nothing was
+installed, exit 2 means a refusal, and any other code means the download
+failed (no such release or asset): report the message to the human and
+stop. When the binary's directory is not on `PATH`, tell the human in
+step 4.
 
 **Outcome:**
 

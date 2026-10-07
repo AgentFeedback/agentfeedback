@@ -24,7 +24,7 @@ scripts/                        in-container.sh (runs a command in the gate tool
                                 `just release`), eval-cluster.py (live cluster.py calibration; discloses report text), playbooks.py (the playbook gate: routes through both
                                 install playbooks, the Verify condition of each step, `check`, `list`, `run`)
 references.go                   embeds the docs, schemas, OpenAPI document and install playbooks for the docs skill (go:embed cannot reach the root from internal/)
-.goreleaser.yaml                release build: six archives, SHA256SUMS, install.sh asset (docs/releases.md)
+.goreleaser.yaml                release build: six archives, install.sh asset, SHA256SUMS over both (docs/releases.md)
 AGENT-INSTALL.md                client install playbook for agents: one command, one verification, one JSON outcome per step
 AGENT-INSTALL-STACK.md          stack install playbook for agents: server and client on one machine; includes AGENT-INSTALL.md by step number
 llms.txt                        index for agents: raw URLs of both playbooks, docs/openapi.yaml, the schemas and docs/api.md
