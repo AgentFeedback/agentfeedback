@@ -219,3 +219,24 @@ func rowSeq(s *Service) int {
 	res, _ := s.List(context.Background(), ListParams{})
 	return int(res.Total)
 }
+
+func TestOriginFilter(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s, _, _ := newTestService(t)
+	mustCreate(t, s, `{"kind":"k","summary":"a","context":{"origin":"session-scan"}}`)
+	mustCreate(t, s, `{"kind":"k","summary":"b","context":{"origin":"agent"}}`)
+	mustCreate(t, s, `{"kind":"k","summary":"c"}`)
+	page, err := s.List(ctx, ListParams{Filter: Filter{Origin: "session-scan"}})
+	if err != nil || page.Total != 1 || page.Submissions[0].Summary != "a" {
+		t.Fatalf("origin filter: %+v %v", page, err)
+	}
+	// exact, not token-normalised
+	if page, err := s.List(ctx, ListParams{Filter: Filter{Origin: "Session-Scan"}}); err != nil || page.Total != 0 {
+		t.Fatalf("origin must match exactly: %+v %v", page, err)
+	}
+	st, err := s.Stats(ctx, StatsParams{By: []string{"origin"}})
+	if err != nil || len(st.Groups) != 2 {
+		t.Fatalf("stats by origin: %+v %v", st, err)
+	}
+}

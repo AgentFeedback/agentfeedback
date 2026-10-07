@@ -1,0 +1,27 @@
+{{define "content"}}{{template "filters" .}}{{$base := .Base}}{{with .Data}}
+<table class="totals">
+<tr><th>total</th><td>{{.Totals.Total}}</td></tr>
+<tr><th>open</th><td>{{.Totals.Open}}</td></tr>
+<tr><th>processed</th><td>{{.Totals.Processed}}</td></tr>
+<tr><th>redacted</th><td>{{.Totals.Redacted}}</td></tr>
+</table>
+{{range .Groups}}<h2>By {{.Key}}</h2>
+<table class="group">
+<thead><tr><th>{{.Key}}</th><th>total</th><th>open</th><th>processed</th></tr></thead>
+<tbody>
+{{range .Rows}}<tr><td>{{.Value}}</td><td>{{.Total}}</td><td>{{.Open}}</td><td>{{.Processed}}</td></tr>
+{{else}}<tr><td colspan="4">None.</td></tr>
+{{end}}</tbody>
+</table>
+{{end}}
+<h2>Recurring</h2>
+<table class="recurring">
+<thead><tr><th>count</th><th>kind</th><th>project</th><th>summary</th><th>first</th><th>last</th><th>content hash</th></tr></thead>
+<tbody>
+{{range .Totals.Recurring}}<tr><td>{{.Count}}</td><td>{{.Kind}}</td><td>{{.Project}}</td><td>{{.Summary}}</td>
+<td><a href="{{$base}}submissions/{{.FirstID}}">{{.FirstID}}</a></td><td><a href="{{$base}}submissions/{{.LastID}}">{{.LastID}}</a></td><td><code>{{.ContentHash}}</code></td></tr>
+{{else}}<tr><td colspan="7">None.</td></tr>
+{{end}}</tbody>
+</table>
+{{if .Service}}<p class="meta">service {{.Service}}, API {{.API}}</p>{{end}}
+{{end}}{{end}}

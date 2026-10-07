@@ -32,7 +32,8 @@ func (s *Service) Get(ctx context.Context, id int64) (Record, error) {
 // Filter is the filter set the list and the stats share, as the transport
 // parsed it. An empty string, a nil pointer and a nil slice mean "no filter".
 // kind, harness, category, fix_status, verdict and exclude_kind are
-// normalised as tokens; key, machine, model and project match exactly.
+// normalised as tokens; key, machine, model, project and origin match
+// exactly.
 type Filter struct {
 	Kind          string
 	SchemaVersion *int64
@@ -42,6 +43,7 @@ type Filter struct {
 	Project       string
 	Harness       string
 	Category      string
+	Origin        string
 	FixStatus     string
 	ExcludeKind   []string
 	Verdict       string
@@ -145,7 +147,7 @@ func (f Filter) storeFilter() (store.ListFilter, error) {
 		return out, invalid("out_of_range", "?since", "since (%s) must not be after until (%s)",
 			formatMicros(*out.Since), formatMicros(*out.Until))
 	}
-	out.Key, out.Machine, out.Model, out.Project = f.Key, f.Machine, f.Model, f.Project
+	out.Key, out.Machine, out.Model, out.Project, out.Origin = f.Key, f.Machine, f.Model, f.Project, f.Origin
 	out.Processed, out.Redacted = f.Processed, f.Redacted
 	out.ContentHash, out.Q = f.ContentHash, f.Q
 	return out, nil

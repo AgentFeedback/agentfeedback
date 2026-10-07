@@ -1,4 +1,4 @@
--- The v1 schema: one table for every kind. This is the only migration; the
+-- The v1 schema: one table for every kind. This is the first migration; the
 -- previous major version's database is not migrated, so a database this
 -- binary did not create is refused at open (the application_id stamp is
 -- written by store.Open before this file runs).

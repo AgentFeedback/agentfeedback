@@ -31,7 +31,7 @@ const (
 // Argument sets per tool, named and spelled as the REST query parameters.
 var (
 	filterArgs = []string{"kind", "schema_version", "key", "machine", "model", "project", "harness",
-		"category", "fix_status", "exclude_kind", "verdict", "processed", "redacted", "content_hash",
+		"category", "origin", "fix_status", "exclude_kind", "verdict", "processed", "redacted", "content_hash",
 		"since", "until", "on", "q"}
 	listArgs   = append(slices.Clone(filterArgs), "before_id", "after_id", "limit", "include")
 	statsArgs  = append(slices.Clone(filterArgs), "by", "top", "bucket")
@@ -279,6 +279,7 @@ func (a args) filter(preset string) (core.Filter, error) {
 		dst  *string
 	}{{"kind", &f.Kind}, {"key", &f.Key}, {"machine", &f.Machine}, {"model", &f.Model},
 		{"project", &f.Project}, {"harness", &f.Harness}, {"category", &f.Category},
+		{"origin", &f.Origin},
 		{"fix_status", &f.FixStatus}, {"verdict", &f.Verdict}, {"content_hash", &f.ContentHash},
 		{"on", &f.On}, {"q", &f.Q}} {
 		if *s.dst, err = a.str(s.name); err != nil {

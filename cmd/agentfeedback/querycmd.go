@@ -141,6 +141,7 @@ var filterParams = []struct{ flag, param, usage string }{
 	{"project", "project", "only this project"},
 	{"harness", "harness", "only this harness"},
 	{"category", "category", "only this friction category"},
+	{"origin", "origin", "only this context origin (agent, hook-nudge, session-scan, inbox, import, ...)"},
 	{"fix-status", "fix_status", "only this friction fix_status"},
 	{"verdict", "verdict", "only this verdict"},
 	{"redacted", "redacted", "true or false: only redacted or only unredacted rows"},

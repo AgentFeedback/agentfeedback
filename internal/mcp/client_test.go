@@ -156,6 +156,15 @@ func TestClient_Conformance(t *testing.T) {
 				if tc.preset != "" && object(t, b)["total"].(float64) != 1 {
 					t.Errorf("stats under preset: %s", b)
 				}
+				if _, ok := properties(t, tools.Tools[slices.Index(names, mcp.ToolList)])["origin"]; !ok {
+					t.Errorf("list has no origin property")
+				}
+				if b, isErr = call(t, cs, mcp.ToolList, map[string]any{"origin": "no-such-origin"}); isErr || object(t, b)["total"].(float64) != 0 {
+					t.Errorf("list by origin: %v %s", isErr, b)
+				}
+				if b, isErr = call(t, cs, mcp.ToolStats, map[string]any{"origin": "no-such-origin", "by": "origin"}); isErr || object(t, b)["total"].(float64) != 0 {
+					t.Errorf("stats by origin: %v %s", isErr, b)
+				}
 				if b, isErr = call(t, cs, mcp.ToolMark, map[string]any{"ids": []any{id}, "processed": true, "verdict": "fixed"}); isErr {
 					t.Fatalf("mark: %s", b)
 				}

@@ -126,6 +126,7 @@ paths:
         - $ref: '#/components/parameters/Project'
         - $ref: '#/components/parameters/Harness'
         - $ref: '#/components/parameters/Category'
+        - $ref: '#/components/parameters/Origin'
         - $ref: '#/components/parameters/FixStatus'
         - $ref: '#/components/parameters/ExcludeKind'
         - $ref: '#/components/parameters/Verdict'
@@ -360,6 +361,7 @@ paths:
         - $ref: '#/components/parameters/Project'
         - $ref: '#/components/parameters/Harness'
         - $ref: '#/components/parameters/Category'
+        - $ref: '#/components/parameters/Origin'
         - $ref: '#/components/parameters/FixStatus'
         - $ref: '#/components/parameters/ExcludeKind'
         - $ref: '#/components/parameters/Verdict'
@@ -375,7 +377,7 @@ paths:
           description: >-
             Comma list of up to three of `kind`, `project`, `category`,
             `fix_status`, `machine`, `model`, `harness`, `verdict`,
-            `schema_version`. Absent: no groups. A row without a value for
+            `schema_version`, `origin`. Absent: no groups. A row without a value for
             any listed key is in no group, so group totals need not add up
             to `total`.
           schema: {type: string}
@@ -922,6 +924,13 @@ components:
       name: category
       in: query
       description: Friction payload `category`; other kinds never match.
+      schema: {type: string}
+    Origin:
+      name: origin
+      in: query
+      description: >-
+        Exact `context.origin`, e.g. `agent`, `session-scan`; rows without
+        one never match.
       schema: {type: string}
     FixStatus:
       name: fix_status

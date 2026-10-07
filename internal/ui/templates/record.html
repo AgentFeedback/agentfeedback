@@ -1,0 +1,18 @@
+{{define "content"}}{{$base := .Base}}{{with .Data}}
+<dl class="record">
+{{range .Members}}<dt>{{.Name}}</dt>
+<dd>{{if .Scalar}}{{if or (eq .Name "created_at") (eq .Name "occurred_at") (eq .Name "processed_at") (eq .Name "redacted_at")}}<time datetime="{{.Text}}">{{.Text}}</time>{{else}}{{.Text}}{{end}}{{else}}<pre>{{.Text}}</pre>{{end}}</dd>
+{{end}}</dl>
+<h2>Warnings (recomputed from the stored record)</h2>
+{{if .Redacted}}<p>A redacted record has no warnings.</p>
+{{else if .Problem}}<p class="problem">{{.Problem}}</p>
+{{else}}<table class="warnings">
+<thead><tr><th>code</th><th>pointer</th><th>message</th></tr></thead>
+<tbody>
+{{range .Warnings}}<tr><td>{{.Code}}</td><td>{{.Pointer}}</td><td>{{.Message}}</td></tr>
+{{else}}<tr><td colspan="3">None.</td></tr>
+{{end}}</tbody>
+</table>
+{{end}}
+<p><a href="{{$base}}">Back to the queue</a></p>
+{{end}}{{end}}

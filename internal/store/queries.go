@@ -208,6 +208,7 @@ type ListFilter struct {
 	Project       string
 	Harness       string
 	Category      string
+	Origin        string
 	FixStatus     string
 	ExcludeKinds  []string
 	Verdict       string
@@ -277,6 +278,7 @@ func (f ListFilter) where() (*whereBuilder, error) {
 	}{
 		{"kind", f.Kind}, {"key", f.Key}, {"machine", f.Machine}, {"model", f.Model},
 		{"project", f.Project}, {"harness", f.Harness}, {"category", f.Category},
+		{"origin", f.Origin},
 		{"fix_status", f.FixStatus}, {"verdict", f.Verdict}, {"content_hash", f.ContentHash},
 	} {
 		if c.value != "" {
@@ -446,7 +448,7 @@ func StatsTotals(ctx context.Context, q Querier, f ListFilter) (Totals, error) {
 
 // GroupKeys are the columns a stats request may group by, in the contract's
 // order. Every name is a real column, so the store never interpolates input.
-var GroupKeys = []string{"kind", "project", "category", "fix_status", "machine", "model", "harness", "verdict", "schema_version"}
+var GroupKeys = []string{"kind", "project", "category", "fix_status", "machine", "model", "harness", "verdict", "schema_version", "origin"}
 
 // MaxGroupKeys and MaxGroups bound one stats response.
 const (
@@ -496,7 +498,7 @@ func groupsSQL(f ListFilter, by []string) (string, []any, error) {
 		return "", nil, err
 	}
 	// A row without a value for a grouping key is in no group: the response
-	// cannot carry a null key, and a partial index on category or fix_status
+	// cannot carry a null key, and a partial index on category, fix_status or origin
 	// is only usable under that predicate.
 	for _, k := range by {
 		w.add(k + " IS NOT NULL")

@@ -135,6 +135,38 @@ ingest` does the same pass on demand, in either mode, and prints the counts
   looser modes, as for the rest of the data directory. The inbox, like the
   database, belongs to the one OS user who owns the data directory.
 
+### Web UI
+
+```bash
+agentfeedback ui                                 # prints http://127.0.0.1:<port>/<token>/; Ctrl-C stops it
+agentfeedback ui --addr 127.0.0.1:8095           # a fixed port
+agentfeedback ui --server https://feedback.example.com   # the same pages over a server, with the configured key
+```
+
+`ui` serves a read-only page over the queue until Ctrl-C, from the local
+database or, with `--server` or a configured `url`, from that server. In
+local mode it opens the database as every client command does, which
+migrates it and delivers the due spool and inbox entries at start; the page
+itself writes nothing. The pages:
+
+- **Queue:** 50 rows a page, newest first, with filters for project,
+  category, harness, model, origin (`context.origin`, matched exactly as
+  typed), kind, state (open, processed, all) and since (1 h, 24 h, 7 d,
+  30 d, all). `install-check` rows are left out unless a kind is given, as
+  `list` does.
+- **Record:** every field, the context and the payload, and the warnings
+  the stored record still carries, recomputed by decoding it again (the
+  warnings returned when it was created are not stored).
+- **Stats:** totals, groups by kind, project, harness, category and
+  origin, and the recurring content hashes, under the same filters.
+- **Sessions:** not available in this version.
+
+`--addr` takes a loopback IP or `localhost` with a port (`0`, the default,
+picks one) and refuses anything else. The token in the URL is new at every
+launch: open the printed URL, not a bookmark. Writes (`done`, `undo`) are
+not available from the page. The threat model is in
+[security.md](security.md#access-and-network).
+
 ## Bare binary (no Docker)
 
 With an installed `agentfeedback` binary, on the machine that runs the server:

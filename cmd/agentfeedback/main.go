@@ -4,7 +4,8 @@
 // review or any kind), flush, version, schema, skill and the read and
 // processing commands (list, get, stats, done, undo, redact, rekind, export,
 // digest), ingest and migrate are client commands; mcp serves the MCP tools
-// over stdio on the local database; install and uninstall wire the
+// over stdio on the local database; ui serves a read-only page over the
+// queue on loopback; install and uninstall wire the
 // client into the coding-agent harnesses. A bare invocation prints help.
 package main
 
@@ -64,6 +65,7 @@ var commands = []command{
 	{"install", installSynopsis + ": wire the agentfeedback skill and Stop hook (or with --mcp an MCP entry) into the coding-agent harnesses; no harness named lists them", runInstall},
 	{"uninstall", uninstallSynopsis + ": remove exactly what install added, restoring untouched files from their backups", runUninstall},
 	{"mcp", mcpSynopsis + ": serve the MCP tools over stdio on the local database until stdin closes; stdout carries only the protocol", runMcp},
+	{"ui", uiSynopsis + ": serve a read-only web page over the queue on loopback until Ctrl-C", runUI},
 	{"help", "print this help", nil},
 }
 

@@ -185,6 +185,7 @@ func TestFilters_ReachQueryParams(t *testing.T) {
 		{[]string{"--project", "p"}, url.Values{"project": {"p"}, "exclude_kind": {ex}}},
 		{[]string{"--harness", "h"}, url.Values{"harness": {"h"}, "exclude_kind": {ex}}},
 		{[]string{"--category", "tooling"}, url.Values{"category": {"tooling"}, "exclude_kind": {ex}}},
+		{[]string{"--origin", "session-scan"}, url.Values{"origin": {"session-scan"}, "exclude_kind": {ex}}},
 		{[]string{"--fix-status", "applied"}, url.Values{"fix_status": {"applied"}, "exclude_kind": {ex}}},
 		{[]string{"--exclude-kind", "a", "--exclude-kind", "b"}, url.Values{"exclude_kind": {"a", "b", ex}}},
 		{[]string{"--verdict", "fixed"}, url.Values{"verdict": {"fixed"}, "exclude_kind": {ex}}},
@@ -231,6 +232,7 @@ func TestFilters_ReachQueryParams(t *testing.T) {
 		want url.Values
 	}{
 		{[]string{"--by", "project,category"}, url.Values{"by": {"project,category"}, "exclude_kind": {ex}}},
+		{[]string{"--by", "origin"}, url.Values{"by": {"origin"}, "exclude_kind": {ex}}},
 		{[]string{"--top", "0"}, url.Values{"top": {"0"}, "exclude_kind": {ex}}},
 		{[]string{"--bucket", "week"}, url.Values{"bucket": {"week"}, "exclude_kind": {ex}}},
 	}

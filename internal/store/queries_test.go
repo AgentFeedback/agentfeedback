@@ -1113,3 +1113,37 @@ func TestQStopsAtAnEmbeddedNul(t *testing.T) {
 		}
 	}
 }
+
+func TestOriginFilterAndGroups(t *testing.T) {
+	t.Parallel()
+
+	db := openTest(t)
+	ctx := context.Background()
+	for i, c := range []string{`{"origin":"agent"}`, `{"origin":"session-scan"}`, `{"origin":"agent","client":"x"}`, `{"client":"x"}`, ""} {
+		s := newSub(fmt.Sprintf("o-%d", i+1))
+		if c != "" {
+			s.Context = json.RawMessage(c)
+		}
+		mustInsert(t, db, s)
+	}
+	if got := listIDs(t, db, ListFilter{Origin: "agent"}, Page{Limit: 10}); !reflect.DeepEqual(got, []int64{3, 1}) {
+		t.Fatalf("origin agent: got %v, want [3 1]", got)
+	}
+	if got := listIDs(t, db, ListFilter{Origin: "Agent"}, Page{Limit: 10}); len(got) != 0 {
+		t.Fatalf("origin matches exactly, got %v", got)
+	}
+	if err := db.Read(ctx, func(q Querier) error {
+		groups, err := StatsGroups(ctx, q, ListFilter{}, []string{"origin"})
+		if err != nil {
+			return err
+		}
+		if len(groups) != 2 || groups[0].Keys["origin"] != "agent" || groups[0].Total != 2 ||
+			groups[1].Keys["origin"] != "session-scan" || groups[1].Total != 1 {
+			t.Fatalf("group by origin: got %+v", groups)
+		}
+
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}

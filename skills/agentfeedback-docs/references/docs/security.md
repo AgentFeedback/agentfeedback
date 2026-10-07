@@ -15,7 +15,10 @@ is not multi-tenant and is not safe to expose directly to the internet.
   deployment boundary. `/skill`, `/.well-known/agentfeedback.json`,
   `/api/v1/openapi.json` and `/api/v1/schemas` need no key and carry no
   data. `/mcp` takes the same key as `/api/v1/*`; its DNS-rebinding
-  check is off because the key stands in for it. `/mcp/{project}` is a
+  check is off because the key stands in for it. Turning that check off
+  (`DisableLocalhostProtection` in the MCP SDK) is acceptable only on a
+  handler behind the API key; a keyless loopback listener keeps it, or
+  validates `Host` and `Origin` itself as `agentfeedback ui` does. `/mcp/{project}` is a
   convenience, not an access boundary: `get_submission` and
   `mark_processed` take ids and are not scoped by the preset. There is no rate limiting; the only server-side bound
   is the 10 MiB body cap (plus 64 KiB for the JSON-RPC message on `/mcp`).
@@ -31,6 +34,21 @@ is not multi-tenant and is not safe to expose directly to the internet.
   there is filed by the next command, so only that user may write it; the
   client never follows a symlink out of it and never reads a file over the
   create limit.
+- `agentfeedback ui` serves a read-only page over the queue on a loopback
+  address only (`--addr` refuses any other). It is its own handler, never the
+  API or the MCP handler: no `/api/v1` or `/mcp` route is reachable through
+  it, and every method but `GET` and `HEAD` is refused. A request whose `Host`
+  is not the bound address (or `localhost` on the same port) is refused, so a
+  web page that rebinds its own DNS name to `127.0.0.1` reads nothing; so is
+  a request with any foreign `Origin`, and no CORS header is ever sent. The
+  path carries a random token made at each launch, so another local process
+  or page that guesses the port still gets `404`, and no refused request's
+  response carries the token; the URL is printed once,
+  and anyone who has it can read the queue until the process exits. Every
+  response is `Cache-Control: no-store` with a Content Security Policy that
+  allows no remote source, stored text is HTML-escaped, and the page loads
+  no external asset. With `--server` it reads that server with the
+  configured key, which stays in the process.
 
 ## What gets stored
 

@@ -21,6 +21,7 @@
 # Another client surface reuses the format with tool and argument in place of
 # command and flag.
 
+# ui reads list, get, stats and meta with the filters of its form, not flags.
 # ingest submits the inbox files as written, through the same operation.
 [operations.createSubmission]
 command = "submit"
@@ -41,6 +42,7 @@ payload = { reason = "friction members from --category, --details, --suggested-f
 
 [operations.listSubmissions]
 command = "list"
+also = ["ui"]
 
 [operations.listSubmissions.parameters]
 kind = { flag = "--kind" }
@@ -51,6 +53,7 @@ model = { flag = "--model" }
 project = { flag = "--project" }
 harness = { flag = "--harness" }
 category = { flag = "--category" }
+origin = { flag = "--origin" }
 fix_status = { flag = "--fix-status" }
 exclude_kind = { flag = "--exclude-kind" }
 verdict = { flag = "--verdict" }
@@ -68,6 +71,7 @@ include = { flag = "--include" }
 
 [operations.getSubmission]
 command = "get"
+also = ["ui"]
 
 [operations.getSubmission.parameters]
 id = { arg = "<id>" }
@@ -104,6 +108,7 @@ processed_by = { flag = "--processed-by" }
 
 [operations.getStats]
 command = "stats"
+also = ["ui"]
 
 [operations.getStats.parameters]
 kind = { flag = "--kind" }
@@ -114,6 +119,7 @@ model = { flag = "--model" }
 project = { flag = "--project" }
 harness = { flag = "--harness" }
 category = { flag = "--category" }
+origin = { flag = "--origin" }
 fix_status = { flag = "--fix-status" }
 exclude_kind = { flag = "--exclude-kind" }
 verdict = { flag = "--verdict" }
@@ -163,6 +169,7 @@ version = { arg = "<version>" }
 
 [operations.getMeta]
 command = "doctor"
+also = ["ui"]
 
 [operations.getOpenApi]
 reason = "the document is for API tooling; the CLI is built against docs/openapi.yaml"

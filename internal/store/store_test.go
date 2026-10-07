@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -42,8 +43,8 @@ func TestOpenAppliesSchemaAndIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("schema version: %v", err)
 	}
-	if got != known || known != 1 {
-		t.Fatalf("schema version %d, known %d, want both 1", got, known)
+	if got != known || known != 2 {
+		t.Fatalf("schema version %d, known %d, want both 2", got, known)
 	}
 	if err := db.Close(); err != nil {
 		t.Fatalf("close: %v", err)
@@ -61,7 +62,7 @@ func TestOpenAppliesSchemaAndIsIdempotent(t *testing.T) {
 	}
 }
 
-func TestOnlyOneMigrationIsEmbedded(t *testing.T) {
+func TestMigrationsAreNumberedConsecutively(t *testing.T) {
 	t.Parallel()
 
 	entries, err := migrationsFS.ReadDir("migrations")
@@ -72,8 +73,9 @@ func TestOnlyOneMigrationIsEmbedded(t *testing.T) {
 	for _, e := range entries {
 		names = append(names, e.Name())
 	}
-	if len(names) != 1 || names[0] != "001_init.sql" {
-		t.Fatalf("migrations/ holds %v, want exactly 001_init.sql", names)
+	want := []string{"001_init.sql", "002_origin.sql"}
+	if !slices.Equal(names, want) {
+		t.Fatalf("migrations/ holds %v, want %v", names, want)
 	}
 }
 
@@ -225,8 +227,8 @@ func TestOpenResumesAfterAnInterruptedFirstOpen(t *testing.T) {
 		t.Fatalf("open after interrupted first open: %v", err)
 	}
 	defer func() { _ = db.Close() }()
-	if v, err := db.SchemaVersion(ctx); err != nil || v != 1 {
-		t.Fatalf("schema version %d, %v; want 1", v, err)
+	if v, err := db.SchemaVersion(ctx); err != nil || v != 2 {
+		t.Fatalf("schema version %d, %v; want 2", v, err)
 	}
 }
 
@@ -352,7 +354,7 @@ func TestSchemaShape(t *testing.T) {
 	want := []string{
 		"ix_submissions_category", "ix_submissions_fix_status", "ix_submissions_hash_created",
 		"ix_submissions_kind_created", "ix_submissions_machine", "ix_submissions_occurred",
-		"ix_submissions_open", "ix_submissions_project", "ix_submissions_verdict",
+		"ix_submissions_open", "ix_submissions_origin", "ix_submissions_project", "ix_submissions_verdict",
 		"sqlite_autoindex_submissions_1", // uid UNIQUE
 		"ux_submissions_key",
 	}
@@ -361,8 +363,9 @@ func TestSchemaShape(t *testing.T) {
 		t.Fatalf("indexes\n got %v\nwant %v", got, want)
 	}
 
-	// The two friction projections are VIRTUAL generated columns (hidden = 2
-	// in table_xinfo), so the payload stays the single source of truth.
+	// The two friction projections and the context origin are VIRTUAL
+	// generated columns (hidden = 2 in table_xinfo), so the payload and the
+	// context stay the single source of truth.
 	xinfo, err := db.reader.QueryContext(ctx, `SELECT name, hidden FROM pragma_table_xinfo('submissions') WHERE hidden <> 0`)
 	if err != nil {
 		t.Fatal(err)
@@ -377,8 +380,8 @@ func TestSchemaShape(t *testing.T) {
 		}
 		generated[name] = hidden
 	}
-	if len(generated) != 2 || generated["category"] != 2 || generated["fix_status"] != 2 {
-		t.Fatalf("generated columns %v, want category and fix_status as VIRTUAL", generated)
+	if len(generated) != 3 || generated["category"] != 2 || generated["fix_status"] != 2 || generated["origin"] != 2 {
+		t.Fatalf("generated columns %v, want category, fix_status and origin as VIRTUAL", generated)
 	}
 }
 
@@ -413,5 +416,72 @@ func TestSetSequenceNeverLowersTheCounter(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("write: %v", err)
+	}
+}
+
+func TestOpenMigratesAPopulatedVersion1Database(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "agentfeedback.db")
+	ctx := context.Background()
+	db, err := Open(ctx, path)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	for i, c := range []string{`{"origin":"agent"}`, `{"client":"x"}`, "", `{"origin":"agent"}`, `{"origin":"inbox"}`} {
+		s := newSub("m1-" + strconv.Itoa(i+1))
+		if c != "" {
+			s.Context = []byte(c)
+		}
+		mustInsert(t, db, s)
+	}
+	// Back to the version-1 shape: no origin column, no origin index.
+	if err := db.Write(ctx, func(q Querier) error {
+		for _, stmt := range []string{
+			"DROP INDEX ix_submissions_origin",
+			"ALTER TABLE submissions DROP COLUMN origin",
+			"UPDATE schema_version SET version = 1",
+		} {
+			if _, err := q.ExecContext(ctx, stmt); err != nil {
+				return errors.New(stmt + ": " + err.Error())
+			}
+		}
+
+		return nil
+	}); err != nil {
+		t.Fatalf("downgrade: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	db, err = Open(ctx, path)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if v, err := db.SchemaVersion(ctx); err != nil || v != 2 {
+		t.Fatalf("schema version %d, %v; want 2", v, err)
+	}
+	var n int
+	if err := db.reader.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type = 'index' AND name = 'ix_submissions_origin'").Scan(&n); err != nil || n != 1 {
+		t.Fatalf("origin index: %d, %v", n, err)
+	}
+	if got := listIDs(t, db, ListFilter{Origin: "agent"}, Page{Limit: 10}); !slices.Equal(got, []int64{4, 1}) {
+		t.Fatalf("origin agent after migration: %v, want [4 1]", got)
+	}
+	if err := db.Read(ctx, func(q Querier) error {
+		groups, err := StatsGroups(ctx, q, ListFilter{}, []string{"origin"})
+		if err != nil {
+			return err
+		}
+		if len(groups) != 2 || groups[0].Keys["origin"] != "agent" || groups[0].Total != 2 ||
+			groups[1].Keys["origin"] != "inbox" || groups[1].Total != 1 {
+			t.Fatalf("group by origin after migration: %+v", groups)
+		}
+
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
 }

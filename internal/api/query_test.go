@@ -128,3 +128,23 @@ func TestQueryGrammar_Accepted(t *testing.T) {
 		t.Errorf("create with query = %d %s", r.status, r.body)
 	}
 }
+
+func TestQueryOrigin(t *testing.T) {
+	e := newEnv(t)
+	for _, b := range []string{
+		`{"kind":"note","summary":"scanned","payload":{},"context":{"origin":"session-scan"}}`,
+		`{"kind":"note","summary":"sent","payload":{},"context":{"origin":"agent"}}`,
+	} {
+		if r := e.do(t, http.MethodPost, "/api/v1/submissions", b, true); r.status != http.StatusCreated {
+			t.Fatalf("create = %d %s", r.status, r.body)
+		}
+	}
+	r := e.do(t, http.MethodGet, "/api/v1/submissions?origin=session-scan", "", true)
+	if r.status != http.StatusOK || !strings.Contains(string(r.body), `"summary":"scanned"`) || strings.Contains(string(r.body), `"summary":"sent"`) {
+		t.Fatalf("list origin = %d %s", r.status, r.body)
+	}
+	r = e.do(t, http.MethodGet, "/api/v1/stats?origin=agent&by=origin", "", true)
+	if r.status != http.StatusOK || !strings.Contains(string(r.body), `"origin":"agent"`) || strings.Contains(string(r.body), `"origin":"session-scan"`) {
+		t.Fatalf("stats origin = %d %s", r.status, r.body)
+	}
+}

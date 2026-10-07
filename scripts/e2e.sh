@@ -122,7 +122,7 @@ chk "openapi.json (no key) is JSON, openapi 3.1.x" 200 "$s" "$(j '.openapi|test(
 
 # --- create -----------------------------------------------------------------
 FR=$(jq -nc --arg k "$RUN-fr" --arg r "$RUN" '{kind:"friction",key:$k,summary:("e2e friction " + $r),
-  machine:"e2e-test",model:"e2e-model",harness:"e2e",project:"e2e",
+  machine:"e2e-test",model:"e2e-model",harness:"e2e",project:"e2e",context:{origin:("e2e-origin-" + $r)},
   payload:{category:"documentation",details:("details " + $r),fix_status:"none"}}')
 s=$(req createSubmission "${A[@]}" "${JSON[@]}" -d "$FR" "$BASE/api/v1/submissions")
 id1=$(jq -r '.submission.id' "$BODY")
@@ -175,6 +175,8 @@ s=$(req listSubmissions "${X[@]}" "$BASE/api/v1/submissions?key=$RUN-fr&include=
 chk "list key filter + include=payload" 200 "$s" "$(j --argjson id "$id1" '.total==1 and .submissions[0].id==$id and .submissions[0].payload.category=="documentation"')"
 s=$(req listSubmissions "${X[@]}" "$BASE/api/v1/submissions?q=$RUN&category=tooling")
 chk "list category filter" 200 "$s" "$(j '.total==2 and all(.submissions[]; .kind=="friction")')"
+s=$(req listSubmissions "${X[@]}" "$BASE/api/v1/submissions?origin=e2e-origin-$RUN")
+chk "list origin filter matches only the row with that context.origin" 200 "$s" "$(j --argjson id "$id1" '.total==1 and .submissions[0].id==$id')"
 
 s=$(req listSubmissions "${X[@]}" "$BASE/api/v1/submissions?q=$RUN&limit=2")
 chk "list newest-first page 1 (limit=2)" 200 "$s" \
@@ -226,6 +228,11 @@ chk "stats shape over the run's rows" 200 "$s" \
   "$(j '.total==3 and .open==3 and .processed==0 and (.redacted|type)=="number" and (.groups|type)=="array"
     and all(.groups[]; (.keys|type)=="object" and (.total|type)=="number" and (.open|type)=="number" and (.processed|type)=="number")
     and (.recurring|type)=="array" and (.series|type)=="array" and (.series|map(.total)|add)==3')"
+s=$(req getStats "${X[@]}" "$BASE/api/v1/stats?q=$RUN&by=origin")
+chk "stats by=origin groups only rows with a context.origin" 200 "$s" \
+  "$(j --arg o "e2e-origin-$RUN" '(.groups|length)==1 and .groups[0].keys=={origin:$o} and .groups[0].total==1')"
+s=$(req getStats "${X[@]}" "$BASE/api/v1/stats?origin=e2e-origin-$RUN")
+chk "stats origin filter" 200 "$s" "$(j '.total==1')"
 s=$(req getStats "${X[@]}" "$BASE/api/v1/stats?by=nope")
 chk "stats by=nope -> 400" 400 "$s" "$(problem validation_error)"
 

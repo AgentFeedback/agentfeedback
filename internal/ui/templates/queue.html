@@ -1,0 +1,17 @@
+{{define "content"}}{{template "filters" .}}{{$base := .Base}}{{with .Data}}
+<p class="total">{{.Total}} matching{{if .Paged}} (<a href="{{$base}}{{if .First}}?{{.First}}{{end}}">first page</a>){{end}}</p>
+<table>
+<thead><tr><th>id</th><th>created</th><th>kind</th><th>project</th><th>harness</th><th>model</th><th>origin</th><th>summary</th><th>state</th></tr></thead>
+<tbody>
+{{range .Rows}}<tr>
+<td><a href="{{$base}}submissions/{{.ID}}">{{.ID}}</a></td>
+<td><time datetime="{{.CreatedAt}}">{{.CreatedAt}}</time></td>
+<td>{{.Kind}}</td><td>{{.Project}}</td><td>{{.Harness}}</td><td>{{.Model}}</td><td>{{.Origin}}</td>
+<td>{{if .RedactedAt}}<em>redacted</em>{{else}}{{.Summary}}{{end}}</td>
+<td>{{if .ProcessedAt}}processed{{if .Verdict}}: {{.Verdict}}{{end}}{{else}}open{{end}}</td>
+</tr>
+{{else}}<tr><td colspan="9">No submissions match.</td></tr>
+{{end}}</tbody>
+</table>
+{{if .Next}}<p><a href="{{$base}}?{{.Next}}">Older</a></p>{{end}}
+{{end}}{{end}}

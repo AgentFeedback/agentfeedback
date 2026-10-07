@@ -29,7 +29,7 @@ const (
 // Parameter sets per route, from docs/openapi.yaml.
 var (
 	filterParams = []string{"kind", "schema_version", "key", "machine", "model", "project", "harness",
-		"category", "fix_status", "exclude_kind", "verdict", "processed", "redacted", "content_hash",
+		"category", "origin", "fix_status", "exclude_kind", "verdict", "processed", "redacted", "content_hash",
 		"since", "until", "on", "q"}
 	listParams   = append(slices.Clone(filterParams), "before_id", "after_id", "limit", "include")
 	statsParams  = append(slices.Clone(filterParams), "by", "top", "bucket")
@@ -180,6 +180,7 @@ func (q query) filter() (core.Filter, error) {
 	f := core.Filter{
 		Kind: q.str("kind"), Key: q.str("key"), Machine: q.str("machine"), Model: q.str("model"),
 		Project: q.str("project"), Harness: q.str("harness"), Category: q.str("category"),
+		Origin:    q.str("origin"),
 		FixStatus: q.str("fix_status"), ExcludeKind: q["exclude_kind"], Verdict: q.str("verdict"),
 		ContentHash: q.str("content_hash"), On: q.str("on"), Q: q.str("q"),
 	}

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>{{.Title}} - agentfeedback</title>
+<link rel="stylesheet" href="{{.Base}}static/app.css">
+<script src="{{.Base}}static/app.js" defer></script>
+</head>
+<body>
+<nav>
+<a href="{{.Base}}"{{if eq .Nav "queue"}} aria-current="page"{{end}}>Queue</a>
+<a href="{{.Base}}stats"{{if eq .Nav "stats"}} aria-current="page"{{end}}>Stats</a>
+<a href="{{.Base}}sessions"{{if eq .Nav "sessions"}} aria-current="page"{{end}}>Sessions</a>
+<span class="mode">{{.Mode}}</span>
+</nav>
+<main>
+<h1>{{.Title}}</h1>
+{{template "content" .}}
+</main>
+</body>
+</html>
+{{define "filters"}}{{$f := .Data.Form}}
+<form class="filters" method="get" action="{{.Base}}{{if eq .Nav "stats"}}stats{{end}}">
+<label>project <input name="project" value="{{index $f.Values "project"}}"></label>
+<label>category <input name="category" value="{{index $f.Values "category"}}"></label>
+<label>harness <input name="harness" value="{{index $f.Values "harness"}}"></label>
+<label>model <input name="model" value="{{index $f.Values "model"}}"></label>
+<label>origin <input name="origin" value="{{index $f.Values "origin"}}"></label>
+<label>kind <input name="kind" value="{{index $f.Values "kind"}}"></label>
+<label>state <select name="state">
+{{range $s := states}}<option value="{{$s}}"{{if eq $s $f.State}} selected{{end}}>{{$s}}</option>{{end}}
+</select></label>
+<label>since <select name="since">
+{{range $s := presets}}<option value="{{$s}}"{{if eq $s $f.Since}} selected{{end}}>{{$s}}</option>{{end}}
+</select></label>
+<button type="submit">Filter</button>
+</form>
+{{end}}

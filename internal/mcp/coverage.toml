@@ -50,6 +50,7 @@ model = { argument = "model" }
 project = { argument = "project" }
 harness = { argument = "harness" }
 category = { argument = "category" }
+origin = { argument = "origin" }
 fix_status = { argument = "fix_status" }
 exclude_kind = { argument = "exclude_kind" }
 verdict = { argument = "verdict" }
@@ -113,6 +114,7 @@ model = { argument = "model" }
 project = { argument = "project" }
 harness = { argument = "harness" }
 category = { argument = "category" }
+origin = { argument = "origin" }
 fix_status = { argument = "fix_status" }
 exclude_kind = { argument = "exclude_kind" }
 verdict = { argument = "verdict" }

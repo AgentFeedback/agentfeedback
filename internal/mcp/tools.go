@@ -88,6 +88,7 @@ func filterProps(preset bool) map[string]any {
 		"project":        prop("string", "only this project"),
 		"harness":        prop("string", "only this harness"),
 		"category":       prop("string", "only this payload category"),
+		"origin":         prop("string", "only this context origin, exact: agent, hook-nudge, session-scan, inbox, import, ..."),
 		"fix_status":     prop("string", "only this payload fix_status"),
 		"exclude_kind":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "leave out these kinds"},
 		"verdict":        prop("string", "only this processing verdict"),

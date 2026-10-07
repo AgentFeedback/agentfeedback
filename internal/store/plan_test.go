@@ -101,6 +101,7 @@ func TestQueryPlans(t *testing.T) {
 	add("list by machine", "ix_submissions_machine", true, mustList(ListFilter{Machine: "m"}, Page{Limit: 50}))
 	add("list by verdict", "ix_submissions_verdict", true, mustList(ListFilter{Verdict: "fixed"}, Page{Limit: 50}))
 	add("list by category", "ix_submissions_category", true, mustList(ListFilter{Category: "docs"}, Page{Limit: 50}))
+	add("list by origin", "ix_submissions_origin", true, mustList(ListFilter{Origin: "agent"}, Page{Limit: 50}))
 	add("list by fix_status", "ix_submissions_fix_status", true, mustList(ListFilter{FixStatus: "applied"}, Page{Limit: 50}))
 	add("list by kind and key", "ux_submissions_key", true, mustList(ListFilter{Kind: "friction", Key: "k"}, Page{Limit: 50}))
 	add("list by content_hash", "ix_submissions_hash_created", false, mustList(ListFilter{ContentHash: "h"}, Page{Limit: 50}))
@@ -129,6 +130,7 @@ func TestQueryPlans(t *testing.T) {
 		"kind": "ix_submissions_kind_created", "project": "ix_submissions_project",
 		"category": "ix_submissions_category", "fix_status": "ix_submissions_fix_status",
 		"machine": "ix_submissions_machine", "verdict": "ix_submissions_verdict",
+		"origin": "ix_submissions_origin",
 	} {
 		add("group by "+k, index, false, mustGroups(ListFilter{}, k))
 	}

@@ -1,0 +1,17 @@
+/* Minimal styles; system fonts only. */
+body { font-family: system-ui, sans-serif; margin: 0; color: #1d1d1f; background: #fff; }
+nav { display: flex; gap: 1em; align-items: baseline; padding: .6em 1em; background: #eef1f4; border-bottom: 1px solid #cdd3d9; }
+nav a[aria-current="page"] { font-weight: bold; }
+nav .mode { margin-left: auto; color: #555; font-size: .9em; }
+main { padding: 1em; }
+h1 { font-size: 1.3em; margin-top: 0; }
+h2 { font-size: 1.1em; }
+table { border-collapse: collapse; margin-bottom: 1em; }
+th, td { border: 1px solid #d5d9de; padding: .25em .5em; text-align: left; vertical-align: top; }
+thead th { background: #f5f6f8; }
+form.filters { display: flex; flex-wrap: wrap; gap: .5em 1em; margin-bottom: 1em; }
+form.filters input { width: 9em; }
+dl.record dt { font-weight: bold; margin-top: .5em; }
+dl.record dd { margin-left: 1em; }
+pre { background: #f5f6f8; padding: .5em; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
+.problem { color: #9b1c1c; }
