@@ -33,7 +33,7 @@ harness = { flag = "--harness" }
 project = { flag = "--project" }
 occurred_at = { reason = "set to the current time; --stdin carries an explicit value" }
 context = { reason = "collected on the client; --stdin carries an explicit object" }
-payload = { reason = "friction members from --category, --details, --suggested-fix, --fix-status, --fix-ref and --severity; any kind through --stdin" }
+payload = { reason = "friction members from --category, --details, --suggested-fix, --fix-status, --fix-ref and --severity; any kind through --stdin; --scrub (and context.origin session-scan) replaces known secret formats in every string value of the body" }
 
 [operations.listSubmissions]
 command = "list"

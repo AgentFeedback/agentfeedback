@@ -73,10 +73,13 @@ var Features = []string{"q", "stats", "export.after_id", "export.limit", "import
 
 // Config is what the server tells the core about itself: the service version
 // (service_version and client.latest_known in Meta) and the features it
-// wires.
+// wires. ScrubIngest replaces known secret formats in every string value of
+// a create's body before it is decoded, stored and hashed (INGEST_SCRUB=on); import
+// and local mode leave it off.
 type Config struct {
-	Version  string
-	Features []string
+	Version     string
+	Features    []string
+	ScrubIngest bool
 }
 
 // Detail is one item of an error's details: a code, an RFC 6901 pointer into

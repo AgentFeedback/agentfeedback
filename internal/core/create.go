@@ -9,15 +9,19 @@ import (
 	"github.com/agentfeedback/agentfeedback/v4/pkg/canonjson"
 	"github.com/agentfeedback/agentfeedback/v4/pkg/envelope"
 	"github.com/agentfeedback/agentfeedback/v4/pkg/schema"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/scrub"
 )
 
 // CreateResult is the outcome of a create: the stored record (new or
 // existing), the decoder's warnings (on every outcome, replays included) and
 // whether a row was inserted (201) or an existing one returned (200).
+// Scrubbed counts the values ingest scrubbing replaced, by class; it is for
+// the server's log and never part of the response body.
 type CreateResult struct {
 	Record   Record
 	Warnings []schema.Detail
 	Created  bool
+	Scrubbed scrub.Counts `json:"-"`
 }
 
 // MarshalJSON writes the CreateResponse body {submission, warnings}.
@@ -39,6 +43,15 @@ func (c CreateResult) MarshalJSON() ([]byte, error) {
 // within DedupeWindow. Anything else is inserted with a new UUIDv7 and
 // created_at = now. A body Decode rejects is a Problem with its status.
 func (s *Service) Create(ctx context.Context, body []byte) (CreateResult, error) {
+	var scrubbed scrub.Counts
+	if s.config.ScrubIngest {
+		// Every string value is scrubbed before decoding, so the summary is
+		// scrubbed before its truncation and identity covers the scrubbed
+		// content. Invalid JSON goes to Decode as sent, which rejects it.
+		if out, c, err := scrub.JSON(body); err == nil {
+			body, scrubbed = out, c
+		}
+	}
 	env, warnings, err := envelope.Decode(body)
 	if err != nil {
 		var r *envelope.Rejection
@@ -54,7 +67,7 @@ func (s *Service) Create(ctx context.Context, body []byte) (CreateResult, error)
 	sub.ContentHash = env.ContentHash()
 
 	now := s.nowMicros()
-	result := CreateResult{Warnings: warnings}
+	result := CreateResult{Warnings: warnings, Scrubbed: scrubbed}
 	err = s.write(ctx, func(q store.Querier) error {
 		var existing store.Submission
 		var err error

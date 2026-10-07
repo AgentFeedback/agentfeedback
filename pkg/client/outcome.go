@@ -32,6 +32,17 @@ type Outcome struct {
 	RequestID string `json:"request_id,omitempty"`
 	Reason    string `json:"reason,omitempty"`
 	Message   string `json:"message,omitempty"`
+	// Warnings are what the client changed in the body before checking or
+	// sending it, such as the values submit --scrub replaced.
+	Warnings []Warning `json:"warnings,omitempty"`
+}
+
+// Warning is one client-side change to the body: a code, the RFC 6901
+// pointer of the member it changed, and a message.
+type Warning struct {
+	Code    string `json:"code"`
+	Pointer string `json:"pointer"`
+	Message string `json:"message"`
 }
 
 // ExitCode is the process exit status for the outcome: 0 when the

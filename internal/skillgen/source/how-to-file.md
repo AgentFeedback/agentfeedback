@@ -32,6 +32,10 @@ The members above have flags of the same name with dashes (`--suggested-fix`,
 `--fix-status`, `--fix-ref`, `--project`); `context` goes in the stdin JSON.
 `--dry-run` prints the body that would be sent and outcome `valid`, and sends
 nothing.
+`--scrub` replaces known secret formats (keys, tokens, private keys, URL
+credentials) in every string value of the body with `[REDACTED:<class>]`
+before checking or sending; use it when the text quotes logs or config. The
+outcome line then carries one `scrubbed` warning per member it changed.
 <!-- end -->
 <!-- only: http -->
 Send one HTTP request. The server at {{server}} fills in what you leave out.

@@ -18,6 +18,7 @@ services:
       DATABASE_PATH: /data/agentfeedback.db
       PUBLIC_URL: ${PUBLIC_URL:-}
       MCP_INSTRUCTIONS: ${MCP_INSTRUCTIONS:-}
+      INGEST_SCRUB: ${INGEST_SCRUB:-off}
     volumes:
       - agentfeedback-data:/data
 

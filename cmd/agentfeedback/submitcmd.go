@@ -20,10 +20,11 @@ import (
 	"github.com/agentfeedback/agentfeedback/v4/pkg/collect"
 	"github.com/agentfeedback/agentfeedback/v4/pkg/envelope"
 	"github.com/agentfeedback/agentfeedback/v4/pkg/schema"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/scrub"
 )
 
 const (
-	submitSynopsis = "submit friction --summary S [flags] | submit <kind> [--stdin] [flags] | submit review <run_dir> [--include-outputs] | submit review --sweep [<base>...] [--local | --server URL]"
+	submitSynopsis = "submit friction --summary S [flags] | submit <kind> [--stdin] [--scrub] [flags] | submit review <run_dir> [--include-outputs] | submit review --sweep [<base>...] [--local | --server URL]"
 	flushSynopsis  = "flush [--hook] [--local | --server URL]"
 	// occurredLayout is occurred_at: UTC with microseconds.
 	occurredLayout = "2006-01-02T15:04:05.000000Z"
@@ -395,6 +396,7 @@ func runEnvelope(kind string, args []string, stdin io.Reader, stdout, stderr io.
 	}
 	useStdin := fs.Bool("stdin", false, "read one JSON object from stdin and merge the flags into it")
 	dryRun := fs.Bool("dry-run", false, "print the body and check it locally; send nothing")
+	scrubFlag := fs.Bool("scrub", false, "replace known secret formats in every string value of the body with [REDACTED:<class>] before checking or sending")
 	pos, err := parseInterleaved(fs, args, stderr)
 	if err != nil {
 		return errFlags("submit", err)
@@ -535,12 +537,76 @@ func runEnvelope(kind string, args []string, stdin io.Reader, stdout, stderr io.
 		obj = obj.set("payload", json.RawMessage("{}"))
 	}
 
+	var warnings []client.Warning
+	if *scrubFlag || originSessionScan(obj) {
+		obj, warnings = scrubBody(obj)
+		for _, w := range warnings {
+			s.warn(w.Code + " " + w.Pointer + ": " + w.Message)
+		}
+	}
+
 	o, err := s.send(obj.encode())
 	if err != nil {
 		return err
 	}
+	if len(warnings) > 0 {
+		o.Warnings = append(o.Warnings, warnings...)
+	}
 
 	return finish("submit", o, stdout)
+}
+
+// originSessionScan reports whether the body's context.origin is
+// session-scan, which turns scrubbing on without --scrub.
+func originSessionScan(obj rawObject) bool {
+	raw, ok := obj.get("context")
+	if !ok || !isObject(raw) {
+		return false
+	}
+	ctx, err := parseObject(raw)
+	if err != nil {
+		return false
+	}
+	rawOrigin, ok := ctx.get("origin")
+	if !ok {
+		return false
+	}
+	var origin string
+	if json.Unmarshal(rawOrigin, &origin) != nil {
+		return false
+	}
+
+	return strings.EqualFold(strings.TrimSpace(origin), "session-scan")
+}
+
+// scrubBody replaces known secret formats in the string values of every
+// member, duplicates and context included, in place, and returns one
+// warning per member it changed. Member names are never changed.
+func scrubBody(obj rawObject) (rawObject, []client.Warning) {
+	var warnings []client.Warning
+	out := make(rawObject, len(obj))
+	for i, m := range obj {
+		out[i] = m
+		raw, c, err := scrub.JSON(m.raw)
+		if err != nil || c.Total() == 0 {
+			continue
+		}
+		out[i].raw = raw
+		warnings = append(warnings, client.Warning{Code: "scrubbed", Pointer: "/" + schema.EscapeToken(m.name),
+			Message: scrubMessage(c)})
+	}
+
+	return out, warnings
+}
+
+// scrubMessage is the warning message for c.
+func scrubMessage(c scrub.Counts) string {
+	noun := "values"
+	if c.Total() == 1 {
+		noun = "value"
+	}
+
+	return fmt.Sprintf("redacted %d %s matching known secret formats: %s", c.Total(), noun, c)
 }
 
 // flushReport is the one line flush prints.

@@ -748,3 +748,141 @@ func TestSubmit_WorkdirGone(t *testing.T) {
 		t.Fatalf("%+v", r)
 	}
 }
+
+// scrubAWS is the documented example access key id, not a credential.
+const scrubAWS = "AKIAIOSFODNN7EXAMPLE"
+
+func TestSubmit_Scrub(t *testing.T) {
+	isolateSubmit(t)
+	bearer := strings.Repeat("t", 20)
+	in := `{"summary":"key ` + scrubAWS + `","payload":{"log":"Bearer ` + bearer + `","n":1.0,"big":12345678901234567890,"` + scrubAWS + `":1e3},` +
+		`"context":{"note":"` + scrubAWS + `"}}`
+
+	// --stdin --scrub: every string value is scrubbed, member names are not,
+	// and the outcome carries one warning per member changed.
+	l := liveServer(t)
+	r := runCLI(t, in, "submit", "note", "--stdin", "--scrub")
+	o := outcomeOf(t, r)
+	if r.code != 0 || o["outcome"] != "submitted" {
+		t.Fatalf("%+v", r)
+	}
+	warnings, _ := o["warnings"].([]any)
+	if len(warnings) != 3 {
+		t.Fatalf("warnings %v", o["warnings"])
+	}
+	byPointer := map[string]string{}
+	for _, w := range warnings {
+		m, _ := w.(map[string]any)
+		if m["code"] != "scrubbed" {
+			t.Errorf("warning %v", m)
+		}
+		byPointer[m["pointer"].(string)] = m["message"].(string)
+	}
+	if byPointer["/summary"] != "redacted 1 value matching known secret formats: aws_access_key 1" ||
+		byPointer["/payload"] != "redacted 1 value matching known secret formats: bearer_token 1" ||
+		byPointer["/context"] != "redacted 1 value matching known secret formats: aws_access_key 1" {
+		t.Errorf("warnings %v", byPointer)
+	}
+	if !strings.Contains(r.stderr, "warning: scrubbed /payload: redacted 1 value") {
+		t.Errorf("stderr %q", r.stderr)
+	}
+	_, raw := l.call(t, http.MethodGet, "/api/v1/submissions/1", "")
+	stored := string(raw)
+	for _, want := range []string{"key [REDACTED:aws_access_key]", "Bearer [REDACTED:bearer_token]", `"n":1.0`, "12345678901234567890", `"` + scrubAWS + `":1e3`, `"note":"[REDACTED:aws_access_key]"`} {
+		if !strings.Contains(stored, want) {
+			t.Errorf("stored lacks %s: %s", want, stored)
+		}
+	}
+	if strings.Contains(stored, bearer) {
+		t.Errorf("stored the bearer token: %s", stored)
+	}
+
+	// Without --scrub and another origin nothing changes.
+	noRequests(t)
+	r = runCLI(t, in, "submit", "note", "--stdin", "--dry-run")
+	body := strings.Split(r.stdout, "\n")[0]
+	if r.code != 0 || !strings.Contains(body, "key "+scrubAWS) || !strings.Contains(body, "Bearer "+bearer) || outcomeOf(t, r)["warnings"] != nil {
+		t.Fatalf("unscrubbed %+v", r)
+	}
+
+	// --dry-run --scrub prints the scrubbed body and sends nothing.
+	r = runCLI(t, in, "submit", "note", "--stdin", "--scrub", "--dry-run")
+	body = strings.Split(r.stdout, "\n")[0]
+	if r.code != 0 || outcomeOf(t, r)["outcome"] != "valid" || !strings.Contains(body, "[REDACTED:aws_access_key]") ||
+		strings.Contains(body, bearer) || !strings.Contains(body, `"payload":{"log":"Bearer [REDACTED:bearer_token]","n":1.0,"big":12345678901234567890,"`+scrubAWS+`":1e3}`) {
+		t.Fatalf("dry run %+v", r)
+	}
+	if ws, _ := outcomeOf(t, r)["warnings"].([]any); len(ws) != 3 {
+		t.Errorf("dry run warnings %v", outcomeOf(t, r)["warnings"])
+	}
+
+	// context.origin session-scan scrubs without the flag.
+	scan := strings.Replace(in, `"context":{`, `"context":{"origin":" Session-Scan ",`, 1)
+	r = runCLI(t, scan, "submit", "note", "--stdin", "--dry-run")
+	body = strings.Split(r.stdout, "\n")[0]
+	if r.code != 0 || strings.Contains(body, "key "+scrubAWS) || strings.Contains(body, bearer) {
+		t.Fatalf("session-scan %+v", r)
+	}
+	other := strings.Replace(in, `"context":{`, `"context":{"origin":"manual",`, 1)
+	if r = runCLI(t, other, "submit", "note", "--stdin", "--dry-run"); !strings.Contains(r.stdout, "Bearer "+bearer) {
+		t.Fatalf("origin manual scrubbed %+v", r)
+	}
+}
+
+func TestSubmit_ScrubEveryMember(t *testing.T) {
+	isolateSubmit(t)
+	noRequests(t)
+	// A flat member the server moves into payload is scrubbed.
+	r := runCLI(t, `{"summary":"s","details":"password=x"}`, "submit", "note", "--stdin", "--scrub", "--dry-run")
+	body := strings.Split(r.stdout, "\n")[0]
+	if r.code != 0 || !strings.Contains(body, `"details":"password=[REDACTED:assignment]"`) {
+		t.Fatalf("flat member %+v", r)
+	}
+	if ws, _ := outcomeOf(t, r)["warnings"].([]any); len(ws) != 1 || ws[0].(map[string]any)["pointer"] != "/details" {
+		t.Errorf("warnings %v", outcomeOf(t, r)["warnings"])
+	}
+	// Both occurrences of a duplicate member are scrubbed.
+	r = runCLI(t, `{"summary":"token=a","summary":"ok"}`, "submit", "note", "--stdin", "--scrub", "--dry-run")
+	body = strings.Split(r.stdout, "\n")[0]
+	if r.code != 0 || strings.Contains(body, "token=a") || !strings.Contains(body, "token=[REDACTED:assignment]") {
+		t.Fatalf("duplicate %+v", r)
+	}
+	// A context value is scrubbed; a member name with / is escaped.
+	r = runCLI(t, `{"summary":"s","context":{"cmd":"password=x"},"a/b~":"token=y"}`, "submit", "note", "--stdin", "--scrub", "--dry-run")
+	body = strings.Split(r.stdout, "\n")[0]
+	if r.code != 0 || !strings.Contains(body, `"cmd":"password=[REDACTED:assignment]"`) {
+		t.Fatalf("context %+v", r)
+	}
+	pointers := map[any]bool{}
+	ws, _ := outcomeOf(t, r)["warnings"].([]any)
+	for _, w := range ws {
+		pointers[w.(map[string]any)["pointer"]] = true
+	}
+	if !pointers["/context"] || !pointers["/a~1b~0"] {
+		t.Errorf("pointers %v", pointers)
+	}
+}
+
+func TestSubmit_ScrubSpooled(t *testing.T) {
+	isolateSubmit(t)
+	deadURL(t)
+	r := runCLI(t, `{"summary":"key `+scrubAWS+`"}`, "submit", "note", "--stdin", "--scrub")
+	if r.code != 0 || outcomeOf(t, r)["outcome"] != "spooled" {
+		t.Fatalf("%+v", r)
+	}
+	if ws, _ := outcomeOf(t, r)["warnings"].([]any); len(ws) != 1 {
+		t.Errorf("warnings %v", outcomeOf(t, r)["warnings"])
+	}
+	dir := client.SpoolDir(dataRoot(t))
+	files := spoolFiles(t, dir)
+	if len(files) != 1 {
+		t.Fatalf("spool %v", files)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, files[0]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "[REDACTED:aws_access_key]") || strings.Contains(string(data), scrubAWS) {
+		t.Errorf("spool entry %s", data)
+	}
+}

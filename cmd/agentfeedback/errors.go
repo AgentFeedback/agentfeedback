@@ -89,6 +89,10 @@ func errLogLevel(got string) error {
 	return failErr(fmt.Sprintf("LOG_LEVEL must be debug or info, got %q", got), "set LOG_LEVEL to debug or info")
 }
 
+func errIngestScrub(got string) error {
+	return failErr(fmt.Sprintf("INGEST_SCRUB must be on or off, got %q", got), "set INGEST_SCRUB to on or off, or unset it")
+}
+
 // errPublicURL states why PUBLIC_URL was refused without repeating the
 // value, which may carry credentials.
 func errPublicURL(err error) error {

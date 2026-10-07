@@ -29,6 +29,9 @@ type config struct {
 	LogLevel        string
 	PublicURL       string
 	MCPInstructions string
+	// ScrubIngest is INGEST_SCRUB=on: serve replaces known secret formats in
+	// summary and payload strings before storing them.
+	ScrubIngest bool
 }
 
 // defaultServiceVersion is the build version without a leading "v", the form
@@ -107,6 +110,13 @@ func loadConfig(requireAPIKey bool) (config, error) {
 	case "debug", "info":
 	default:
 		return config{}, errLogLevel(cfg.LogLevel)
+	}
+	switch v := envOr("INGEST_SCRUB", "off"); v {
+	case "on":
+		cfg.ScrubIngest = true
+	case "off":
+	default:
+		return config{}, errIngestScrub(v)
 	}
 	if cfg.DatabasePath == "" {
 		path, err := localDBPath(os.Getenv)

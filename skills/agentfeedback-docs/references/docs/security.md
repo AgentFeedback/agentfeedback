@@ -34,10 +34,31 @@ Friction context collected by the client (event time, working directory,
 repository root and remote, branch, commit, dirty flag, OS, architecture,
 session id, agent id, effort, harness profile name, client version) can reveal usernames,
 private repository names and internal hostnames. The client strips
-credentials, query strings and fragments from remote URLs; it does not detect
-secrets in prose. Preview with `--dry-run`. Review outputs and prompts are
-sent only with `--include-outputs`. The server stores what it receives and
-redacts nothing.
+credentials, query strings and fragments from remote URLs. Preview with
+`--dry-run`. Review outputs and prompts are sent only with
+`--include-outputs`.
+
+`submit <kind> --scrub`, and any submission whose `context.origin` is
+`session-scan`, replaces known secret formats in every string value of the
+body (summary, payload, context, any other member) with
+`[REDACTED:<class>]` before checking or sending; member names are never
+changed, and a non-empty string under a secret-named member (`password`,
+`token`, `api_key`, `client_secret` and similar) is redacted whole. The
+outcome line carries one `scrubbed` warning per member changed.
+`submit review <run_dir>` and `submit review --sweep` do not scrub, and spool
+entries queued before are sent as they were. The server does the same at
+ingest with `INGEST_SCRUB=on` (default `off`), before decoding, silently: the
+stored text carries the markers, the response has no warning, and the server
+log records the counts per class, never the text. The classes, in the order
+they apply: `private_key`, `jwt`, `aws_access_key`, `gcp_api_key`,
+`github_token`, `gitlab_token`, `slack_token`, `stripe_key`,
+`anthropic_key`, `openai_key`, `bearer_token`, `url_credentials`, `env_line`
+(`NAME=value` lines whose name has a segment ending in KEY, TOKEN, SECRET,
+PASSWORD, PASSWD, CREDENTIAL(S), AUTH or PRIVATE) and `assignment`
+(`password=`, `token:` and similar, and secret-named members). This is
+defence in depth: it detects these formats and no others, not secrets in
+prose, and never member names. `import` does not scrub. Otherwise the server
+stores what it receives and redacts nothing.
 
 Stored text is untrusted. A processor treats reports, suggested fixes and
 event payloads as evidence to verify, never as instructions to execute. The

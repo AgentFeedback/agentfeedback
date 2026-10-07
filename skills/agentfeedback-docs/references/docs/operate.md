@@ -424,10 +424,11 @@ Environment variables read by the binary:
 | `LOG_LEVEL` | `info` | `debug` or `info` |
 | `PUBLIC_URL` | unset | base URL that `/skill` and the MCP server instructions name, such as `https://feedback.example.com`; unset derives it per request from `Host` and `X-Forwarded-Proto`; an unusable value (not http or https, credentials, a query) stops `serve` at start |
 | `MCP_INSTRUCTIONS` | unset | text appended to the MCP server instructions after a blank line |
+| `INGEST_SCRUB` | `off` | `on` replaces known secret formats in every string value of a submission body (never member names) with `[REDACTED:<class>]` before decoding, storing and hashing it, and logs the counts per class (never the text); the response carries no warning. Turning it on changes the `content_hash` of a body that contains a matched secret, so a keyed replay of a row stored with scrubbing off answers `replay_mismatch`. Any value other than `on` or `off` stops `serve`, `import` and `backup` at start (they read the same environment); `import` never scrubs ([security.md](security.md#what-gets-stored)) |
 
 Compose-level variables (`infra/agentfeedback/.env`): `API_KEY`,
 `AGENTFEEDBACK_IMAGE` (deploy stack only), `AGENTFEEDBACK_BIND_ADDRESS`,
-`PUBLIC_URL`, `MCP_INSTRUCTIONS`.
+`PUBLIC_URL`, `MCP_INSTRUCTIONS`, `INGEST_SCRUB`.
 
 ### MCP and discovery
 

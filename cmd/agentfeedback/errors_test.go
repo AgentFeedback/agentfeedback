@@ -22,6 +22,7 @@ var catalogue = map[string]error{
 	"errArgs":                     errArgs("backup", "backup <dest.db>"),
 	"errAPIKeyUnset":              errAPIKeyUnset(),
 	"errLogLevel":                 errLogLevel("trace"),
+	"errIngestScrub":              errIngestScrub("yes"),
 	"errDuration":                 errDuration("GRACEFUL_SHUTDOWN_TIMEOUT", "x", errors.New("bad")),
 	"errDurationNeg":              errDuration("GRACEFUL_SHUTDOWN_TIMEOUT", "-1s", nil),
 	"errDatabaseDir":              errDatabaseDir("/data", "is not writable"),

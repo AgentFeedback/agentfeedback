@@ -44,7 +44,7 @@ var commands = []command{
 	{"import", "import [--dry-run] <export.ndjson>: restore an export (format 2) into the database, keeping ids", runImport},
 	{"backup", "backup <dest.db>: write a consistent copy of the database", runBackup},
 	{"doctor", "check the client setup: the mode (local database or server), the connection and the versions; doctor --e2e [--json]: submit, list and mark one install-check row", runDoctor},
-	{"submit", "submit friction --summary S [...] | submit <kind> --stdin [...] | submit review <run_dir> [--include-outputs] | submit review --sweep [<base>...]; --dry-run sends nothing: file a submission, the outcome is the last line", runSubmit},
+	{"submit", "submit friction --summary S [...] | submit <kind> --stdin [...] | submit review <run_dir> [--include-outputs] | submit review --sweep [<base>...]; --dry-run sends nothing, --scrub redacts known secret formats in the body's string values: file a submission, the outcome is the last line", runSubmit},
 	{"flush", "flush [--hook]: send the spooled submissions that are due and print the counts; --hook prints nothing, stops after 5 s and always exits 0", runFlush},
 	{"list", "list [filters] [--limit N] [--before-id N | --after-id N] [--include payload] [--all] [--json | --tsv]: list submissions, newest first", runList},
 	{"get", "get <id> [--json]: print one submission", runGet},
@@ -82,7 +82,8 @@ client config file: %s
   a repository .agentfeedback.toml may only narrow (collect.disabled, collect.deny_paths, context.drop)
 
 server environment: API_KEY or API_KEY_FILE (serve only, not both), DATABASE_PATH,
-HTTP_LISTEN_ADDR, GRACEFUL_SHUTDOWN_TIMEOUT, SERVICE_VERSION, LOG_LEVEL (defaults: the data-directory database, 127.0.0.1:8090)
+HTTP_LISTEN_ADDR, GRACEFUL_SHUTDOWN_TIMEOUT, SERVICE_VERSION, LOG_LEVEL,
+INGEST_SCRUB (on|off, default off) (defaults: the data-directory database, 127.0.0.1:8090)
 First server setup: agentfeedback serve --init, then agentfeedback server install --systemd|--launchd|--compose
 `
 
@@ -276,7 +277,7 @@ func runServe() error {
 	}
 	defer func() { _ = db.Close() }()
 
-	svc := core.New(db, core.Config{Version: cfg.ServiceVersion, Features: api.Features})
+	svc := core.New(db, core.Config{Version: cfg.ServiceVersion, Features: api.Features, ScrubIngest: cfg.ScrubIngest})
 
 	var shuttingDown atomic.Bool
 	srv := api.New(api.Config{

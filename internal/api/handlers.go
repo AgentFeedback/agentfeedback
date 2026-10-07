@@ -35,6 +35,11 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, err)
 		return
 	}
+	if n := res.Scrubbed.Total(); n > 0 {
+		// Counts only: the scrubbed text is never logged.
+		slog.InfoContext(r.Context(), "ingest scrubbed", "id", res.Record.ID, "uid", res.Record.UID,
+			"total", n, "counts", res.Scrubbed.String(), "request_id", RequestIDFromContext(r.Context()))
+	}
 	status := http.StatusOK
 	if res.Created {
 		status = http.StatusCreated

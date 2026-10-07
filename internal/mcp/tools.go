@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -205,6 +206,11 @@ func (t *tools) submit(ctx context.Context, req *sdk.CallToolRequest) (*sdk.Call
 	res, err := t.svc.Create(ctx, body)
 	if t.observeCreate != nil {
 		t.observeCreate(res.Created, err)
+	}
+	if n := res.Scrubbed.Total(); err == nil && n > 0 {
+		// Counts only: the scrubbed text is never logged.
+		slog.InfoContext(ctx, "ingest scrubbed", "id", res.Record.ID, "uid", res.Record.UID,
+			"total", n, "counts", res.Scrubbed.String(), "tool", ToolSubmit)
 	}
 	return t.respond(ctx, res, err)
 }

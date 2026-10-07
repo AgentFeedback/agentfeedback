@@ -13,7 +13,7 @@ func isolateServerEnv(t *testing.T) {
 	for _, name := range []string{
 		"API_KEY", "API_KEY_FILE", "DATABASE_PATH", "HTTP_LISTEN_ADDR",
 		"SERVICE_VERSION", "LOG_LEVEL", "PUBLIC_URL", "MCP_INSTRUCTIONS",
-		"GRACEFUL_SHUTDOWN_TIMEOUT",
+		"GRACEFUL_SHUTDOWN_TIMEOUT", "INGEST_SCRUB",
 	} {
 		t.Setenv(name, "")
 	}
@@ -62,5 +62,30 @@ func TestLoadConfig_ExplicitDatabaseDirMustExist(t *testing.T) {
 	}
 	if _, statErr := os.Stat(missing); !os.IsNotExist(statErr) {
 		t.Errorf("loadConfig created the explicit directory %s", missing)
+	}
+}
+
+func TestLoadConfig_IngestScrub(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		want  bool
+		fails bool
+	}{{"", false, false}, {"off", false, false}, {"on", true, false}, {"yes", false, true}, {"ON", false, true}} {
+		t.Run(tc.value, func(t *testing.T) {
+			isolateServerEnv(t)
+			t.Setenv("XDG_DATA_HOME", t.TempDir())
+			t.Setenv("INGEST_SCRUB", tc.value)
+			cfg, err := loadConfig(false)
+			if tc.fails {
+				if err == nil || !strings.Contains(err.Error(), "INGEST_SCRUB must be on or off") {
+					t.Fatalf("INGEST_SCRUB=%q: err = %v", tc.value, err)
+				}
+
+				return
+			}
+			if err != nil || cfg.ScrubIngest != tc.want {
+				t.Fatalf("INGEST_SCRUB=%q: ScrubIngest = %v, err = %v", tc.value, cfg.ScrubIngest, err)
+			}
+		})
 	}
 }
