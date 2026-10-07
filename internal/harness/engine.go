@@ -83,11 +83,14 @@ type Manifest struct {
 	Binary  string `json:"binary"`
 	// CodexHome and ClaudeConfigDir are the locations the run resolved,
 	// so a later run under another environment still finds what it wrote.
-	CodexHome       string                    `json:"codex_home,omitempty"`
-	ClaudeConfigDir string                    `json:"claude_config_dir,omitempty"`
-	Harnesses       map[string]*HarnessRecord `json:"harnesses"`
-	Files           map[string]*FileRecord    `json:"files"`
-	DirsCreated     []string                  `json:"dirs_created"`
+	// ClaudeConfigDirSet records whether CLAUDE_CONFIG_DIR was set, which
+	// decides where .claude.json lives even when the directory is ~/.claude.
+	CodexHome          string                    `json:"codex_home,omitempty"`
+	ClaudeConfigDir    string                    `json:"claude_config_dir,omitempty"`
+	ClaudeConfigDirSet bool                      `json:"claude_config_dir_set,omitempty"`
+	Harnesses          map[string]*HarnessRecord `json:"harnesses"`
+	Files              map[string]*FileRecord    `json:"files"`
+	DirsCreated        []string                  `json:"dirs_created"`
 }
 
 func newManifest() *Manifest {
@@ -328,16 +331,12 @@ func (p *plan) present(it Item) (bool, error) {
 // claudeRemoveArgs removes the Claude Code user-scope entry install added.
 var claudeRemoveArgs = []string{"mcp", "remove", "agentfeedback", "--scope", "user"}
 
-// claudeEntry reads the user-scope agentfeedback entry from ~/.claude.json
-// without changing it. known is false when the file cannot be read or
-// parsed; then the entry is assumed to be as the manifest records it.
+// claudeEntry reads the user-scope agentfeedback entry from Claude Code's
+// .claude.json without changing it. known is false when the file cannot be
+// read or parsed; then the entry is assumed to be as the manifest records
+// it.
 func (p *plan) claudeEntry() (known bool, url string, exists bool) {
-	// Where ~/.claude.json lives under CLAUDE_CONFIG_DIR is not documented,
-	// so with a relocated configuration the check is inconclusive.
-	if p.env.claudeDir() != filepath.Join(p.env.Home, ".claude") {
-		return false, "", false
-	}
-	data, err := os.ReadFile(filepath.Join(p.env.Home, ".claude.json"))
+	data, err := os.ReadFile(p.env.claudeJSON())
 	if err != nil {
 		return false, "", false
 	}
@@ -361,14 +360,14 @@ func (p *plan) claudeEntry() (known bool, url string, exists bool) {
 const claudeManual = "remove the Claude Code MCP entry by hand with claude mcp remove agentfeedback --scope user"
 
 // claudeForeign refuses before anything is written when the user-scope MCP
-// servers in ~/.claude.json already name agentfeedback. The file is only
+// servers in Claude Code's .claude.json already name agentfeedback. The file is only
 // read: Claude Code owns it. claude mcp add-json reporting the name as taken
 // stays the fallback for a file this check cannot read.
 func (p *plan) claudeForeign() error {
 	if known, _, _ := p.claudeEntry(); !known {
 		return nil
 	}
-	path := filepath.Join(p.env.Home, ".claude.json")
+	path := p.env.claudeJSON()
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil
@@ -1091,14 +1090,15 @@ func quoteArgs(args []string) []string {
 	return out
 }
 
-// runClaude runs claude against the configuration directory install uses:
-// CLAUDE_CONFIG_DIR is set to it, or unset when it is ~/.claude.
+// runClaude runs claude against the configuration install uses:
+// CLAUDE_CONFIG_DIR is set to its directory when it was set, even to
+// ~/.claude, and unset otherwise.
 func (e Env) runClaude(args []string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), claudeTimeout)
 	defer cancel()
-	dir := e.claudeDir()
-	if dir == filepath.Join(e.Home, ".claude") {
-		dir = ""
+	dir := ""
+	if e.claudeSet() {
+		dir = e.claudeDir()
 	}
 
 	return e.Exec(ctx, map[string]string{"CLAUDE_CONFIG_DIR": dir}, "claude", args...)
@@ -1112,6 +1112,7 @@ func (e Env) runClaude(args []string) ([]byte, error) {
 // reminder (or its removal) are written after the step's last file.
 func (e Env) apply(p *plan, applied *Manifest, mpath string, req Request, w *written) error {
 	commit := func() error {
+		p.env.recordLocations(applied)
 		if len(applied.Harnesses) == 0 {
 			if err := os.Remove(mpath); err != nil && !errors.Is(err, fs.ErrNotExist) {
 				return &FileError{Path: mpath, Err: err}
@@ -1131,14 +1132,15 @@ func (e Env) apply(p *plan, applied *Manifest, mpath string, req Request, w *wri
 
 		return err
 	}
-	// The first write of the run records its server, binary and locations
-	// with every existing record unchanged; when it fails, nothing is
-	// written.
+	// The first write of the run records its server and binary with every
+	// existing record unchanged; when it fails, nothing is written. Every
+	// write records the locations of the harnesses it still holds, so an
+	// interrupted uninstall keeps the location its retry needs.
 	if !req.Uninstall {
 		applied.Server, applied.Binary = p.man.Server, p.man.Binary
 	}
-	applied.CodexHome, applied.ClaudeConfigDir = p.man.CodexHome, p.man.ClaudeConfigDir
 	before := len(applied.DirsCreated)
+	p.env.recordLocations(applied)
 	err := writeFirst(mpath, applied)
 	w.firstDirs = slices.Clone(applied.DirsCreated[before:])
 	if err != nil {
@@ -1285,7 +1287,6 @@ func (e Env) apply(p *plan, applied *Manifest, mpath string, req Request, w *wri
 		if !req.Uninstall {
 			applied.Server, applied.Binary = p.man.Server, p.man.Binary
 		}
-		applied.CodexHome, applied.ClaudeConfigDir = p.man.CodexHome, p.man.ClaudeConfigDir
 		if err := commit(); err != nil {
 			return err
 		}

@@ -1000,17 +1000,23 @@ func TestInstall_ClaudeConfigDir(t *testing.T) {
 	}
 	sameTree(t, "after uninstall", snapshot(t, e.home), before)
 
-	// With a relocated configuration, ~/.claude.json does not tell whether
-	// the entry is there: uninstall always runs claude mcp remove.
+	// With a relocated configuration the entry is read from
+	// <dir>/.claude.json: listed without the entry, uninstall leaves claude
+	// alone; ~/.claude.json naming it does not count.
 	if r, _ := installRun(t, "install", "claude-code", "--mcp", "--server", "https://feedback.example.test"); r.code != 0 {
 		t.Fatalf("%+v", r)
 	}
-	writeClaudeJSON(t, e, "")
-	if r, _ := installRun(t, "uninstall", "claude-code"); r.code != 0 {
+	if err := os.Remove(e.claudeLog); err != nil {
+		t.Fatal(err)
+	}
+	writeClaudeJSON(t, filepath.Join(dir, ".claude.json"), "")
+	writeClaudeJSON(t, filepath.Join(e.home, ".claude.json"), "https://feedback.example.test/mcp")
+	r, out := installRun(t, "uninstall", "claude-code")
+	if r.code != 0 || !strings.Contains(notesOf(out), "already removed") {
 		t.Fatalf("%+v", r)
 	}
-	if log, _ := os.ReadFile(e.claudeLog); !strings.HasSuffix(string(log), "mcp remove agentfeedback --scope user\n") {
-		t.Fatalf("claude log %q", log)
+	if log, err := os.ReadFile(e.claudeLog); err == nil {
+		t.Fatalf("claude ran: %q", log)
 	}
 }
 
@@ -1068,14 +1074,15 @@ func TestUninstall_BackupMissingOrReplaced(t *testing.T) {
 	}
 }
 
-// writeClaudeJSON stands in for the state claude keeps in ~/.claude.json.
-func writeClaudeJSON(t *testing.T, e installEnv, url string) {
+// writeClaudeJSON stands in for the state claude keeps in the .claude.json
+// at path.
+func writeClaudeJSON(t *testing.T, path, url string) {
 	t.Helper()
 	servers := ""
 	if url != "" {
 		servers = `"agentfeedback": {"type": "http", "url": "` + url + `"}`
 	}
-	putFile(t, filepath.Join(e.home, ".claude.json"), `{"mcpServers": {`+servers+`}}`, 0o644)
+	putFile(t, path, `{"mcpServers": {`+servers+`}}`, 0o644)
 }
 
 func TestInstall_ClaudeMCPState(t *testing.T) {
@@ -1096,14 +1103,14 @@ func TestInstall_ClaudeMCPState(t *testing.T) {
 
 	t.Run("present is unchanged", func(t *testing.T) {
 		e := setup(t)
-		writeClaudeJSON(t, e, mcpURL)
+		writeClaudeJSON(t, filepath.Join(e.home, ".claude.json"), mcpURL)
 		if r, out := installRun(t, "install", "claude-code", "--mcp"); r.code != 0 || out["status"] != "unchanged" || claudeLog(e) != "" {
 			t.Fatalf("%+v %q", r, claudeLog(e))
 		}
 	})
 	t.Run("absent is added again", func(t *testing.T) {
 		e := setup(t)
-		writeClaudeJSON(t, e, "")
+		writeClaudeJSON(t, filepath.Join(e.home, ".claude.json"), "")
 		r, out := installRun(t, "install", "claude-code", "--mcp")
 		if r.code != 0 || out["status"] != "installed" || !strings.HasPrefix(claudeLog(e), "mcp add-json") || strings.Contains(claudeLog(e), "remove") {
 			t.Fatalf("%+v %q", r, claudeLog(e))
@@ -1111,7 +1118,7 @@ func TestInstall_ClaudeMCPState(t *testing.T) {
 	})
 	t.Run("other url is refused", func(t *testing.T) {
 		e := setup(t)
-		writeClaudeJSON(t, e, "https://elsewhere.example.test/mcp")
+		writeClaudeJSON(t, filepath.Join(e.home, ".claude.json"), "https://elsewhere.example.test/mcp")
 		mpath := filepath.Join(e.home, ".config", "agentfeedback", "install.json")
 		before, _ := os.ReadFile(mpath)
 		r, out := installRun(t, "install", "claude-code", "--mcp")
@@ -1124,7 +1131,7 @@ func TestInstall_ClaudeMCPState(t *testing.T) {
 	})
 	t.Run("uninstall absent", func(t *testing.T) {
 		e := setup(t)
-		writeClaudeJSON(t, e, "")
+		writeClaudeJSON(t, filepath.Join(e.home, ".claude.json"), "")
 		r, out := installRun(t, "uninstall", "claude-code")
 		if r.code != 0 || !strings.Contains(notesOf(out), "already removed") || claudeLog(e) != "" {
 			t.Fatalf("%+v %q", r, claudeLog(e))
@@ -1132,7 +1139,7 @@ func TestInstall_ClaudeMCPState(t *testing.T) {
 	})
 	t.Run("uninstall other url", func(t *testing.T) {
 		e := setup(t)
-		writeClaudeJSON(t, e, "https://elsewhere.example.test/mcp")
+		writeClaudeJSON(t, filepath.Join(e.home, ".claude.json"), "https://elsewhere.example.test/mcp")
 		r, out := installRun(t, "uninstall", "claude-code")
 		if r.code != 0 || !strings.Contains(notesOf(out), "left in place") || claudeLog(e) != "" {
 			t.Fatalf("%+v %q", r, claudeLog(e))
@@ -1604,3 +1611,240 @@ func TestInstall_ManifestValidationDocs(t *testing.T) {
 		sameTree(t, "after a refused manifest", snapshot(t, e.home), before)
 	}
 }
+
+// claudeStub puts a claude on PATH that logs CLAUDE_CONFIG_DIR and its
+// arguments, one line per call, to the returned file.
+func (e installEnv) claudeStub(t *testing.T) string {
+	t.Helper()
+	log := filepath.Join(filepath.Dir(e.bin), "claude-env.log")
+	putFile(t, filepath.Join(e.bin, "claude"), "#!/bin/sh\necho \"dir=${CLAUDE_CONFIG_DIR-unset} $*\" >> "+log+"\nexit 0\n", 0o755)
+
+	return log
+}
+
+// rawManifest is the manifest as JSON members.
+func rawManifest(t *testing.T, e installEnv) map[string]any {
+	t.Helper()
+	var m map[string]any
+	data, err := os.ReadFile(filepath.Join(e.home, ".config", "agentfeedback", "install.json"))
+	if err != nil || json.Unmarshal(data, &m) != nil {
+		t.Fatalf("manifest %s %v", data, err)
+	}
+
+	return m
+}
+
+func TestInstall_ClaudeConfigDirLocations(t *testing.T) {
+	const srv, mcpURL = "https://feedback.example.test", "https://feedback.example.test/mcp"
+	for _, tt := range []struct {
+		name string
+		dir  string // CLAUDE_CONFIG_DIR below HOME; "" leaves it unset
+		json string // the .claude.json Claude Code reads, below HOME
+		// wrong are the other candidate .claude.json files, below HOME.
+		wrong []string
+	}{
+		{"set to home .claude", ".claude", ".claude/.claude.json", []string{".claude.json"}},
+		{"set elsewhere", ".claude-work", ".claude-work/.claude.json", []string{".claude.json", ".claude/.claude.json"}},
+		{"unset", "", ".claude.json", []string{".claude/.claude.json"}},
+	} {
+		setup := func(t *testing.T) (installEnv, string, string, string) {
+			e := newInstallEnv(t)
+			log := e.claudeStub(t)
+			dir, env := filepath.Join(e.home, ".claude"), "unset"
+			if tt.dir != "" {
+				dir = filepath.Join(e.home, tt.dir)
+				env = dir
+				t.Setenv("CLAUDE_CONFIG_DIR", dir)
+			}
+
+			return e, log, dir, env
+		}
+		readLog := func(log string) string { data, _ := os.ReadFile(log); return string(data) }
+		t.Run(tt.name+"/install", func(t *testing.T) {
+			e, log, dir, env := setup(t)
+			if r, _ := installRun(t, "install", "claude-code", "--mcp", "--server", srv); r.code != 0 {
+				t.Fatalf("%+v", r)
+			}
+			if got := readLog(log); !strings.HasPrefix(got, "dir="+env+" mcp add-json agentfeedback ") || strings.Count(got, "\n") != 1 {
+				t.Fatalf("claude log %q", got)
+			}
+			m := readManifest(t, e)
+			if m.ClaudeConfigDir != dir || m.ClaudeConfigDirSet != (tt.dir != "") {
+				t.Errorf("manifest records %q set=%v", m.ClaudeConfigDir, m.ClaudeConfigDirSet)
+			}
+			// omitempty: a manifest from before the member means unset.
+			set, present := rawManifest(t, e)["claude_config_dir_set"]
+			if tt.dir == "" && present || tt.dir != "" && set != true {
+				t.Errorf("claude_config_dir_set = %v, present %v", set, present)
+			}
+		})
+		t.Run(tt.name+"/foreign entry", func(t *testing.T) {
+			e, log, _, _ := setup(t)
+			p := filepath.Join(e.home, tt.json)
+			writeClaudeJSON(t, p, "https://elsewhere.example.test/mcp")
+			r, out := installRun(t, "install", "claude-code", "--mcp", "--server", srv)
+			if r.code != 1 || !strings.Contains(fmt.Sprint(out["message"]), p) {
+				t.Fatalf("%+v", r)
+			}
+			if got := readLog(log); got != "" {
+				t.Fatalf("claude ran: %q", got)
+			}
+		})
+		t.Run(tt.name+"/entry in the wrong file", func(t *testing.T) {
+			e, log, _, env := setup(t)
+			for _, w := range tt.wrong {
+				writeClaudeJSON(t, filepath.Join(e.home, w), "https://elsewhere.example.test/mcp")
+			}
+			if r, _ := installRun(t, "install", "claude-code", "--mcp", "--server", srv); r.code != 0 {
+				t.Fatalf("%+v", r)
+			}
+			if got := readLog(log); !strings.HasPrefix(got, "dir="+env+" mcp add-json agentfeedback ") {
+				t.Fatalf("claude log %q", got)
+			}
+		})
+		t.Run(tt.name+"/uninstall", func(t *testing.T) {
+			e, log, _, env := setup(t)
+			if r, _ := installRun(t, "install", "claude-code", "--mcp", "--server", srv); r.code != 0 {
+				t.Fatalf("%+v", r)
+			}
+			if err := os.Remove(log); err != nil {
+				t.Fatal(err)
+			}
+			writeClaudeJSON(t, filepath.Join(e.home, tt.json), mcpURL)
+			if r, _ := installRun(t, "uninstall", "claude-code"); r.code != 0 {
+				t.Fatalf("%+v", r)
+			}
+			if got, want := readLog(log), "dir="+env+" mcp remove agentfeedback --scope user\n"; got != want {
+				t.Fatalf("claude log %q, want %q", got, want)
+			}
+		})
+		t.Run(tt.name+"/uninstall already removed", func(t *testing.T) {
+			e, log, _, _ := setup(t)
+			if r, _ := installRun(t, "install", "claude-code", "--mcp", "--server", srv); r.code != 0 {
+				t.Fatalf("%+v", r)
+			}
+			if err := os.Remove(log); err != nil {
+				t.Fatal(err)
+			}
+			writeClaudeJSON(t, filepath.Join(e.home, tt.json), "")
+			for _, w := range tt.wrong {
+				writeClaudeJSON(t, filepath.Join(e.home, w), mcpURL)
+			}
+			r, out := installRun(t, "uninstall", "claude-code")
+			if r.code != 0 || !strings.Contains(notesOf(out), "already removed") {
+				t.Fatalf("%+v", r)
+			}
+			if got := readLog(log); got != "" {
+				t.Fatalf("claude ran: %q", got)
+			}
+		})
+	}
+}
+
+// The set-ness install recorded decides how claude runs later, even when
+// the directory is the same ~/.claude.
+func TestInstall_ClaudeRecordedSetness(t *testing.T) {
+	const srv = "https://feedback.example.test"
+	t.Run("installed set, uninstalled unset", func(t *testing.T) {
+		e := newInstallEnv(t)
+		log := e.claudeStub(t)
+		dir := filepath.Join(e.home, ".claude")
+		t.Setenv("CLAUDE_CONFIG_DIR", dir)
+		if r, _ := installRun(t, "install", "claude-code", "--mcp", "--server", srv); r.code != 0 {
+			t.Fatalf("%+v", r)
+		}
+		t.Setenv("CLAUDE_CONFIG_DIR", "")
+		r, out := installRun(t, "uninstall", "claude-code")
+		if r.code != 0 || !strings.Contains(notesOf(out), "claude-code was installed with CLAUDE_CONFIG_DIR="+dir+"; using that location") {
+			t.Fatalf("%+v", r)
+		}
+		data, _ := os.ReadFile(log)
+		if !strings.HasSuffix(string(data), "dir="+dir+" mcp remove agentfeedback --scope user\n") {
+			t.Fatalf("claude log %q", data)
+		}
+	})
+	t.Run("installed unset, uninstalled set", func(t *testing.T) {
+		e := newInstallEnv(t)
+		log := e.claudeStub(t)
+		dir := filepath.Join(e.home, ".claude")
+		if r, _ := installRun(t, "install", "claude-code", "--mcp", "--server", srv); r.code != 0 {
+			t.Fatalf("%+v", r)
+		}
+		t.Setenv("CLAUDE_CONFIG_DIR", dir)
+		r, out := installRun(t, "uninstall", "claude-code")
+		if r.code != 0 || !strings.Contains(notesOf(out), "claude-code was installed without CLAUDE_CONFIG_DIR; using "+dir+" and ~/.claude.json") {
+			t.Fatalf("%+v", r)
+		}
+		data, _ := os.ReadFile(log)
+		if !strings.HasSuffix(string(data), "dir=unset mcp remove agentfeedback --scope user\n") {
+			t.Fatalf("claude log %q", data)
+		}
+	})
+}
+
+// A manifest written before claude_config_dir_set existed recorded a
+// directory other than ~/.claude only when CLAUDE_CONFIG_DIR was set, and
+// claude ran with it: later runs keep both.
+func TestInstall_ClaudeLegacyRelocatedManifest(t *testing.T) {
+	for _, env := range []string{"same", "unset"} {
+		t.Run(env, func(t *testing.T) {
+			e := newInstallEnv(t)
+			log := e.claudeStub(t)
+			dir := filepath.Join(e.home, ".claude-work")
+			t.Setenv("CLAUDE_CONFIG_DIR", dir)
+			if r, _ := installRun(t, "install", "claude-code", "--mcp", "--server", "https://feedback.example.test"); r.code != 0 {
+				t.Fatalf("%+v", r)
+			}
+			mpath := filepath.Join(e.home, ".config", "agentfeedback", "install.json")
+			data, _ := os.ReadFile(mpath)
+			legacy := strings.Replace(string(data), `"claude_config_dir_set": true,`, "", 1)
+			if legacy == string(data) {
+				t.Fatalf("manifest has no claude_config_dir_set: %s", data)
+			}
+			putFile(t, mpath, legacy, 0o600)
+			if err := os.Remove(log); err != nil {
+				t.Fatal(err)
+			}
+			if env == "unset" {
+				t.Setenv("CLAUDE_CONFIG_DIR", "")
+			}
+			writeClaudeJSON(t, filepath.Join(e.home, ".claude.json"), "")
+			writeClaudeJSON(t, filepath.Join(dir, ".claude.json"), "https://feedback.example.test/mcp")
+			r, out := installRun(t, "uninstall", "claude-code")
+			if r.code != 0 || strings.Contains(notesOf(out), "without CLAUDE_CONFIG_DIR") {
+				t.Fatalf("%+v", r)
+			}
+			if got, want := readLogFile(log), "dir="+dir+" mcp remove agentfeedback --scope user\n"; got != want {
+				t.Fatalf("claude log %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+// The manifest written before claude mcp remove still names the location,
+// so an uninstall interrupted there is retried against the same file.
+func TestUninstall_CheckpointKeepsClaudeLocation(t *testing.T) {
+	e := newInstallEnv(t)
+	dir := filepath.Join(e.home, ".claude")
+	t.Setenv("CLAUDE_CONFIG_DIR", dir)
+	mpath := filepath.Join(e.home, ".config", "agentfeedback", "install.json")
+	seen := filepath.Join(filepath.Dir(e.bin), "manifest-at-remove.json")
+	putFile(t, filepath.Join(e.bin, "claude"), "#!/bin/sh\nif [ \"$2\" = remove ]; then /bin/cp "+mpath+" "+seen+"; fi\nexit 0\n", 0o755)
+	if r, _ := installRun(t, "install", "claude-code", "--mcp", "--server", "https://feedback.example.test"); r.code != 0 {
+		t.Fatalf("%+v", r)
+	}
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	if r, _ := installRun(t, "uninstall", "claude-code"); r.code != 0 {
+		t.Fatalf("%+v", r)
+	}
+	var m harness.Manifest
+	data, err := os.ReadFile(seen)
+	if err != nil || json.Unmarshal(data, &m) != nil {
+		t.Fatalf("manifest at remove %s %v", data, err)
+	}
+	if m.Harnesses["claude-code"] == nil || m.ClaudeConfigDir != dir || !m.ClaudeConfigDirSet {
+		t.Fatalf("manifest at remove records %q set=%v: %s", m.ClaudeConfigDir, m.ClaudeConfigDirSet, data)
+	}
+}
+
+func readLogFile(path string) string { data, _ := os.ReadFile(path); return string(data) }

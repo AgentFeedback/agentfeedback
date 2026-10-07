@@ -284,8 +284,9 @@ are not wired on Windows; undo the steps by hand.
   reused. The manifest records the Codex home and Claude Code configuration
   directory of the harnesses it keeps; a later run under another
   `CODEX_HOME` or `CLAUDE_CONFIG_DIR` keeps using the recorded location for
-  that harness, notes it, and runs `claude` with `CLAUDE_CONFIG_DIR` set to
-  the recorded directory (unset when it is `~/.claude`). Install refuses a
+  that harness, notes it, and runs `claude` with `CLAUDE_CONFIG_DIR` as
+  recorded: set to the recorded directory when it was set at install, even
+  to `~/.claude`, and unset when it was unset. Install refuses a
   manifest that names a path it does not write under the current
   environment: run it with the `HOME`, `XDG_CONFIG_HOME`, `CODEX_HOME` and
   `CLAUDE_CONFIG_DIR` of the install, or fix the manifest.
@@ -299,16 +300,17 @@ are not wired on Windows; undo the steps by hand.
   before `install` existed (a copy or symlink of `skills/agentfeedback`) must
   be removed first. A recorded skill or plugin file edited since install is
   refused too.
-- **`CLAUDE_CONFIG_DIR`** moves Claude Code's settings and skills, and
-  install follows it. Its documentation does not say where `.claude.json`
-  lives then, so with it set the check below is skipped: install relies on
-  `claude mcp add-json` reporting an existing entry, and uninstall always
-  runs `claude mcp remove`.
-- **Claude Code's MCP entry** is checked against `~/.claude.json` (read
-  only): an entry removed by hand is added again by install and skipped by
-  uninstall; one pointing at another URL is refused by install and left in
-  place by uninstall. When `claude` is missing or `claude mcp remove` fails,
-  uninstall goes on and notes the command to run by hand:
+- **`CLAUDE_CONFIG_DIR`** moves Claude Code's settings, skills and
+  `.claude.json` (to `$CLAUDE_CONFIG_DIR/.claude.json`), and install follows
+  it. Set to `~/.claude` counts as set: Claude Code then reads
+  `~/.claude/.claude.json`, not `~/.claude.json`.
+- **Claude Code's MCP entry** is checked against `.claude.json`
+  (`~/.claude.json`, or `$CLAUDE_CONFIG_DIR/.claude.json` when the variable
+  is set; read only): an entry removed by hand is added again by install
+  and skipped by uninstall; one pointing at another URL is refused by
+  install and left in place by uninstall. When `claude` is missing or
+  `claude mcp remove` fails, uninstall goes on and notes the command to run
+  by hand:
   `claude mcp remove agentfeedback --scope user`.
 - **Codex** runs a new hook only after you trust it in `/hooks`.
 - **Cursor** also runs Claude Code's hooks and skills.

@@ -57,8 +57,10 @@ type Env struct {
 	Version func(path string) string
 
 	// codexAt and claudeAt are the locations a manifest recorded, used
-	// instead of the environment's for a harness it records.
+	// instead of the environment's for a harness it records; claudeAtSet
+	// is whether CLAUDE_CONFIG_DIR was set at that install.
 	codexAt, claudeAt string
+	claudeAtSet       bool
 }
 
 // names is the registry in display order.
@@ -103,11 +105,33 @@ func (e Env) claudeDir() string {
 	if e.claudeAt != "" {
 		return e.claudeAt
 	}
-	if d := e.Getenv("CLAUDE_CONFIG_DIR"); d != "" && filepath.IsAbs(d) {
-		return d
+	if e.claudeSet() {
+		return e.Getenv("CLAUDE_CONFIG_DIR")
 	}
 
 	return filepath.Join(e.Home, ".claude")
+}
+
+// claudeSet reports whether CLAUDE_CONFIG_DIR is in force, even when it
+// names ~/.claude: Claude Code then keeps .claude.json inside it.
+func (e Env) claudeSet() bool {
+	if e.claudeAt != "" {
+		return e.claudeAtSet
+	}
+	d := e.Getenv("CLAUDE_CONFIG_DIR")
+
+	return d != "" && filepath.IsAbs(d)
+}
+
+// claudeJSON is the file holding Claude Code's user-scope MCP servers:
+// $CLAUDE_CONFIG_DIR/.claude.json when the variable is set, otherwise
+// ~/.claude.json.
+func (e Env) claudeJSON() string {
+	if e.claudeSet() {
+		return filepath.Join(e.claudeDir(), ".claude.json")
+	}
+
+	return filepath.Join(e.Home, ".claude.json")
 }
 
 // withRecorded returns e using the Codex and Claude Code locations the
@@ -119,9 +143,17 @@ func (e Env) withRecorded(m *Manifest) (Env, map[string]string) {
 		e.codexAt = m.CodexHome
 		notes["codex"] = "codex was installed with CODEX_HOME=" + m.CodexHome + "; using that location"
 	}
-	if m.Harnesses["claude-code"] != nil && m.ClaudeConfigDir != "" && m.ClaudeConfigDir != e.claudeDir() {
-		e.claudeAt = m.ClaudeConfigDir
-		notes["claude-code"] = "claude-code was installed with CLAUDE_CONFIG_DIR=" + m.ClaudeConfigDir + "; using that location"
+	// A manifest without claude_config_dir_set names a directory other
+	// than ~/.claude only when CLAUDE_CONFIG_DIR was set.
+	set := m.ClaudeConfigDirSet || m.ClaudeConfigDir != filepath.Join(e.Home, ".claude")
+	if m.Harnesses["claude-code"] != nil && m.ClaudeConfigDir != "" &&
+		(m.ClaudeConfigDir != e.claudeDir() || set != e.claudeSet()) {
+		e.claudeAt, e.claudeAtSet = m.ClaudeConfigDir, set
+		if set {
+			notes["claude-code"] = "claude-code was installed with CLAUDE_CONFIG_DIR=" + m.ClaudeConfigDir + "; using that location"
+		} else {
+			notes["claude-code"] = "claude-code was installed without CLAUDE_CONFIG_DIR; using " + m.ClaudeConfigDir + " and ~/.claude.json"
+		}
 	}
 
 	return e, notes
@@ -130,12 +162,12 @@ func (e Env) withRecorded(m *Manifest) (Env, map[string]string) {
 // recordLocations stores the locations the run used for the harnesses the
 // manifest keeps.
 func (e Env) recordLocations(m *Manifest) {
-	m.CodexHome, m.ClaudeConfigDir = "", ""
+	m.CodexHome, m.ClaudeConfigDir, m.ClaudeConfigDirSet = "", "", false
 	if m.Harnesses["codex"] != nil {
 		m.CodexHome = e.codexHome()
 	}
 	if m.Harnesses["claude-code"] != nil {
-		m.ClaudeConfigDir = e.claudeDir()
+		m.ClaudeConfigDir, m.ClaudeConfigDirSet = e.claudeDir(), e.claudeSet()
 	}
 }
 
