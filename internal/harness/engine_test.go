@@ -388,3 +388,35 @@ func TestInstall_DocsLinkedReferencesLeftAlone(t *testing.T) {
 		t.Errorf("the linked file was removed: %v", err)
 	}
 }
+
+func TestLoadManifest_LegacyRecordKeepsItsBinary(t *testing.T) {
+	e := testEnv(t)
+	old := cliRequest("pi")
+	old.Options.Binary = "/old/af"
+	if _, err := e.Run(old); err != nil {
+		t.Fatal(err)
+	}
+	// Rewrite the record as one written before records kept their binary.
+	m, _, err := LoadManifest(e.ManifestPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Harnesses["pi"].Binary = ""
+	put(t, e.ManifestPath(), string(m.encode()))
+	req := cliRequest("claude-code")
+	req.Options.Binary = "/new/af"
+	if _, err := e.Run(req); err != nil {
+		t.Fatal(err)
+	}
+	st, err := e.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, s := range st {
+		got[s.Name] = s.Binary
+	}
+	if got["pi"] != "/old/af" || got["claude-code"] != "/new/af" {
+		t.Fatalf("binaries: %v", got)
+	}
+}

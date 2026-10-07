@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -51,6 +52,9 @@ type Env struct {
 	// Exec runs a command and returns its combined output. setenv overrides
 	// variables of the environment; an empty value unsets one.
 	Exec func(ctx context.Context, setenv map[string]string, name string, args ...string) ([]byte, error)
+	// Version, when set, reports the version of an agentfeedback binary;
+	// Status fills HarnessStatus.BinaryVersion with it.
+	Version func(path string) string
 
 	// codexAt and claudeAt are the locations a manifest recorded, used
 	// instead of the environment's for a harness it records.
@@ -384,6 +388,24 @@ func (p *plan) wiring(name string, o Options) (desire, error) {
 	}
 
 	return d, nil
+}
+
+// ManualMCP is the MCP entry install --mcp would add for the harness against
+// server, for wiring it by hand; it writes nothing. The OpenCode config file
+// is chosen from what is on disk.
+func (e Env) ManualMCP(name, server string) (Item, error) {
+	p := newPlan(e, newManifest())
+	d, err := p.wiring(name, Options{Mode: ModeMCP, Server: server})
+	if err != nil {
+		return Item{}, err
+	}
+	for _, it := range d.items {
+		if it.Role == RoleMCP {
+			return it, nil
+		}
+	}
+
+	return Item{}, fmt.Errorf("no MCP entry for harness %q", name)
 }
 
 func member(file string, path []string, value []byte) Item {

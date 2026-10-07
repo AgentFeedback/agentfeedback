@@ -37,7 +37,11 @@ type installOutcome struct {
 	Changed   []string                `json:"changed,omitempty"`
 	Backups   []string                `json:"backups,omitempty"`
 	Next      []string                `json:"next,omitempty"`
-	Message   string                  `json:"message,omitempty"`
+	Warnings  []string                `json:"warnings,omitempty"`
+	// Manual is the wiring by hand of each harness, where install cannot
+	// run (Windows).
+	Manual  []manualStep `json:"manual,omitempty"`
+	Message string       `json:"message,omitempty"`
 }
 
 func printInstallOutcome(stdout io.Writer, out installOutcome, err error) error {
@@ -63,6 +67,7 @@ func harnessEnv() (harness.Env, error) {
 		Home:     home,
 		Getenv:   os.Getenv,
 		LookPath: exec.LookPath,
+		Version:  binaryVersion,
 		Exec: func(ctx context.Context, setenv map[string]string, name string, args ...string) ([]byte, error) {
 			cmd := exec.CommandContext(ctx, name, args...)
 			cmd.Env = withEnv(os.Environ(), setenv)
@@ -134,11 +139,11 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 
 		return printInstallOutcome(stdout, installOutcome{}, err)
 	}
-	if err := checkInstallSupported("install"); err != nil {
-		return printInstallOutcome(stdout, installOutcome{}, err)
-	}
 	if err := checkHarnessNames(pos); err != nil {
 		return printInstallOutcome(stdout, installOutcome{}, err)
+	}
+	if err := checkInstallSupported("install"); err != nil {
+		return printInstallOutcome(stdout, installOutcome{Manual: manualSteps(pos, *server, stderr)}, err)
 	}
 	env, err := harnessEnv()
 	if err != nil {
@@ -180,6 +185,10 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 	if err != nil {
 		return printInstallOutcome(stdout, installOutcome{}, err)
 	}
+	warnings := pathWarnings(bin)
+	for _, w := range warnings {
+		fmt.Fprintf(stderr, "agentfeedback install: warning: %s\n", w)
+	}
 	srv, configExists, err := resolveInstallServer(os.Getenv, env, *server, stdin, stderr)
 	if err != nil {
 		return printInstallOutcome(stdout, installOutcome{}, err)
@@ -203,7 +212,7 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 		Options:   harness.Options{Mode: mode, Reminder: *reminder, Docs: *docs, Server: srv, Binary: bin},
 		DryRun:    *dryRun,
 	})
-	out := installOutcome{Status: res.Status, Harnesses: res.Harnesses, Changed: res.Changed, Backups: res.Backups}
+	out := installOutcome{Status: res.Status, Harnesses: res.Harnesses, Changed: res.Changed, Backups: res.Backups, Warnings: warnings}
 	if err != nil {
 		return printInstallOutcome(stdout, out, installErr(err))
 	}
@@ -367,9 +376,17 @@ func listHarnesses(env harness.Env, asJSON bool, stdout io.Writer) error {
 		return writeJSON(stdout, map[string][]harness.HarnessStatus{"harnesses": st})
 	}
 	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "HARNESS\tDETECTED\tMODE\tSKILL\tMCP\tHOOK\tREMINDER\tDOCS")
+	dash := func(s string) string {
+		if s == "" {
+			return "-"
+		}
+
+		return s
+	}
+	fmt.Fprintln(tw, "HARNESS\tDETECTED\tMODE\tSKILL\tMCP\tHOOK\tREMINDER\tDOCS\tBINARY\tVERSION")
 	for _, h := range st {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", h.Name, h.Detected, h.Mode, h.Skill, h.MCP, h.Hook, h.Reminder, h.Docs)
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", h.Name, h.Detected, h.Mode, h.Skill, h.MCP, h.Hook, h.Reminder, h.Docs,
+			dash(h.Binary), dash(h.BinaryVersion))
 	}
 
 	return tw.Flush()
@@ -381,6 +398,31 @@ func listHarnesses(env harness.Env, asJSON bool, stdout io.Writer) error {
 // --server that differs from config.toml's url is refused: install never
 // changes the configured server.
 func resolveInstallServer(getenv func(string) string, env harness.Env, flagValue string, stdin io.Reader, stderr io.Writer) (srv string, configExists bool, err error) {
+	srv, configExists, err = installServerNoPrompt(getenv, env, flagValue)
+	if err != nil || srv != "" {
+		return srv, configExists, err
+	}
+	if !isTerminal() {
+		return serverLocal, configExists, nil
+	}
+	fmt.Fprint(stderr, `AgentFeedback server ("local", "cloud" or a URL): `)
+	line, err := bufio.NewReader(stdin).ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", configExists, errInstallNoServer()
+	}
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return serverLocal, configExists, nil
+	}
+	srv, err = normaliseServer("the server", line)
+
+	return srv, configExists, err
+}
+
+// installServerNoPrompt is resolveInstallServer up to the prompt: --server,
+// then config.toml's url, then the one the manifest records; "" when none
+// is set. It never reads stdin.
+func installServerNoPrompt(getenv func(string) string, env harness.Env, flagValue string) (srv string, configExists bool, err error) {
 	path, err := configPath(getenv)
 	if err != nil {
 		return "", false, err
@@ -424,21 +466,8 @@ func resolveInstallServer(getenv func(string) string, env harness.Env, flagValue
 
 		return srv, configExists, err
 	}
-	if !isTerminal() {
-		return serverLocal, configExists, nil
-	}
-	fmt.Fprint(stderr, `AgentFeedback server ("local", "cloud" or a URL): `)
-	line, err := bufio.NewReader(stdin).ReadString('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
-		return "", configExists, errInstallNoServer()
-	}
-	line = strings.TrimSpace(line)
-	if line == "" {
-		return serverLocal, configExists, nil
-	}
-	srv, err = normaliseServer("the server", line)
 
-	return srv, configExists, err
+	return "", configExists, nil
 }
 
 // normaliseServer maps cloud to its URL and puts every other server through

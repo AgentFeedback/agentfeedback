@@ -22,6 +22,7 @@ import (
 
 	"github.com/agentfeedback/agentfeedback/v4/internal/localmode"
 	"github.com/agentfeedback/agentfeedback/v4/pkg/client"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/collect"
 )
 
 const (
@@ -46,6 +47,31 @@ type doctorReport struct {
 	// the cache directory; anything there is a problem naming the remedy.
 	LegacySpool spoolCheck     `json:"legacy_spool"`
 	Recent      recentOutcomes `json:"recent"`
+	// Harnesses are the binaries the CLI-mode harnesses' hooks run, and
+	// Path the agentfeedback a shell finds, which the skill runs.
+	Harnesses []harnessBinary `json:"harnesses"`
+	Path      pathCheck       `json:"path"`
+	Collect   collectCheck    `json:"collect"`
+}
+
+// harnessBinary is the binary one CLI-mode harness's hooks run.
+type harnessBinary struct {
+	Name    string `json:"name"`
+	Binary  string `json:"binary"`
+	Version string `json:"version"`
+}
+
+// pathCheck is the agentfeedback on PATH, symlinks resolved.
+type pathCheck struct {
+	Binary  string `json:"binary,omitempty"`
+	Version string `json:"version,omitempty"`
+	Found   bool   `json:"found"`
+}
+
+// collectCheck lists the problems in the collection settings for the
+// working directory; each is also a problem of the report.
+type collectCheck struct {
+	Warnings []string `json:"warnings"`
 }
 
 // databaseCheck is the local database: its path and whether it exists. Both
@@ -201,7 +227,8 @@ func redactURL(raw string) string {
 // a missing local database is reported, not created, and the start-up pass
 // does not run.
 func diagnose(getenv func(string) string, mf modeFlags, clientVer string) (doctorReport, error) {
-	r := doctorReport{Problems: []string{}, Recent: recentOutcomes{Lines: []json.RawMessage{}}}
+	r := doctorReport{Problems: []string{}, Recent: recentOutcomes{Lines: []json.RawMessage{}},
+		Harnesses: []harnessBinary{}, Collect: collectCheck{Warnings: []string{}}}
 	problem := func(err error) { r.Problems = append(r.Problems, err.Error()) }
 
 	path, err := configPath(getenv)
@@ -218,6 +245,17 @@ func diagnose(getenv func(string) string, mf modeFlags, clientVer string) (docto
 		r.Config.Mode = fmt.Sprintf("%04o", info.Mode().Perm())
 		if info.Mode().Perm()&0o077 != 0 {
 			problem(errConfigMode(path, r.Config.Mode))
+		}
+	}
+	if exists && err == nil {
+		checkConfigKeys(path, problem)
+	}
+	if cwd, err := os.Getwd(); err != nil {
+		problem(errDoctorWorkdir(err))
+	} else {
+		for _, w := range collect.Lint(cwd, "", file.Collect) {
+			r.Collect.Warnings = append(r.Collect.Warnings, w)
+			problem(errCollectWarning(w))
 		}
 	}
 
@@ -259,6 +297,11 @@ func diagnose(getenv func(string) string, mf modeFlags, clientVer string) (docto
 		}
 	}
 
+	r.Harnesses = checkHarnessBinaries(clientVer, problem)
+	if p, ok := pathBinary(); ok {
+		r.Path = pathCheck{Binary: p, Version: binaryVersion(p), Found: true}
+	}
+
 	cache, err := cacheDir(getenv)
 	if err != nil {
 		return r, err
@@ -283,6 +326,51 @@ func diagnose(getenv func(string) string, mf modeFlags, clientVer string) (docto
 	}
 
 	return r, nil
+}
+
+// checkHarnessBinaries lists the binary each CLI-mode harness the install
+// manifest records runs from its hooks, with its version. A missing binary
+// is a problem, and so is one older than the running client: the newer
+// binary migrates the local database and the older one then fails. Nothing
+// is checked on Windows, where install does not run.
+func checkHarnessBinaries(clientVer string, problem func(error)) []harnessBinary {
+	out := []harnessBinary{}
+	if goos == "windows" {
+		return out
+	}
+	env, err := harnessEnv()
+	if err != nil {
+		problem(err)
+
+		return out
+	}
+	st, err := env.Status()
+	if err != nil {
+		problem(errHarnessStatus(err))
+
+		return out
+	}
+	for _, h := range st {
+		if h.Binary == "" {
+			continue
+		}
+		out = append(out, harnessBinary{Name: h.Name, Binary: h.Binary, Version: h.BinaryVersion})
+		if h.BinaryVersion == "missing" {
+			problem(errHarnessBinaryMissing(h.Name, h.Binary))
+
+			continue
+		}
+		if h.BinaryVersion == "unknown" {
+			problem(errHarnessBinaryUnknown(h.Name, h.Binary))
+
+			continue
+		}
+		if cmp, ok := compareVersions(h.BinaryVersion, clientVer); ok && cmp < 0 {
+			problem(errHarnessBinaryOld(h.Name, h.Binary, h.BinaryVersion, clientVer))
+		}
+	}
+
+	return out
 }
 
 // checkMeta fetches <url>/api/v1/meta with the key and reports what the
@@ -351,6 +439,9 @@ func checkLocal(mode clientMode, getenv func(string) string, db *databaseCheck, 
 	m.Checked = true
 	c, err := openLocalClient(mode, getenv, io.Discard)
 	if err != nil {
+		if cache, cerr := cacheDir(getenv); cerr == nil {
+			logSchemaTooNew(cache, err)
+		}
 		problem(err)
 
 		return m
@@ -702,6 +793,15 @@ func printReport(w io.Writer, r doctorReport) {
 	for _, line := range r.Recent.Lines {
 		fmt.Fprintf(w, "          %s\n", line)
 	}
+	for _, h := range r.Harnesses {
+		fmt.Fprintf(w, "harness:  %s %s (%s)\n", h.Name, h.Binary, orNone(h.Version))
+	}
+	if r.Path.Found {
+		fmt.Fprintf(w, "path:     %s (%s)\n", r.Path.Binary, orNone(r.Path.Version))
+	} else {
+		fmt.Fprintln(w, "path:     no agentfeedback on PATH")
+	}
+	fmt.Fprintf(w, "collect:  %d warning(s)\n", len(r.Collect.Warnings))
 	for _, p := range r.Problems {
 		fmt.Fprintf(w, "problem:  %s\n", p)
 	}

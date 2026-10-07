@@ -19,9 +19,14 @@ type userError struct {
 	problem string
 	next    string
 	usage   bool
+	cause   error
 }
 
 func (e *userError) Error() string { return e.problem + "; " + e.next + "." }
+
+// Unwrap returns the underlying error the problem was built from, or nil, so
+// errors.Is sees through the user-facing wording.
+func (e *userError) Unwrap() error { return e.cause }
 
 // exitCode maps an error returned by a command to the process exit status.
 func exitCode(err error) int {
@@ -638,9 +643,15 @@ func errWorkdir(err error) error {
 
 // install and uninstall errors.
 
+// errInstallWindows refuses install and uninstall; install prints the
+// wiring by hand before it.
 func errInstallWindows(command string) error {
-	return usageErr(fmt.Sprintf("%s is not supported on Windows", command),
-		"wire the harness by hand: install the skill from agentfeedback skill render skill-md")
+	next := "use the steps printed above to wire the harness by hand"
+	if command == "uninstall" {
+		next = "remove by hand what was wired by hand"
+	}
+
+	return usageErr(fmt.Sprintf("%s is not supported on Windows", command), next)
 }
 
 func errInstallHarness(name string, known []string) error {
@@ -673,4 +684,40 @@ func errInstallBadServer(source, raw, reason string) error {
 func errInstallServerDiffers(flagURL, configured, source string) error {
 	return failErr(fmt.Sprintf("--server %s differs from %s (%s), and install never changes the configured server", flagURL, configured, source),
 		"drop --server, or change the server with agentfeedback doctor --init --force first (or unset the variable)")
+}
+
+// doctor checks of the harness binaries and the collection settings.
+
+func errHarnessStatus(err error) error {
+	return failErr(fmt.Sprintf("cannot read the install manifest: %s", oneLine(err.Error())),
+		"fix or restore it, then run agentfeedback install --list")
+}
+
+func errHarnessBinaryMissing(name, bin string) error {
+	return failErr(fmt.Sprintf("the %s hooks run %s, which does not exist, so they fail silently", name, bin),
+		"run agentfeedback install "+name+" from the binary to keep")
+}
+
+func errHarnessBinaryUnknown(name, bin string) error {
+	return failErr(fmt.Sprintf("the %s hooks run %s, which does not answer agentfeedback version --json, so they may fail silently", name, bin),
+		"run agentfeedback install "+name+" from the binary to keep")
+}
+
+func errHarnessBinaryOld(name, bin, have, client string) error {
+	return failErr(fmt.Sprintf("the %s hooks run %s version %s, older than this client %s; the newer binary migrates the local database and the older one then fails", name, bin, have, client),
+		"run agentfeedback install "+name+" from the binary to keep")
+}
+
+func errConfigUnknownKey(path, key string) error {
+	return failErr(fmt.Sprintf("%s: unknown key %s is ignored", path, key),
+		"check its spelling (narrowing it names is not applied)")
+}
+
+func errCollectWarning(w string) error {
+	return failErr(w, "fix the setting it names")
+}
+
+func errDoctorWorkdir(err error) error {
+	return failErr(fmt.Sprintf("cannot resolve the working directory (%v); the collection settings were not checked", err),
+		"run agentfeedback doctor from a directory that exists")
 }

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agentfeedback/agentfeedback/v4/internal/store"
 	"github.com/agentfeedback/agentfeedback/v4/pkg/client"
 	"github.com/agentfeedback/agentfeedback/v4/pkg/collect"
 	"github.com/agentfeedback/agentfeedback/v4/pkg/envelope"
@@ -258,6 +259,26 @@ func (s *submitter) logLocal(o client.Outcome) {
 	client.LogTo(cache, o, nowFunc(), s.stderr)
 }
 
+// logSetupFailure logs a client setup failure to the client log: a database
+// written by a newer binary as a schema_too_new line, anything else as o.
+func (s *submitter) logSetupFailure(o client.Outcome, err error) {
+	if !errors.Is(err, store.ErrSchemaTooNew) {
+		s.logLocal(o)
+
+		return
+	}
+	if s.dryRun {
+		return
+	}
+	cache, cerr := cacheDir(os.Getenv)
+	if cerr != nil {
+		s.warn(cerr.Error())
+
+		return
+	}
+	logSchemaTooNew(cache, err)
+}
+
 // disabled reports the narrowing outcome when the working directory is
 // switched off, and whether it was.
 func (s *submitter) disabled() (client.Outcome, bool) {
@@ -312,7 +333,7 @@ func (s *submitter) send(body []byte) (client.Outcome, error) {
 		fmt.Fprintf(s.stderr, "agentfeedback %s: %s; the submission was NOT persisted and is echoed below for recovery\n", s.name, err)
 		_, _ = s.stderr.Write(prepared)
 		fmt.Fprintln(s.stderr)
-		s.logLocal(o)
+		s.logSetupFailure(o, err)
 
 		return o, nil
 	}
@@ -639,14 +660,14 @@ func runFlushHook(mf modeFlags) {
 	fail := func(msg string) {
 		client.LogTo(cache, client.Outcome{Outcome: client.OutcomeError, Reason: "flush --hook: " + oneLine(msg)}, nowFunc(), io.Discard)
 	}
-	done := make(chan string, 1)
+	done := make(chan error, 1)
 	go func() { done <- flushHookBody(ctx, data, mf) }()
 	timer := time.NewTimer(time.Until(start.Add(flushHookDeadline)))
 	defer timer.Stop()
 	select {
-	case msg := <-done:
-		if msg != "" {
-			fail(msg)
+	case err := <-done:
+		if err != nil && !logSchemaTooNew(cache, err) {
+			fail(err.Error())
 		}
 	case <-timer.C:
 		fail("the flush ran past its deadline")
@@ -654,34 +675,34 @@ func runFlushHook(mf modeFlags) {
 }
 
 // flushHookBody is the work runFlushHook bounds; it returns the failure to
-// log, or "". An empty spool returns before the config is read; data is the
+// log, or nil. An empty spool returns before the config is read; data is the
 // data directory the spool lives in.
-func flushHookBody(ctx context.Context, data string, mf modeFlags) string {
+func flushHookBody(ctx context.Context, data string, mf modeFlags) error {
 	if !flushHookHasDue(data, nowFunc()) {
-		return ""
+		return nil
 	}
 	if ctx.Err() != nil {
-		return "the flush ran past its deadline"
+		return errors.New("the flush ran past its deadline")
 	}
 	skipStartupPass = true
 	s, err := newSubmitter("flush", false, mf, io.Discard, io.Discard)
 	if err != nil {
-		return err.Error()
+		return err
 	}
 	if _, off := s.disabled(); off {
-		return ""
+		return nil
 	}
 	c, err := s.client()
 	if err != nil {
-		return err.Error()
+		return err
 	}
 	rep := flushHookFlush(ctx, c)
 	switch {
 	case rep.Stopped != "":
-		return "the flush stopped: " + rep.Stopped
+		return errors.New("the flush stopped: " + rep.Stopped)
 	case ctx.Err() != nil:
-		return "the flush ran past its deadline"
+		return errors.New("the flush ran past its deadline")
 	}
 
-	return ""
+	return nil
 }

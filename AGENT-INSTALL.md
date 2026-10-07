@@ -171,8 +171,9 @@ the client spooled while the server was unreachable. It backs up every file
 it touches, and `agentfeedback uninstall <harness>` reverts it. It reads the
 server from the configuration of step 2.2. The harnesses it knows:
 `claude-code`, `codex`, `cursor`, `opencode`, `omp`, `pi`; `all` wires every
-detected one, only when the human agrees. It does not run on Windows: there,
-and for a harness not in that list, go to step 2.5 instead. For Claude Code
+detected one, only when the human agrees. It does not run on Windows (it
+refuses and lists the steps to wire each harness by hand under `manual`):
+there, and for a harness not in that list, go to step 2.5 instead. For Claude Code
 or Codex, ask the human whether they prefer a plugin; if so, go to step 2.4
 instead.
 

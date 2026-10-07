@@ -76,8 +76,8 @@ var repoFileKeys = []string{"collect.disabled", "collect.deny_paths", "context.d
 // An empty home means os.UserHomeDir(); "~" entries cannot be expanded
 // without one.
 //
-// The gate is for submit, flush and hooks. Nothing in cmd calls it yet;
-// doctor ignores narrowing.
+// submit and flush (the hook included) call it before anything is sent;
+// doctor reports the same setting problems through Lint.
 func Check(dir, home string, p Policy) Decision {
 	var d Decision
 	if home == "" {
@@ -95,15 +95,8 @@ func Check(dir, home string, p Policy) Decision {
 		return disable(ReasonDisabled)
 	}
 	userPaths := func(key string, entries []string) []string {
-		var out []string
-		for _, e := range entries {
-			x, ok := expandHome(e, home)
-			if !ok || !filepath.IsAbs(x) {
-				d.Warnings = append(d.Warnings, fmt.Sprintf("collect.%s: ignoring %q: not an absolute path or ~/ path", key, e))
-				continue
-			}
-			out = append(out, x)
-		}
+		out, warnings := userPathEntries(key, entries, home)
+		d.Warnings = append(d.Warnings, warnings...)
 
 		return out
 	}
@@ -129,6 +122,42 @@ func Check(dir, home string, p Policy) Decision {
 	}
 
 	return d
+}
+
+// Lint returns every problem in the settings Check would skip over for dir,
+// whatever Check decides: the deny_paths and opt_in_paths entries that are
+// neither absolute nor ~/, and the problems of the repository file of the
+// repository dir is in. An empty home means os.UserHomeDir().
+func Lint(dir, home string, p Policy) []string {
+	if home == "" {
+		home, _ = os.UserHomeDir()
+	}
+	if abs, err := filepath.Abs(dir); err == nil {
+		dir = abs
+	}
+	_, out := userPathEntries("deny_paths", p.DenyPaths, home)
+	_, w := userPathEntries("opt_in_paths", p.OptInPaths, home)
+	out = append(out, w...)
+	if r, ok := findRepo(dir); ok {
+		out = append(out, readRepoFile(filepath.Join(r.root, RepoFile), r.root).warnings...)
+	}
+
+	return out
+}
+
+// userPathEntries expands the user config's entries under collect.<key>:
+// each must be absolute or ~/; any other is skipped with a warning.
+func userPathEntries(key string, entries []string, home string) (paths, warnings []string) {
+	for _, e := range entries {
+		x, ok := expandHome(e, home)
+		if !ok || !filepath.IsAbs(x) {
+			warnings = append(warnings, fmt.Sprintf("collect.%s: ignoring %q: not an absolute path or ~/ path", key, e))
+			continue
+		}
+		paths = append(paths, x)
+	}
+
+	return paths, warnings
 }
 
 // matchesAny reports whether dir is within any of the entries, as written or

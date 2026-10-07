@@ -7,7 +7,7 @@ Contents: [Run locally](#run-locally) · [Bare binary (no Docker)](#bare-binary-
 [Wire the harnesses](#wire-the-harnesses) · [Build from source](#build-from-source) ·
 [Deploy to a host](#deploy-to-a-host) ·
 [Configuration](#configuration) · [Backups](#backups) ·
-[Restore and migration](#restore-and-migration) · [Upgrade](#upgrade) ·
+[Restore and migration](#restore-and-migration) · [Upgrading and downgrading](#upgrading-and-downgrading) ·
 [Key rotation](#key-rotation) · [Retention](#retention) · [Monitoring](#monitoring) ·
 [Uninstall](#uninstall)
 
@@ -87,6 +87,15 @@ path other users can reach with the `chmod` to run, and changes nothing. The
 cache directory, `${XDG_CACHE_HOME:-~/.cache}/agentfeedback/`, keeps only the
 client log (`log/client.jsonl`) and `digest/` output; a spool left there by a
 version before 4.0 is reported by `doctor` and is not read any more.
+
+The same layout applies on every operating system, macOS and Windows
+included: with `XDG_DATA_HOME`, `XDG_CONFIG_HOME` and `XDG_CACHE_HOME` unset
+(or not absolute), the directories are `.local/share/agentfeedback`,
+`.config/agentfeedback` and `.cache/agentfeedback` under the home directory.
+On Windows that is `%USERPROFILE%\.local\share\agentfeedback\agentfeedback.db`
+for the database and `%USERPROFILE%\.config\agentfeedback\config.toml` for
+the config file; `agentfeedback doctor` prints both. Owner-only modes are not
+set or checked on Windows.
 
 ## Bare binary (no Docker)
 
@@ -175,8 +184,25 @@ Unknown names exit 2. The last stdout line is a JSON outcome (`status`
 `installed`, `unchanged`, `uninstalled`, `dry_run` or `error`, `harnesses`,
 `changed`, `backups`, `next`); progress goes to stderr. Running install twice
 changes nothing the second time (`unchanged`); a changed mode, binary path,
-server, `--with-reminder` or `--docs` replaces what the previous run added. Not
-supported on Windows.
+server, `--with-reminder` or `--docs` replaces what the previous run added.
+
+The list (`--list`, or no harness named) shows, per harness wired with the
+skill and hook, the binary its hook runs and that binary's version
+(`binary`, `binary_version`; `missing` when the file is gone, `unknown` when
+it does not answer `version --json`); an MCP entry points at a URL and shows
+none. `install` warns on stderr and in the outcome's `warnings` when the
+binary it wires is not the `agentfeedback` on `PATH`, or none is on `PATH`:
+agents run the one on `PATH` and hooks the one wired, and the newer of two
+binaries makes the older one fail on the local database (see
+[Upgrading and downgrading](#upgrading-and-downgrading)).
+
+On Windows `install` and `uninstall` refuse (exit 2). `install` (`--list`
+included) prints the manual steps for each detected harness, or each named
+one, on stderr and in the outcome's `manual` list: the skill path and a
+PowerShell command that writes it (`agentfeedback skill render skill-md`, as
+UTF-8), the MCP entry (file, key and value) when a server URL is configured,
+and the instruction-file text (`agentfeedback skill render agents-md`). Hooks
+are not wired on Windows; undo the steps by hand.
 
 | Harness | Detected by | Skill | Hook (default) | Reminder | MCP entry (`--mcp`) |
 |---|---|---|---|---|---|
@@ -524,12 +550,33 @@ the source tombstones the target still holds unredacted; redact those on the
 target by hand. `--to cloud` targets the hosted service at
 `https://api.agentfeedback.io`.
 
-## Upgrade
+## Upgrading and downgrading
 
-`bash scripts/deploy.sh <new-commit-sha>`. Schema changes apply automatically
-at startup, forward only; a binary older than the database's schema refuses
-to start rather than corrupting it. Take a physical backup first. Rolling back
-the image does not roll back the schema.
+The newest binary wins. Every binary migrates the database forward when it
+opens it (`serve` at startup, a local-mode command on its first request), and
+a binary older than the database's schema refuses it rather than writing rows
+the schema no longer expects: the command exits 1 with `database schema is
+newer than this binary supports`, and `client.jsonl` gets an `error` line
+whose reason starts with `schema_too_new`. Harness hooks log the same line and
+still exit 0, so a stale hook binary shows up only there and in
+`agentfeedback doctor`, which lists the binary each harness's hook runs, its
+version, and the `agentfeedback` on `PATH`, and reports a hook binary that is
+missing, does not answer `version --json`, or is older than the one running
+`doctor`. Keep one binary per machine,
+and after an upgrade rerun `agentfeedback install <harness>` from it when
+`doctor` names an older one.
+
+Upgrade: replace the binary (or `bash scripts/deploy.sh <new-commit-sha>` for
+the image) after a backup. Schema changes are forward only; rolling back the
+binary or the image does not roll back the schema.
+
+Downgrade: with the newest binary, `agentfeedback backup <copy.db>` and
+`agentfeedback export > records.ndjson` (or keep an export you already have);
+then move `agentfeedback.db` and its `-wal` and `-shm` files aside (a
+server with its own `DATABASE_PATH` points that at a new file instead) and
+run the older binary's `agentfeedback import records.ndjson`, which creates
+the database. Import keeps the ids. The backup stays as the copy to return
+to.
 
 From v3 to v4 the database starts over: a v4 binary refuses a v3 database
 at startup and names the path. Keep the old database with the image that wrote

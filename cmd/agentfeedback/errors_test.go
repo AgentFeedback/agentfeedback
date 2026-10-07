@@ -125,6 +125,15 @@ var catalogue = map[string]error{
 	"errServeInitDB":              errServeInitDB("/d", "is a directory"),
 	"errServerKeyFile":            errServerKeyFile("/k", "does not exist"),
 	"errServerBinary":             errServerBinary(errors.New("unknown")),
+	"errInstallWindows":           errInstallWindows("install"),
+	"errInstallWindowsUninstall":  errInstallWindows("uninstall"),
+	"errHarnessStatus":            errHarnessStatus(errors.New("bad json")),
+	"errHarnessBinaryMissing":     errHarnessBinaryMissing("claude-code", "/b/agentfeedback"),
+	"errHarnessBinaryOld":         errHarnessBinaryOld("claude-code", "/b/agentfeedback", "4.0.0", "4.1.0"),
+	"errHarnessBinaryUnknown":     errHarnessBinaryUnknown("claude-code", "/b/agentfeedback"),
+	"errConfigUnknownKey":         errConfigUnknownKey("/c/config.toml", "collect.deny_path"),
+	"errCollectWarning":           errCollectWarning(`collect.deny_paths: ignoring "rel": not an absolute path or ~/ path`),
+	"errDoctorWorkdir":            errDoctorWorkdir(errors.New("getwd: no such file or directory")),
 }
 
 var nextVerbs = []string{

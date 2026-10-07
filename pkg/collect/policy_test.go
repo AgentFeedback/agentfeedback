@@ -163,3 +163,33 @@ func TestDisabledDecisionOutcome(t *testing.T) {
 		t.Fatalf("exit %d, line %q", o.ExitCode(), b.String())
 	}
 }
+
+// TestLint: every setting problem is listed whatever Check decides: the
+// user's relative path entries (even with collection disabled or opt-in off)
+// and the repository file's warnings.
+func TestLint(t *testing.T) {
+	base := t.TempDir()
+	home := mkdir(t, filepath.Join(base, "home"))
+	repo := minimalRepo(t, mkdir(t, filepath.Join(base, "repo")))
+	write(t, filepath.Join(repo, RepoFile), "[collect]\nopt_in_only = true\n")
+	plain := mkdir(t, filepath.Join(base, "plain"))
+
+	got := Lint(plain, home, Policy{Disabled: true, DenyPaths: []string{"rel/deny", "~/ok"}, OptInPaths: []string{"rel/in"}})
+	want := []string{
+		`collect.deny_paths: ignoring "rel/deny": not an absolute path or ~/ path`,
+		`collect.opt_in_paths: ignoring "rel/in": not an absolute path or ~/ path`,
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("user entries: %q, want %q", got, want)
+	}
+	if got := Lint(plain, home, Policy{DenyPaths: []string{"~/ok", "/abs"}}); len(got) != 0 {
+		t.Fatalf("clean policy: %q", got)
+	}
+	got = Lint(repo, home, Policy{})
+	if len(got) != 1 || !strings.Contains(got[0], `ignoring "collect.opt_in_only": a repository file may only narrow`) {
+		t.Fatalf("repository file: %q", got)
+	}
+	if d := Check(plain, home, Policy{DenyPaths: []string{"rel/deny"}}); !slices.Equal(d.Warnings, want[:1]) {
+		t.Fatalf("Check warning %q differs from Lint's", d.Warnings)
+	}
+}

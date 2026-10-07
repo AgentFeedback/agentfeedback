@@ -138,6 +138,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	skipStartupPass = false
 	err := cmd.run(args[1:], stdin, stdout, stderr)
 	closeLocal()
+	if err != nil {
+		if cache, cerr := cacheDir(os.Getenv); cerr == nil {
+			logSchemaTooNew(cache, err)
+		}
+	}
 	switch {
 	case err == nil:
 		return 0

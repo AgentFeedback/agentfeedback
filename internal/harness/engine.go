@@ -59,7 +59,10 @@ type HarnessRecord struct {
 	Mode     string `json:"mode"`
 	Reminder bool   `json:"reminder"`
 	Docs     bool   `json:"docs"`
-	Items    []Item `json:"items"`
+	// Binary is the agentfeedback binary the CLI-mode hooks of this harness
+	// run; empty for MCP mode and for records written before it was kept.
+	Binary string `json:"binary,omitempty"`
+	Items  []Item `json:"items"`
 }
 
 // FileRecord is one file install changed or created. Diverged marks a file
@@ -136,6 +139,13 @@ func LoadManifest(path string) (m *Manifest, raw []byte, err error) {
 	}
 	if m.Files == nil {
 		m.Files = map[string]*FileRecord{}
+	}
+	// A record written before records carried their own binary runs the
+	// manifest-wide one as loaded, before a later run overwrites it.
+	for _, rec := range m.Harnesses {
+		if rec != nil && rec.Mode == ModeCLI && rec.Binary == "" {
+			rec.Binary = m.Binary
+		}
 	}
 
 	return m, raw, nil
@@ -758,6 +768,9 @@ func (p *plan) install(name string, o Options) error {
 		final[i] = it
 	}
 	s.record = &HarnessRecord{Mode: o.Mode, Reminder: o.Reminder && o.Mode == ModeCLI, Docs: o.Docs, Items: final}
+	if o.Mode == ModeCLI {
+		s.record.Binary = o.Binary
+	}
 	p.man.Harnesses[name] = s.record
 
 	return nil
@@ -920,15 +933,19 @@ type Request struct {
 
 // HarnessStatus is one harness as a run leaves it.
 type HarnessStatus struct {
-	Name     string   `json:"name"`
-	Detected string   `json:"detected,omitempty"`
-	Mode     string   `json:"mode"`
-	Skill    string   `json:"skill"`
-	MCP      string   `json:"mcp"`
-	Hook     string   `json:"hook"`
-	Reminder string   `json:"reminder"`
-	Docs     string   `json:"docs"`
-	Notes    []string `json:"notes,omitempty"`
+	Name     string `json:"name"`
+	Detected string `json:"detected,omitempty"`
+	Mode     string `json:"mode"`
+	Skill    string `json:"skill"`
+	MCP      string `json:"mcp"`
+	Hook     string `json:"hook"`
+	Reminder string `json:"reminder"`
+	Docs     string `json:"docs"`
+	// Binary is the agentfeedback binary a CLI-mode harness's hooks run,
+	// and BinaryVersion its version when Env.Version is set.
+	Binary        string   `json:"binary,omitempty"`
+	BinaryVersion string   `json:"binary_version,omitempty"`
+	Notes         []string `json:"notes,omitempty"`
 }
 
 // Result is what a run did, or with DryRun would do.
@@ -983,7 +1000,7 @@ func (e Env) Run(req Request) (Result, error) {
 	manifestChanged := (manifestGone && raw != nil) || (!manifestGone && !bytes.Equal(newRaw, raw))
 	for _, s := range p.steps {
 		for _, c := range s.first {
-			res.Commands = append(res.Commands, "claude "+strings.Join(quoteArgs(c), " "))
+			res.Commands = append(res.Commands, ClaudeCommand(c))
 		}
 		for _, path := range s.files {
 			f := p.files[path]
@@ -1054,6 +1071,12 @@ type written struct {
 	backups   []string
 	manifest  bool
 	firstDirs []string // directories the run's first manifest write created
+}
+
+// ClaudeCommand is the claude command line with args, quoted for a POSIX
+// shell where an argument needs it.
+func ClaudeCommand(args []string) string {
+	return "claude " + strings.Join(quoteArgs(args), " ")
 }
 
 func quoteArgs(args []string) []string {
@@ -1127,9 +1150,9 @@ func (e Env) apply(p *plan, applied *Manifest, mpath string, req Request, w *wri
 		rec := applied.Harnesses[s.name]
 		if rec != nil {
 			oldItems = slices.Clone(rec.Items)
-			rec = &HarnessRecord{Mode: rec.Mode, Reminder: rec.Reminder, Docs: rec.Docs, Items: slices.Clone(rec.Items)}
+			rec = &HarnessRecord{Mode: rec.Mode, Reminder: rec.Reminder, Docs: rec.Docs, Binary: rec.Binary, Items: slices.Clone(rec.Items)}
 		} else if s.record != nil {
-			rec = &HarnessRecord{Mode: s.record.Mode, Reminder: s.record.Reminder, Docs: s.record.Docs}
+			rec = &HarnessRecord{Mode: s.record.Mode, Reminder: s.record.Reminder, Docs: s.record.Docs, Binary: s.record.Binary}
 		} else {
 			rec = &HarnessRecord{}
 		}
@@ -1469,6 +1492,9 @@ func (p *plan) status(name string) HarnessStatus {
 		return hs
 	}
 	hs.Mode = rec.Mode
+	if rec.Mode == ModeCLI {
+		hs.Binary = rec.Binary
+	}
 	col := map[string]*string{RoleSkill: &hs.Skill, RoleMCP: &hs.MCP, RoleHook: &hs.Hook, RoleReminder: &hs.Reminder, RoleDocs: &hs.Docs}
 	for _, it := range rec.Items {
 		c := col[it.Role]
@@ -1494,8 +1520,18 @@ func (e Env) Status() ([]HarnessStatus, error) {
 	located, _ := e.withRecorded(man)
 	p := newPlan(located, man)
 	out := p.statuses(names)
+	versions := map[string]string{}
 	for i := range out {
 		out[i].Detected = e.Detect(out[i].Name)
+		if e.Version == nil || out[i].Binary == "" {
+			continue
+		}
+		v, ok := versions[out[i].Binary]
+		if !ok {
+			v = e.Version(out[i].Binary)
+			versions[out[i].Binary] = v
+		}
+		out[i].BinaryVersion = v
 	}
 
 	return out, nil

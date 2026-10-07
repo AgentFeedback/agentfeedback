@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log/slog"
 
 	"github.com/agentfeedback/agentfeedback/v4/internal/localmode"
+	"github.com/agentfeedback/agentfeedback/v4/internal/store"
 	"github.com/agentfeedback/agentfeedback/v4/pkg/client"
 )
 
@@ -212,7 +214,15 @@ func errModeBoth() error {
 	return usageErr("--local and --server are both set", "pass one of them")
 }
 
+// errLocalOpen keeps err as its cause, so a newer schema stays detectable.
 func errLocalOpen(path string, err error) error {
-	return failErr(fmt.Sprintf("the local database %s cannot be opened: %s", path, oneLine(err.Error())),
-		"check the data directory is writable, or set AGENT_FEEDBACK_URL to use a server")
+	next := "check the data directory is writable, or set AGENT_FEEDBACK_URL to use a server"
+	if errors.Is(err, store.ErrSchemaTooNew) {
+		next = "run the newest agentfeedback binary, which migrates the database on open; to downgrade, " +
+			"run agentfeedback export > records.ndjson with the newest binary, then the older binary's import records.ndjson into a new database"
+	}
+	e := failErr(fmt.Sprintf("the local database %s cannot be opened: %s", path, oneLine(err.Error())), next)
+	e.cause = err
+
+	return e
 }
