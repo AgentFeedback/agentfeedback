@@ -705,3 +705,198 @@ func TestInstall_QuotedBinary(t *testing.T) {
 		t.Errorf("plain path quoted: %s", got)
 	}
 }
+
+func geminiEnv(t *testing.T, home *string) Env {
+	t.Helper()
+	e := testEnv(t)
+	e.Getenv = func(k string) string {
+		if k == "GEMINI_CLI_HOME" {
+			return *home
+		}
+
+		return ""
+	}
+
+	return e
+}
+
+// TestInstall_GeminiCLIHome: gemini-cli follows an absolute GEMINI_CLI_HOME,
+// ignores a relative one, and antigravity keeps ~/.gemini.
+func TestInstall_GeminiCLIHome(t *testing.T) {
+	for _, tt := range []struct {
+		name, home string
+		abs        bool
+	}{
+		{"set", "gemini-home", true},
+		{"unset", "", false},
+		{"relative", "gemini-home", false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var home string
+			e := geminiEnv(t, &home)
+			home = tt.home
+			want := filepath.Join(e.Home, ".gemini")
+			if tt.abs {
+				home = filepath.Join(e.Home, tt.home)
+				want = filepath.Join(home, ".gemini")
+			}
+			if _, err := e.Run(cliRequest("gemini-cli", "antigravity")); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Stat(filepath.Join(want, "skills", "agentfeedback", "SKILL.md")); err != nil {
+				t.Errorf("gemini-cli skill: %v", err)
+			}
+			if _, err := os.Stat(filepath.Join(e.Home, ".gemini", "config", "skills", "agentfeedback", "SKILL.md")); err != nil {
+				t.Errorf("antigravity skill: %v", err)
+			}
+			m, _, err := LoadManifest(e.ManifestPath())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if m.GeminiCLIHome != want {
+				t.Errorf("gemini_cli_home %q, want %q", m.GeminiCLIHome, want)
+			}
+		})
+	}
+}
+
+// TestUninstall_RecordedGeminiCLIHome: uninstall under another
+// GEMINI_CLI_HOME uses the recorded location and notes it.
+func TestUninstall_RecordedGeminiCLIHome(t *testing.T) {
+	var home string
+	e := geminiEnv(t, &home)
+	home = filepath.Join(e.Home, "gemini-a")
+	first := filepath.Join(home, ".gemini")
+	if _, err := e.Run(cliRequest("gemini-cli")); err != nil {
+		t.Fatal(err)
+	}
+	home = filepath.Join(e.Home, "gemini-b")
+	res, err := e.Run(Request{Harnesses: []string{"gemini-cli"}, Uninstall: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	note := "gemini-cli was installed into " + first + "; using that location"
+	if len(res.Harnesses) != 1 || !slices.Contains(res.Harnesses[0].Notes, note) {
+		t.Errorf("notes %+v", res.Harnesses)
+	}
+	if _, err := os.Stat(filepath.Join(first, "skills", "agentfeedback")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the recorded skill was not removed: %v", err)
+	}
+}
+
+// TestInstall_RecordedGeminiCLIHome: reinstall under another GEMINI_CLI_HOME
+// keeps the recorded location and notes it.
+func TestInstall_RecordedGeminiCLIHome(t *testing.T) {
+	var home string
+	e := geminiEnv(t, &home)
+	home = filepath.Join(e.Home, "gemini-a")
+	first := filepath.Join(home, ".gemini")
+	if _, err := e.Run(cliRequest("gemini-cli")); err != nil {
+		t.Fatal(err)
+	}
+	home = filepath.Join(e.Home, "gemini-b")
+	res, err := e.Run(cliRequest("gemini-cli"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	note := "gemini-cli was installed into " + first + "; using that location"
+	if len(res.Harnesses) != 1 || !slices.Contains(res.Harnesses[0].Notes, note) {
+		t.Errorf("notes %+v", res.Harnesses)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".gemini")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the new GEMINI_CLI_HOME was written: %v", err)
+	}
+	m, _, err := LoadManifest(e.ManifestPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.GeminiCLIHome != first {
+		t.Errorf("gemini_cli_home %q, want %q", m.GeminiCLIHome, first)
+	}
+}
+
+// TestInstall_UnrelatedKeepsRecordedGeminiCLIHome: installing another
+// harness accepts a manifest recording a non-default gemini-cli location.
+func TestInstall_UnrelatedKeepsRecordedGeminiCLIHome(t *testing.T) {
+	var home string
+	e := geminiEnv(t, &home)
+	home = filepath.Join(e.Home, "gemini-a")
+	first := filepath.Join(home, ".gemini")
+	if _, err := e.Run(cliRequest("gemini-cli")); err != nil {
+		t.Fatal(err)
+	}
+	home = ""
+	if _, err := e.Run(cliRequest("antigravity")); err != nil {
+		t.Fatal(err)
+	}
+	m, _, err := LoadManifest(e.ManifestPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.GeminiCLIHome != first || m.Harnesses["antigravity"] == nil {
+		t.Errorf("gemini_cli_home %q, harnesses %v", m.GeminiCLIHome, slices.Collect(maps.Keys(m.Harnesses)))
+	}
+}
+
+// A manifest written before gemini_cli_home existed came from a build that
+// always used ~/.gemini: later runs keep it even with GEMINI_CLI_HOME set.
+func TestInstall_GeminiLegacyManifest(t *testing.T) {
+	var home string
+	e := geminiEnv(t, &home)
+	legacy := filepath.Join(e.Home, ".gemini")
+	if _, err := e.Run(cliRequest("gemini-cli")); err != nil {
+		t.Fatal(err)
+	}
+	strip := func() {
+		t.Helper()
+		data, err := os.ReadFile(e.ManifestPath())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var doc map[string]any
+		if err := json.Unmarshal(data, &doc); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := doc["gemini_cli_home"]; !ok {
+			t.Fatalf("manifest has no gemini_cli_home: %s", data)
+		}
+		delete(doc, "gemini_cli_home")
+		out, err := json.Marshal(doc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(e.ManifestPath(), out, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	home = filepath.Join(e.Home, "gemini-b")
+	moved := filepath.Join(home, ".gemini")
+	note := "gemini-cli was installed into " + legacy + "; using that location"
+
+	strip()
+	if _, err := e.Run(cliRequest("antigravity")); err != nil {
+		t.Fatalf("unrelated install: %v", err)
+	}
+	strip()
+	res, err := e.Run(cliRequest("gemini-cli"))
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	if len(res.Harnesses) != 1 || !slices.Contains(res.Harnesses[0].Notes, note) {
+		t.Errorf("install notes %+v", res.Harnesses)
+	}
+	strip()
+	res, err = e.Run(Request{Harnesses: []string{"gemini-cli"}, Uninstall: true})
+	if err != nil {
+		t.Fatalf("uninstall: %v", err)
+	}
+	if len(res.Harnesses) != 1 || !slices.Contains(res.Harnesses[0].Notes, note) {
+		t.Errorf("uninstall notes %+v", res.Harnesses)
+	}
+	if _, err := os.Stat(filepath.Join(legacy, "skills", "agentfeedback")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the legacy skill was not removed: %v", err)
+	}
+	if _, err := os.Stat(moved); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("GEMINI_CLI_HOME was written: %v", err)
+	}
+}

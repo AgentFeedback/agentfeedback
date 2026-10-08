@@ -315,6 +315,11 @@ func TestPingWhileBusyReportsCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
+	// The lock must be observed first, so the deadline has a busy cause
+	// to wrap.
+	if err := db.PingContext(ctx); !IsBusy(err) {
+		t.Fatalf("expected the held lock to make a ping busy, got %v", err)
+	}
 	cctx, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
 	defer cancel()
 	err = pingWhileBusy(cctx, db)

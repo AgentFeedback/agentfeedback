@@ -292,7 +292,7 @@ are not wired on Windows; undo the steps by hand.
 | `cline` | `cline`, `~/.cline` | `~/.cline/skills/agentfeedback/SKILL.md` | none | not supported | `~/.cline/data/settings/cline_mcp_settings.json` `mcpServers.agentfeedback`; the key reference in the header may not be expanded | documented 2026-10-07 |
 | `amp` | `amp`, `<xdg>/amp` (`<xdg>` is `${XDG_CONFIG_HOME:-~/.config}`) | `<xdg>/amp/skills/agentfeedback/SKILL.md` | none | not supported | `amp.mcpServers` member `agentfeedback` in `<xdg>/amp/settings.jsonc` when it exists, else `settings.json` | documented 2026-10-07 |
 | `vscode` | `code`, `<Code/User>`: `<xdg>/Code/User` on Linux, `~/Library/Application Support/Code/User` on macOS | none: VS Code reads the skill the `copilot` or `claude-code` adapter installs | none | not supported | `<Code/User>/mcp.json` `servers.agentfeedback` | documented 2026-10-07 |
-| `gemini-cli` | `gemini` (`~/.gemini` is shared with antigravity) | `~/.gemini/skills/agentfeedback/SKILL.md` | none | not supported | none | documented 2026-10-07 |
+| `gemini-cli` | `gemini` (`~/.gemini` is shared with antigravity unless `$GEMINI_CLI_HOME` is set) | `$GEMINI_CLI_HOME/.gemini/skills/agentfeedback/SKILL.md` (default `~/.gemini/skills/agentfeedback/SKILL.md`) | none | not supported | none | documented 2026-10-07 |
 <!-- harness-table:end -->
 
 - **Hooks.** Every hook runs `agentfeedback hook <harness> <event>` on the
@@ -437,15 +437,17 @@ are not wired on Windows; undo the steps by hand.
   entry unrecorded; the next run then refuses it as foreign, naming it,
   except that a leftover backup equal to its file is taken over as the
   backup and an empty skill directory the manifest records as created is
-  reused. The manifest records the Codex home and Claude Code configuration
-  directory of the harnesses it keeps; a later run under another
-  `CODEX_HOME` or `CLAUDE_CONFIG_DIR` keeps using the recorded location for
+  reused. The manifest records the Codex home, Claude Code configuration
+  directory and Gemini CLI `.gemini` directory of the harnesses it keeps; a
+  later run under another `CODEX_HOME`, `CLAUDE_CONFIG_DIR` or
+  `GEMINI_CLI_HOME` keeps using the recorded location for
   that harness, notes it, and runs `claude` with `CLAUDE_CONFIG_DIR` as
   recorded: set to the recorded directory when it was set at install, even
   to `~/.claude`, and unset when it was unset. Install refuses a
   manifest that names a path it does not write under the current
-  environment: run it with the `HOME`, `XDG_CONFIG_HOME`, `CODEX_HOME` and
-  `CLAUDE_CONFIG_DIR` of the install, or fix the manifest.
+  environment: run it with the `HOME`, `XDG_CONFIG_HOME`, `CODEX_HOME`,
+  `CLAUDE_CONFIG_DIR` and `GEMINI_CLI_HOME` of the install, or fix the
+  manifest.
   Empty directories install created go, and so does the manifest when
   no harness is left. What a harness added to a file install created (OpenCode
   adds `$schema`) stays.
@@ -460,6 +462,10 @@ are not wired on Windows; undo the steps by hand.
   `.claude.json` (to `$CLAUDE_CONFIG_DIR/.claude.json`), and install follows
   it. Set to `~/.claude` counts as set: Claude Code then reads
   `~/.claude/.claude.json`, not `~/.claude.json`.
+- **`GEMINI_CLI_HOME`** replaces the home directory for Gemini CLI, which
+  then keeps its skills and `GEMINI.md` in `$GEMINI_CLI_HOME/.gemini`;
+  `install gemini-cli` follows an absolute value and ignores a relative one.
+  Antigravity does not read it and keeps `~/.gemini`.
 - **Claude Code's MCP entry** is checked against `.claude.json`
   (`~/.claude.json`, or `$CLAUDE_CONFIG_DIR/.claude.json` when the variable
   is set; read only): an entry removed by hand is added again by install

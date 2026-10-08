@@ -584,7 +584,7 @@ var registry = []Adapter{
 		MCP: MCP{File: func(e Env) string { return filepath.Join(e.geminiDir(), "config", "mcp_config.json") }, Path: []string{"mcpServers"}, EnvRef: "${AGENT_FEEDBACK_API_KEY}"},
 		Sessions: Sessions{Locations: []string{"~/.gemini/antigravity*/brain/<id>/.system_generated/logs/transcript.jsonl"}, Reader: "none", NoReader: "the session stores were examined and are not read; see docs/sessions.md",
 			Verified: Verified{Level: LevelUnsupported, Date: verifiedDate, Note: "docs/sessions.md#antigravity"}},
-		Caveats:  []string{"the legacy Cascade configuration is not wired", "~/.gemini/GEMINI.md is shared with gemini-cli"},
+		Caveats:  []string{"the legacy Cascade configuration is not wired", "~/.gemini/GEMINI.md is shared with gemini-cli unless GEMINI_CLI_HOME is set"},
 		Verified: documented(),
 		hook: func(p *plan, o Options) ([]Item, []string) {
 			handler := func(event string) string {
@@ -770,15 +770,15 @@ var registry = []Adapter{
 		Name:       "gemini-cli",
 		Binaries:   []string{"gemini"},
 		ConfigDirs: func(Env) []string { return nil },
-		SkillDirs:  func(e Env) []string { return []string{filepath.Join(e.geminiDir(), "skills")} },
+		SkillDirs:  func(e Env) []string { return []string{filepath.Join(e.geminiCLIDir(), "skills")} },
 		Instructions: Instructions{
-			Global:  func(e Env) []string { return []string{filepath.Join(e.geminiDir(), "GEMINI.md")} },
+			Global:  func(e Env) []string { return []string{filepath.Join(e.geminiCLIDir(), "GEMINI.md")} },
 			Project: []string{"GEMINI.md"},
 		},
 		Hook:     Hook{Format: "none", NoHook: "not wired yet", Events: events("AfterTool", "AfterAgent", "SessionStart"), Deliver: "none", NoDeliver: noHookDeliver},
 		MCP:      MCP{NoMCP: "not wired yet"},
 		Sessions: Sessions{Locations: []string{"<gemini dir>/tmp/<project>/chats/session-*.jsonl"}, Reader: "gemini-cli-jsonl", Verified: Verified{Level: LevelFixtureTested, Date: verifiedDate, Note: "fixtures written from upstream source: Gemini CLI 0.63.0"}},
-		Caveats:  []string{"detected by its binary only: ~/.gemini is shared with antigravity"},
+		Caveats:  []string{"detected by its binary only: ~/.gemini is shared with antigravity unless GEMINI_CLI_HOME is set"},
 		Verified: documented(),
 		files:    func(Env) ([]string, []string) { return nil, nil },
 		noMCP: &Refusal{
@@ -786,8 +786,8 @@ var registry = []Adapter{
 			Next:    "run agentfeedback install gemini-cli without --mcp",
 		},
 		row: docsRow{
-			detected: "`gemini` (`~/.gemini` is shared with antigravity)",
-			skill:    "`~/.gemini/skills/agentfeedback/SKILL.md`",
+			detected: "`gemini` (`~/.gemini` is shared with antigravity unless `$GEMINI_CLI_HOME` is set)",
+			skill:    "`$GEMINI_CLI_HOME/.gemini/skills/agentfeedback/SKILL.md` (default `~/.gemini/skills/agentfeedback/SKILL.md`)",
 			hook:     "none",
 			reminder: "not supported",
 			mcp:      "none",

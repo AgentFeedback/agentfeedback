@@ -56,11 +56,11 @@ type Env struct {
 	// Status fills HarnessStatus.BinaryVersion with it.
 	Version func(path string) string
 
-	// codexAt and claudeAt are the locations a manifest recorded, used
-	// instead of the environment's for a harness it records; claudeAtSet
-	// is whether CLAUDE_CONFIG_DIR was set at that install.
-	codexAt, claudeAt string
-	claudeAtSet       bool
+	// codexAt, claudeAt and geminiAt are the locations a manifest
+	// recorded, used instead of the environment's for a harness it records;
+	// claudeAtSet is whether CLAUDE_CONFIG_DIR was set at that install.
+	codexAt, claudeAt, geminiAt string
+	claudeAtSet                 bool
 }
 
 // Names lists every harness the package knows.
@@ -111,6 +111,19 @@ func (e Env) codexHome() string {
 	return filepath.Join(e.Home, ".codex")
 }
 
+// geminiCLIDir is Gemini CLI's .gemini directory: $GEMINI_CLI_HOME/.gemini
+// when the variable is an absolute path, otherwise ~/.gemini.
+func (e Env) geminiCLIDir() string {
+	if e.geminiAt != "" {
+		return e.geminiAt
+	}
+	if d := e.Getenv("GEMINI_CLI_HOME"); d != "" && filepath.IsAbs(d) {
+		return filepath.Join(d, ".gemini")
+	}
+
+	return e.geminiDir()
+}
+
 // claudeDir is ${CLAUDE_CONFIG_DIR:-~/.claude}; Claude Code keeps its
 // settings and skills there.
 func (e Env) claudeDir() string {
@@ -146,14 +159,24 @@ func (e Env) claudeJSON() string {
 	return filepath.Join(e.Home, ".claude.json")
 }
 
-// withRecorded returns e using the Codex and Claude Code locations the
-// manifest recorded for the harnesses it records, with a note per harness
-// whose location differs from the environment's.
+// withRecorded returns e using the Codex, Claude Code and Gemini CLI
+// locations the manifest recorded for the harnesses it records, with a note
+// per harness whose location differs from the environment's.
 func (e Env) withRecorded(m *Manifest) (Env, map[string]string) {
 	notes := map[string]string{}
 	if m.Harnesses["codex"] != nil && m.CodexHome != "" && m.CodexHome != e.codexHome() {
 		e.codexAt = m.CodexHome
 		notes["codex"] = "codex was installed with CODEX_HOME=" + m.CodexHome + "; using that location"
+	}
+	// A manifest without gemini_cli_home was written by a build that
+	// always used ~/.gemini.
+	gemini := m.GeminiCLIHome
+	if gemini == "" {
+		gemini = filepath.Join(e.Home, ".gemini")
+	}
+	if m.Harnesses["gemini-cli"] != nil && gemini != e.geminiCLIDir() {
+		e.geminiAt = gemini
+		notes["gemini-cli"] = "gemini-cli was installed into " + gemini + "; using that location"
 	}
 	// A manifest without claude_config_dir_set names a directory other
 	// than ~/.claude only when CLAUDE_CONFIG_DIR was set.
@@ -174,9 +197,12 @@ func (e Env) withRecorded(m *Manifest) (Env, map[string]string) {
 // recordLocations stores the locations the run used for the harnesses the
 // manifest keeps.
 func (e Env) recordLocations(m *Manifest) {
-	m.CodexHome, m.ClaudeConfigDir, m.ClaudeConfigDirSet = "", "", false
+	m.CodexHome, m.ClaudeConfigDir, m.ClaudeConfigDirSet, m.GeminiCLIHome = "", "", false, ""
 	if m.Harnesses["codex"] != nil {
 		m.CodexHome = e.codexHome()
+	}
+	if m.Harnesses["gemini-cli"] != nil {
+		m.GeminiCLIHome = e.geminiCLIDir()
 	}
 	if m.Harnesses["claude-code"] != nil {
 		m.ClaudeConfigDir, m.ClaudeConfigDirSet = e.claudeDir(), e.claudeSet()
@@ -672,7 +698,7 @@ func (e Env) validateManifest(m *Manifest, mpath string) error {
 	bad := func(x string) error {
 		return &Refusal{
 			Problem: "the install manifest " + mpath + " names " + x + ", which agentfeedback install does not write under this environment",
-			Next:    "run with the HOME, XDG_CONFIG_HOME, CODEX_HOME and CLAUDE_CONFIG_DIR of the install, or fix the manifest",
+			Next:    "run with the HOME, XDG_CONFIG_HOME, CODEX_HOME, CLAUDE_CONFIG_DIR and GEMINI_CLI_HOME of the install, or fix the manifest",
 		}
 	}
 	for _, n := range sortedKeys(m.Harnesses) {

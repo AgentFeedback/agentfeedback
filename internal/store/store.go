@@ -147,8 +147,12 @@ func Open(ctx context.Context, path string) (*DB, error) {
 // may itself wait up to busyTimeout.
 func pingWhileBusy(ctx context.Context, db *sql.DB) error {
 	deadline := time.Now().Add(busyTimeout)
+	var last error
 	for {
 		err := db.PingContext(ctx)
+		if err != nil && last != nil && ctx.Err() != nil && !IsBusy(err) {
+			return fmt.Errorf("%w (last attempt: %w)", ctx.Err(), last)
+		}
 		if err == nil || !IsBusy(err) || time.Now().After(deadline) {
 			return err
 		}
@@ -157,6 +161,7 @@ func pingWhileBusy(ctx context.Context, db *sql.DB) error {
 			return fmt.Errorf("%w (last attempt: %w)", ctx.Err(), err)
 		case <-time.After(20 * time.Millisecond):
 		}
+		last = err
 	}
 }
 
