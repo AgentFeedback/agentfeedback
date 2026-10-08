@@ -362,7 +362,7 @@ func TestBlocksStayInTheirChannel(t *testing.T) {
 }
 
 func TestLoadRejectsABrokenSource(t *testing.T) {
-	good := `{"name":"n","title":"T","description":"d","version":"1.0","fragments":["a"]}`
+	good := `{"name":"n","title":"T","description":"d","version":"1.0","rule":"r","project_rule":"p","fragments":["a"]}`
 	frag := &fstest.MapFile{Data: []byte("## A\n")}
 	for name, files := range map[string]fstest.MapFS{
 		"duplicate id":  {"source/skill.json": {Data: []byte(strings.Replace(good, `["a"]`, `["a","a"]`, 1))}, "source/a.md": frag},
@@ -370,6 +370,7 @@ func TestLoadRejectsABrokenSource(t *testing.T) {
 		"missing file":  {"source/skill.json": {Data: []byte(good)}},
 		"unknown key":   {"source/skill.json": {Data: []byte(strings.Replace(good, `"name"`, `"extra":1,"name"`, 1))}, "source/a.md": frag},
 		"no version":    {"source/skill.json": {Data: []byte(strings.Replace(good, `"1.0"`, `""`, 1))}, "source/a.md": frag},
+		"no rule":       {"source/skill.json": {Data: []byte(strings.Replace(good, `"rule":"r",`, ``, 1))}, "source/a.md": frag},
 	} {
 		if _, _, err := load(files); err == nil {
 			t.Errorf("%s: accepted", name)
@@ -377,6 +378,44 @@ func TestLoadRejectsABrokenSource(t *testing.T) {
 	}
 	if _, frags, err := load(fstest.MapFS{"source/skill.json": {Data: []byte(good)}, "source/a.md": frag}); err != nil || len(frags) != 1 {
 		t.Fatalf("good source: %v", err)
+	}
+}
+
+// Prime is the cli channel only, without the file inbox fallback, and small
+// enough for a session-start hook.
+func TestPrime(t *testing.T) {
+	out, err := Prime()
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, frags, err := Source()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(out)
+	if !strings.HasPrefix(got, "# "+m.Title+"\n\n"+m.Description+"\n\n") {
+		t.Errorf("prime does not start with the title and description:\n%.200s", got)
+	}
+	for _, f := range frags {
+		cli := f.text(ChannelCLI)
+		for _, p := range paragraphs(f.text(ChannelFile)) {
+			if !strings.Contains(cli, p) && strings.Contains(got, p) {
+				t.Errorf("prime shows file-only text of %s:\n%s", f.ID, p)
+			}
+		}
+		for _, p := range paragraphs(cli) {
+			if !strings.Contains(got, p) {
+				t.Errorf("prime lacks cli text of %s:\n%s", f.ID, p)
+			}
+		}
+	}
+	if len(out) >= 8000 {
+		t.Errorf("prime is %d bytes, want under 8000", len(out))
+	}
+	for name, s := range map[string]string{"rule": m.Rule, "project_rule": m.ProjectRule} {
+		if !strings.Contains(s, "agentfeedback prime") {
+			t.Errorf("%s does not name agentfeedback prime: %q", name, s)
+		}
 	}
 }
 

@@ -6,6 +6,8 @@
   "license": "MIT",
   "compatibility": "Any harness that can run a command. Needs the agentfeedback binary on PATH (bash scripts/install.sh in this skill installs it); with no server configured it stores reports on this machine, and agentfeedback doctor --init points it at a server.",
   "reminder": "AgentFeedback is set up here: when something slows you down (a missing or wrong doc, a tool that misbehaves, stale config), file it with agentfeedback submit friction --summary \"...\".",
+  "rule": "Always surface friction: when something slows you down (a missing or wrong doc, a tool that misbehaves, stale config, several attempts at something that should have been written down), file it with AgentFeedback. Run `agentfeedback prime` when unsure how.",
+  "project_rule": "If the `agentfeedback` command is installed, run `agentfeedback prime` and report friction as it describes.",
   "fragments": [
     "when-to-file",
     "what-to-include",

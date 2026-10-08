@@ -61,6 +61,22 @@ is not multi-tenant and is not safe to expose directly to the internet.
   you file are stored, in the data-directory database, in both modes; nothing
   of a session is sent to a server unless filed. A digest reaches the
   provider of the model that reads it ([sessions.md](sessions.md#provider-boundary)).
+- What `agentfeedback install` writes: the files of the harness table in
+  [operate.md](operate.md#wire-the-harnesses), and in CLI mode one section in each
+  harness's global instruction file (its Rule column), between
+  `<!-- agentfeedback:begin ... -->` and `<!-- agentfeedback:end -->`. Each
+  file is backed up before its first change and recorded in the install
+  manifest like the other files; the text between the markers belongs to
+  install, which replaces it in place and removes it by its markers even
+  when edited, and `--check` only reads. A repository's instruction file
+  (`AGENTS.md`, else an existing `CLAUDE.md`) is written only by
+  `install --project`, after a confirmation that names the repository and
+  the file, or with `--yes`. It gets the pointer text only, between the
+  same markers, is never committed by the tool (reviewing the commit is the
+  consent), is removed by its markers with `install --project --uninstall`
+  (the file is deleted only when nothing remains), is never followed through
+  a symbolic link (a linked file is refused), and is not recorded in the
+  manifest and not backed up.
 
 ## What gets stored
 

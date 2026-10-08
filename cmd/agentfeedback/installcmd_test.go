@@ -339,7 +339,7 @@ func TestInstall_WiredContent(t *testing.T) {
 		t.Fatalf("%+v", r)
 	}
 	settings, _ := os.ReadFile(filepath.Join(e.home, ".claude", "settings.json"))
-	for _, want := range []string{`"command": "` + e.exe + ` hook claude-code Stop"`, `"command": "` + e.exe + ` hook claude-code PostToolUseFailure"`, `"command": "` + e.exe + ` skill reminder"`, `"command": "notify-send done"`} {
+	for _, want := range []string{`"command": "` + e.exe + ` hook claude-code Stop"`, `"command": "` + e.exe + ` hook claude-code PostToolUseFailure"`, `"command": "` + e.exe + ` prime"`, `"command": "notify-send done"`} {
 		if !strings.Contains(string(settings), want) {
 			t.Errorf("settings.json lacks %s:\n%s", want, settings)
 		}
@@ -1285,7 +1285,7 @@ func TestInstall_ChangedJSONMember(t *testing.T) {
 func TestInstall_DivergedFile(t *testing.T) {
 	e := newInstallEnv(t)
 	e.seed(t)
-	if r, _ := installRun(t, "install", "claude-code"); r.code != 0 {
+	if r, _ := installRun(t, "install", "claude-code", "--with-reminder=false"); r.code != 0 {
 		t.Fatalf("%+v", r)
 	}
 	path := filepath.Join(e.home, ".claude", "settings.json")
@@ -2150,7 +2150,7 @@ func TestInstall_AllLeavesOutUnsupported(t *testing.T) {
 func TestInstall_ListShowsVerification(t *testing.T) {
 	newInstallEnv(t)
 	r := runCLI(t, "", "install", "--list")
-	if !strings.Contains(r.stdout, "DOCS  VERIFIED") || !strings.Contains(r.stdout, "live-checked 2026-10-07") {
+	if !strings.Contains(r.stdout, "DOCS  RULE  VERIFIED") || !strings.Contains(r.stdout, "live-checked 2026-10-07") {
 		t.Errorf("table: %s", r.stdout)
 	}
 	r = runCLI(t, "", "install", "--list", "--json")
@@ -2293,7 +2293,7 @@ func TestInstall_ConfigLinkedToDirectory(t *testing.T) {
 func TestInstall_SymlinkedManifestStillWritten(t *testing.T) {
 	e := newInstallEnv(t)
 	e.seed(t)
-	if r, _ := installRun(t, "install", "claude-code"); r.code != 0 {
+	if r, _ := installRun(t, "install", "claude-code", "--with-reminder=false"); r.code != 0 {
 		t.Fatalf("%+v", r)
 	}
 	mpath := filepath.Join(e.home, ".config", "agentfeedback", "install.json")

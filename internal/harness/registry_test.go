@@ -273,6 +273,12 @@ func TestRegistry_AgreesWithWiring(t *testing.T) {
 					if it.File != mcpFile && !slices.Contains(config, it.File) {
 						bad("not MCP.File " + mcpFile)
 					}
+				case RoleRule:
+					if g := a.Instructions.Global; mode != ModeCLI || g == nil || it.File != g(e)[0] {
+						bad("not the first global instruction file in CLI mode")
+					}
+
+					continue
 				}
 				if !slices.Contains(known, it.File) {
 					bad("not in files()")

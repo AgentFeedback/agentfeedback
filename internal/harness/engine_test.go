@@ -678,9 +678,9 @@ func TestInstall_QuotedBinary(t *testing.T) {
 		file string
 		want []string
 	}{
-		{".claude/settings.json", []string{q + " hook claude-code PostToolUseFailure", q + " hook claude-code Stop", q + " skill reminder"}},
-		{".codex/hooks.json", []string{q + " hook codex Stop", q + " skill reminder"}},
-		{".cursor/hooks.json", []string{q + " hook cursor postToolUseFailure", q + " hook cursor stop", q + " skill reminder"}},
+		{".claude/settings.json", []string{q + " hook claude-code PostToolUseFailure", q + " hook claude-code Stop", q + " prime"}},
+		{".codex/hooks.json", []string{q + " hook codex Stop", q + " prime"}},
+		{".cursor/hooks.json", []string{q + " hook cursor postToolUseFailure", q + " hook cursor stop", q + " prime --format cursor"}},
 		{".copilot/hooks/agentfeedback.json", []string{q + " hook copilot postToolUseFailure", q + " hook copilot agentStop"}},
 		{".gemini/config/hooks.json", []string{q + " hook antigravity PostToolUse", q + " hook antigravity PreInvocation", q + " hook antigravity Stop"}},
 		{".config/devin/config.json", []string{q + " hook devin Stop"}},

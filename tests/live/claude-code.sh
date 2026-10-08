@@ -6,10 +6,13 @@
 # --mcp with the server's URL, `claude mcp list` connects to it, a second
 # install changes nothing, uninstall removes only it; the same with --server
 # local, whose stdio entry runs `agentfeedback mcp`; the skill and the
-# PostToolUseFailure and Stop hooks install, reinstall unchanged; the installed
+# PostToolUseFailure, Stop and SessionStart hooks and the rule section in
+# CLAUDE.md install, reinstall unchanged; the SessionStart command prints the
+# guidance; the installed
 # PostToolUseFailure command, fed the same failed Bash command twice in a
 # fresh session, prints the note on the second run, and the Stop command
-# prints nothing and exits 0; uninstall restores settings.json byte for byte.
+# prints nothing and exits 0; uninstall restores settings.json byte for byte
+# and removes the CLAUDE.md it created.
 # Claude loading the skill or acting on the note needs a model session and is
 # not checked.
 set -euo pipefail
@@ -44,7 +47,7 @@ claude_() { timeout 60 claude "$@"; }
 
 check() {
   mode=$1
-  local home dir json list hook fhook bin payload out session
+  local home dir json list hook fhook shook bin payload out session
   home=/tmp/home-$mode
   dir="$home/.claude"
   mkdir -p "$dir"
@@ -99,6 +102,12 @@ check() {
   [ -n "$hook" ] || fail "$mode: no agentfeedback Stop hook in $dir/settings.json"
   fhook=$(jq -r '[.hooks.PostToolUseFailure[]?.hooks[].command | select(test("agentfeedback"))][0] // empty' "$dir/settings.json")
   [ -n "$fhook" ] || fail "$mode: no agentfeedback PostToolUseFailure hook in $dir/settings.json"
+  grep -qF '<!-- agentfeedback:begin' "$dir/CLAUDE.md" || fail "$mode: no rule section in $dir/CLAUDE.md"
+  shook=$(jq -r '[.hooks.SessionStart[]?.hooks[].command | select(test("agentfeedback"))][0] // empty' "$dir/settings.json")
+  [ -n "$shook" ] || fail "$mode: no agentfeedback SessionStart hook in $dir/settings.json"
+  out=$(cd /tmp && timeout 30 bash -c "$shook" </dev/null) || fail "$mode: the SessionStart hook command failed: $shook"
+  grep -qF "agentfeedback submit friction" <<<"$out" || fail "$mode: the SessionStart hook printed no guidance: $out"
+  pass "$mode: the rule section is in CLAUDE.md and the SessionStart hook prints the guidance"
   session="live-$mode-$$"
   payload=$(jq -cn --arg s "$session" '{session_id: $s, cwd: "/tmp", hook_event_name: "PostToolUseFailure", tool_name: "Bash",
     tool_input: {command: "npm test"}, error: "Exit code 1\nError: Cannot find module", is_interrupt: false}')
@@ -114,6 +123,7 @@ check() {
   expect unchanged install claude-code --server "$URL"
   expect uninstalled uninstall claude-code
   [ ! -e "$dir/skills/agentfeedback" ] || fail "$mode: the skill is left in $dir/skills"
+  [ ! -e "$dir/CLAUDE.md" ] || fail "$mode: the CLAUDE.md install created is left: $(cat "$dir/CLAUDE.md")"
   cmp -s /tmp/settings.before "$dir/settings.json" || fail "$mode: uninstall did not restore settings.json: $(cat "$dir/settings.json")"
   [ ! -e "$XDG_CONFIG_HOME/agentfeedback/install.json" ] || fail "$mode: the install manifest is left"
   pass "$mode: the skill and hooks install, run and uninstall, leaving settings.json as it was"

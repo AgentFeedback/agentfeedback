@@ -178,7 +178,10 @@ after `--key-from-stdin`). Never add `--force` on your own.
 `agentfeedback install` adds the skill and hooks running `agentfeedback
 hook`: they count the session's failed tool calls, show the agent a short
 note suggesting a friction report when failures pile up, and at the end of a
-turn send anything the client spooled while the server was unreachable. Run
+turn send anything the client spooled while the server was unreachable. It
+also adds a session-start hook running `agentfeedback prime` (Claude Code,
+Codex, Cursor) and a short marked section with one rule in the harness's
+global instruction file (every harness here but `cursor` and `vscode`). Run
 it again after an upgrade: it replaces the `flush --hook` entries earlier
 releases wired. It backs up every file
 it touches, and `agentfeedback uninstall <harness>` reverts it. It reads the
@@ -200,15 +203,16 @@ Code or Codex, ask the human whether they prefer a plugin; if so, go to step
 
 **Verify:** the last line is JSON with `"status": "installed"` (or
 `"unchanged"` when it was already wired) and your harness with `"skill":
-"wired"`, and `"hook": "wired"` where the harness has a hook (`"-"` for
-`kiro`, `cline`, `amp` and `gemini-cli`). A refusal names the path in the
+"wired"`, `"hook": "wired"` where the harness has a hook (`"-"` for
+`kiro`, `cline`, `amp` and `gemini-cli`), and `"rule": "wired"` where it has
+a global instruction file (`"-"` for `cursor`). A refusal names the path in the
 way (a foreign entry, a symlinked skill): report it to the human and stop;
 never delete it yourself.
 
 **Outcome:**
 
 ```json
-{"step": "2.3", "status": "ok", "harness": "claude-code", "mode": "cli", "changed": ["/home/user/.claude/skills/agentfeedback/SKILL.md", "/home/user/.claude/settings.json"]}
+{"step": "2.3", "status": "ok", "harness": "claude-code", "mode": "cli", "changed": ["/home/user/.claude/skills/agentfeedback/SKILL.md", "/home/user/.claude/settings.json", "/home/user/.claude/CLAUDE.md"]}
 ```
 
 Then step 3.
@@ -396,7 +400,8 @@ from their own outcome and skip this command):
 ```
 
 **Verify:** after step 2.3 your harness shows `"mode": "cli"`, `"skill":
-"wired"` and `"hook": "wired"`. After step 2.4 or 2.5 it shows `"mode": "-"`,
+"wired"`, `"hook": "wired"` and `"rule": "wired"` (the last two as step 2.3
+lists them). After step 2.4 or 2.5 it shows `"mode": "-"`,
 because the plugin or the `skills` CLI wired it; take the mode from that
 step's outcome. On Windows the command refuses: report from the outcomes.
 

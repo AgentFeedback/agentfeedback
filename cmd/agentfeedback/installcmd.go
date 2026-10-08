@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	installSynopsis   = "install [all|<harness>...] [--server local|cloud|URL] [--mcp] [--with-reminder] [--docs] [--dry-run] [--list] [--json]"
+	installSynopsis   = "install [all|<harness>...] [--server local|cloud|URL] [--mcp] [--with-reminder=false] [--docs] [--dry-run] [--list] [--json] | install --check [all|<harness>...] [--project] [--json] | install --project [--yes] [--uninstall] [--dry-run]"
 	uninstallSynopsis = "uninstall all|<harness>... [--dry-run] [--json]"
 )
 
@@ -122,10 +122,14 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 	server := fs.String("server", "", "local, cloud or a base URL (default: url in config.toml, then the one recorded at the last install, then a prompt, then local); a URL MCP entry points at it")
 	mcp := fs.Bool("mcp", false, "add an MCP entry instead of the skill and the hooks: for local, a stdio entry that runs this binary's mcp command; for a server, a URL entry")
 	docs := fs.Bool("docs", false, "also install the agentfeedback-docs skill (reference docs for integrators and operators)")
-	reminder := fs.Bool("with-reminder", false, "also add a session-start hook that prints a one-line reminder, where the harness supports one")
+	reminder := fs.Bool("with-reminder", true, "add a session-start hook that runs agentfeedback prime, where the harness supports one; --with-reminder=false leaves it out")
 	dryRun := fs.Bool("dry-run", false, "print what would change and change nothing")
 	list := fs.Bool("list", false, "list the harnesses and how they are wired, and change nothing")
-	asJSON := fs.Bool("json", false, "with the list: print one JSON object instead of the table")
+	asJSON := fs.Bool("json", false, "with the list or --check: print one JSON object instead of the table")
+	check := fs.Bool("check", false, "report whether each harness's global instruction file holds the current rule section (no names: the detected and recorded harnesses); changes nothing, exits 3 when one is missing or stale")
+	project := fs.Bool("project", false, "write the AgentFeedback pointer section into the repository's AGENTS.md (or CLAUDE.md when only that exists) instead of wiring harnesses; with --check, also report it")
+	yes := fs.Bool("yes", false, "with --project: confirm without a prompt")
+	uninstallProject := fs.Bool("uninstall", false, "with --project: remove the pointer section")
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), "usage: agentfeedback %s\nharnesses: %s\n", installSynopsis, strings.Join(harness.Names(), ", "))
 		fs.PrintDefaults()
@@ -142,6 +146,17 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 	if err := checkHarnessNames(pos); err != nil {
 		return printInstallOutcome(stdout, installOutcome{}, err)
 	}
+	reminderAsked := false
+	fs.Visit(func(f *flag.Flag) { reminderAsked = reminderAsked || f.Name == "with-reminder" })
+	if *project && (*mcp || (len(pos) > 0 && !*check)) {
+		return printInstallOutcome(stdout, installOutcome{}, errProjectArgs())
+	}
+	if (*yes || *uninstallProject) && (!*project || *check) {
+		return printInstallOutcome(stdout, installOutcome{}, usageErr("--yes and --uninstall apply only to install --project", "run agentfeedback install --project --yes or agentfeedback install --project --uninstall"))
+	}
+	if *project && !*check {
+		return runInstallProject(*uninstallProject, *yes, *dryRun, stdin, stdout, stderr)
+	}
 	if err := checkInstallSupported("install"); err != nil {
 		steps, warnings := manualSteps(pos, *server, stderr)
 
@@ -150,6 +165,9 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 	env, err := harnessEnv()
 	if err != nil {
 		return printInstallOutcome(stdout, installOutcome{}, err)
+	}
+	if *check {
+		return runInstallCheck(env, pos, *project, *asJSON, stdout)
 	}
 	if len(pos) == 0 || *list {
 		return listHarnesses(env, *asJSON, stdout)
@@ -187,7 +205,7 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 		kept := names[:0:0]
 		for _, n := range names {
 			if ok, reason := harness.Supports(n, mode); !ok && !slices.Contains(pos, n) {
-				skipped = append(skipped, harness.HarnessStatus{Name: n, Mode: "-", Skill: "-", MCP: "-", Hook: "-", Reminder: "-", Docs: "-",
+				skipped = append(skipped, harness.HarnessStatus{Name: n, Mode: "-", Skill: "-", MCP: "-", Hook: "-", Reminder: "-", Docs: "-", Rule: "-",
 					Notes: []string{reason + "; it was left out of install all"}})
 
 				continue
@@ -229,7 +247,7 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 	}
 	res, err := env.Run(harness.Request{
 		Harnesses: names,
-		Options:   harness.Options{Mode: mode, Reminder: *reminder, Docs: *docs, Server: srv, Binary: bin},
+		Options:   harness.Options{Mode: mode, Reminder: *reminder, ReminderAsked: reminderAsked, Docs: *docs, Server: srv, Binary: bin},
 		DryRun:    *dryRun,
 	})
 	out := installOutcome{Status: res.Status, Harnesses: res.Harnesses, Changed: res.Changed, Backups: res.Backups, Warnings: warnings}
@@ -404,13 +422,13 @@ func listHarnesses(env harness.Env, asJSON bool, stdout io.Writer) error {
 
 		return s
 	}
-	fmt.Fprintln(tw, "HARNESS\tDETECTED\tMODE\tSKILL\tMCP\tHOOK\tREMINDER\tDOCS\tVERIFIED\tBINARY\tVERSION")
+	fmt.Fprintln(tw, "HARNESS\tDETECTED\tMODE\tSKILL\tMCP\tHOOK\tREMINDER\tDOCS\tRULE\tVERIFIED\tBINARY\tVERSION")
 	for _, h := range st {
 		verified := "-"
 		if v := h.Verification; v != nil {
 			verified = v.Level + " " + v.Date
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", h.Name, h.Detected, h.Mode, h.Skill, h.MCP, h.Hook, h.Reminder, h.Docs,
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", h.Name, h.Detected, h.Mode, h.Skill, h.MCP, h.Hook, h.Reminder, h.Docs, h.Rule,
 			verified, dash(h.Binary), dash(h.BinaryVersion))
 	}
 
@@ -517,6 +535,10 @@ func normaliseServer(source, raw string) (string, error) {
 // serverLocal is the server value of local mode: no URL, the data-directory
 // database. The manifest records it as is.
 const serverLocal = harness.ServerLocal
+
+func errProjectArgs() error {
+	return usageErr("install --project takes no harness name and no --mcp", "run agentfeedback install --project from inside the repository")
+}
 
 // errInstallNoneSupported is install all when every detected harness was
 // left out because it cannot be wired in mode.

@@ -96,8 +96,13 @@ type Meta struct {
 	License       string `json:"license"`
 	Compatibility string `json:"compatibility"`
 	// Reminder is the one line skill reminder prints at a session start.
-	Reminder  string   `json:"reminder"`
-	Fragments []string `json:"fragments"`
+	Reminder string `json:"reminder"`
+	// Rule is the one rule install writes into a harness's global
+	// instruction file, and ProjectRule the pointer install --project writes
+	// into a repository's instruction file.
+	Rule        string   `json:"rule"`
+	ProjectRule string   `json:"project_rule"`
+	Fragments   []string `json:"fragments"`
 }
 
 // Reminder is the one-line session-start reminder from source/skill.json.
@@ -160,6 +165,9 @@ func load(fsys fs.FS) (Meta, []Fragment, error) {
 	}
 	if strings.ContainsAny(m.Reminder, "\r\n") {
 		return m, nil, errors.New("source/skill.json: reminder must be one line")
+	}
+	if m.Rule == "" || m.ProjectRule == "" || strings.ContainsAny(m.Rule+m.ProjectRule, "\r\n") {
+		return m, nil, errors.New("source/skill.json: rule and project_rule are required and must be one line each")
 	}
 	frags := make([]Fragment, 0, len(m.Fragments))
 	for i, id := range m.Fragments {
@@ -412,6 +420,23 @@ func Render(form, server string) ([]byte, error) {
 	}
 
 	return []byte(b.String()), nil
+}
+
+// Prime is the guidance agentfeedback prime prints: the title, the
+// description and every fragment as the cli channel shows it. Running prime
+// proves the binary is on PATH, so the file inbox fallback is left out. It is
+// not one of Forms.
+func Prime() ([]byte, error) {
+	m, frags, err := Source()
+	if err != nil {
+		return nil, err
+	}
+	parts := make([]string, 0, len(frags))
+	for _, f := range frags {
+		parts = append(parts, f.text(ChannelCLI))
+	}
+
+	return []byte(fmt.Sprintf("# %s\n\n%s\n\n%s\n", m.Title, m.Description, strings.Join(parts, "\n\n"))), nil
 }
 
 var atxHeading = regexp.MustCompile(`^#{1,5}( |$)`)

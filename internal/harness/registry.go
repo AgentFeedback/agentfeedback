@@ -29,8 +29,10 @@ const (
 	EventSessionStart = "session_start"
 )
 
-// Instructions are the instruction files a harness reads; declared only,
-// install writes none of them.
+// Instructions are the instruction files a harness reads. Install writes
+// its marked rule section into the first Global file in CLI mode, and
+// install --project the pointer section into a repository's file; the
+// Project files are declared only.
 type Instructions struct {
 	Global func(Env) []string
 	// NoGlobal is why there is no global instruction file.
@@ -116,7 +118,7 @@ type Adapter struct {
 }
 
 // docsRow is the adapter's row of the harness table in docs/operate.md.
-type docsRow struct{ detected, skill, hook, reminder, mcp string }
+type docsRow struct{ detected, skill, hook, reminder, rule, mcp string }
 
 // goos is the operating system the VS Code paths follow; tests set it.
 var goos = runtime.GOOS
@@ -200,7 +202,9 @@ func hookCmd(o Options, harness, event string) string {
 	return shellBinary(o.Binary) + " hook " + harness + " " + event
 }
 
-func remindCmd(o Options) string { return shellBinary(o.Binary) + " skill reminder" }
+// primeCmd is the session-start command: prime prints the guidance the
+// harness adds to the session.
+func primeCmd(o Options) string { return shellBinary(o.Binary) + " prime" }
 
 // noHookDeliver is the NoDeliver of a harness without hooks.
 const noHookDeliver = "no hook is wired"
@@ -292,7 +296,7 @@ var registry = []Adapter{
 				element(f, []string{"hooks", "Stop"}, commandHook(hookCmd(o, "claude-code", "Stop")), RoleHook),
 			}
 			if o.Reminder {
-				items = append(items, element(f, []string{"hooks", "SessionStart"}, commandHook(remindCmd(o)), RoleReminder))
+				items = append(items, element(f, []string{"hooks", "SessionStart"}, commandHook(primeCmd(o)), RoleReminder))
 			}
 
 			return items, nil
@@ -308,7 +312,8 @@ var registry = []Adapter{
 			detected: "`claude`, `$CLAUDE_CONFIG_DIR` (default `~/.claude`)",
 			skill:    "`<claude config>/skills/agentfeedback/SKILL.md`",
 			hook:     "`<claude config>/settings.json` `hooks.PostToolUseFailure` (note) and `hooks.Stop`",
-			reminder: "`hooks.SessionStart`",
+			reminder: "`hooks.SessionStart` runs `agentfeedback prime`",
+			rule:     "`<claude config>/CLAUDE.md`",
 			mcp:      "`claude mcp add-json agentfeedback ... --scope user`",
 		},
 	},
@@ -336,7 +341,7 @@ var registry = []Adapter{
 			f := filepath.Join(p.env.codexHome(), "hooks.json")
 			items := []Item{element(f, []string{"hooks", "Stop"}, commandHook(hookCmd(o, "codex", "Stop")), RoleHook)}
 			if o.Reminder {
-				items = append(items, element(f, []string{"hooks", "SessionStart"}, commandHook(remindCmd(o)), RoleReminder))
+				items = append(items, element(f, []string{"hooks", "SessionStart"}, commandHook(primeCmd(o)), RoleReminder))
 			}
 
 			return items, []string{"Codex runs a new hook only after you trust it in /hooks"}
@@ -358,7 +363,8 @@ var registry = []Adapter{
 			detected: "`codex`, `$CODEX_HOME` (default `~/.codex`)",
 			skill:    "`~/.agents/skills/agentfeedback/SKILL.md`",
 			hook:     "`<codex home>/hooks.json` `hooks.Stop` (flush only)",
-			reminder: "`hooks.SessionStart`",
+			reminder: "`hooks.SessionStart` runs `agentfeedback prime`",
+			rule:     "`<codex home>/AGENTS.md`",
 			mcp:      "marked `[mcp_servers.agentfeedback]` block in `<codex home>/config.toml`",
 		},
 	},
@@ -389,7 +395,7 @@ var registry = []Adapter{
 				element(f, []string{"hooks", "stop"}, obj("command", str(hookCmd(o, "cursor", "stop")), "timeout", "5"), RoleHook),
 			}
 			if o.Reminder {
-				items = append(items, element(f, []string{"hooks", "sessionStart"}, obj("command", str(remindCmd(o)), "timeout", "5"), RoleReminder))
+				items = append(items, element(f, []string{"hooks", "sessionStart"}, obj("command", str(primeCmd(o)+" --format cursor"), "timeout", "5"), RoleReminder))
 			}
 
 			return items, nil
@@ -405,7 +411,8 @@ var registry = []Adapter{
 			detected: "`cursor-agent`, or an `agent` that resolves into a Cursor install; `~/.cursor`",
 			skill:    "`~/.cursor/skills/agentfeedback/SKILL.md`",
 			hook:     "`~/.cursor/hooks.json` `hooks.postToolUseFailure` (note) and `hooks.stop`",
-			reminder: "`hooks.sessionStart`",
+			reminder: "`hooks.sessionStart` runs `agentfeedback prime --format cursor`",
+			rule:     "none: Cursor's User Rules live in its settings UI, not in a file",
 			mcp:      "`~/.cursor/mcp.json` `mcpServers.agentfeedback`",
 		},
 	},
@@ -447,6 +454,7 @@ var registry = []Adapter{
 			skill:    "`<opencode>/skills/agentfeedback/SKILL.md`",
 			hook:     "plugin `<opencode>/plugins/agentfeedback.js` (on `tool.execute.after` for `bash`, and `session.idle`, which delivers the note)",
 			reminder: "not supported",
+			rule:     "`<opencode>/AGENTS.md`",
 			mcp:      "`mcp.agentfeedback` in the first of `opencode.jsonc`, `opencode.json` that has an `mcp` member, else an existing `opencode.jsonc`, else `opencode.json`",
 		},
 	},
@@ -483,6 +491,7 @@ var registry = []Adapter{
 			skill:    "`~/.omp/agent/skills/agentfeedback/SKILL.md`",
 			hook:     "extension `~/.omp/agent/extensions/agentfeedback.ts` (on `tool_result` errors, with the note, and `agent_end`, not for subagents)",
 			reminder: "not supported",
+			rule:     "`~/.omp/agent/AGENTS.md`",
 			mcp:      "`~/.omp/agent/mcp.json` `mcpServers.agentfeedback`",
 		},
 	},
@@ -520,6 +529,7 @@ var registry = []Adapter{
 			skill:    "`~/.pi/agent/skills/agentfeedback/SKILL.md`",
 			hook:     "extension `~/.pi/agent/extensions/agentfeedback.ts` (on `tool_result` errors, with the note as a next-turn message, and `agent_settled`)",
 			reminder: "not supported",
+			rule:     "`~/.pi/agent/AGENTS.md`",
 			mcp:      "`~/.pi/agent/mcp.json` `mcpServers.agentfeedback`; needs pi 0.99.0 or later",
 		},
 	},
@@ -559,6 +569,7 @@ var registry = []Adapter{
 			skill:    "`~/.copilot/skills/agentfeedback/SKILL.md`",
 			hook:     "file `~/.copilot/hooks/agentfeedback.json` (`postToolUseFailure`, with the note on exit 2, and `agentStop`)",
 			reminder: "not supported",
+			rule:     "`~/.copilot/copilot-instructions.md`",
 			mcp:      "`~/.copilot/mcp-config.json` `mcpServers.agentfeedback`",
 		},
 	},
@@ -609,6 +620,7 @@ var registry = []Adapter{
 			skill:    "`~/.gemini/config/skills/agentfeedback/SKILL.md` and `~/.gemini/antigravity-cli/skills/agentfeedback/SKILL.md`",
 			hook:     "`~/.gemini/config/hooks.json` `agentfeedback` (on `PostToolUse`, `PreInvocation`, which delivers the note, and `Stop`)",
 			reminder: "not supported",
+			rule:     "`~/.gemini/GEMINI.md` (shared with gemini-cli unless `$GEMINI_CLI_HOME` is set)",
 			mcp:      "`~/.gemini/config/mcp_config.json` `mcpServers.agentfeedback`; the key reference in the header may not be expanded",
 		},
 	},
@@ -647,6 +659,7 @@ var registry = []Adapter{
 			skill:    "`~/.config/devin/skills/agentfeedback/SKILL.md`",
 			hook:     "`~/.config/devin/config.json` `hooks.Stop` (flush only)",
 			reminder: "not supported",
+			rule:     "`~/.config/devin/AGENTS.md`",
 			mcp:      "`~/.config/devin/mcp_config.json` `mcpServers.agentfeedback`",
 		},
 	},
@@ -676,6 +689,7 @@ var registry = []Adapter{
 			skill:    "`~/.kiro/skills/agentfeedback/SKILL.md`",
 			hook:     "none",
 			reminder: "not supported",
+			rule:     "`~/.kiro/steering/AGENTS.md`",
 			mcp:      "`~/.kiro/settings/mcp.json` `mcpServers.agentfeedback`",
 		},
 	},
@@ -702,6 +716,7 @@ var registry = []Adapter{
 			skill:    "`~/.cline/skills/agentfeedback/SKILL.md`",
 			hook:     "none",
 			reminder: "not supported",
+			rule:     "`~/.cline/rules/agentfeedback.md`",
 			mcp:      "`~/.cline/data/settings/cline_mcp_settings.json` `mcpServers.agentfeedback`; the key reference in the header may not be expanded",
 		},
 	},
@@ -730,6 +745,7 @@ var registry = []Adapter{
 			skill:    "`<xdg>/amp/skills/agentfeedback/SKILL.md`",
 			hook:     "none",
 			reminder: "not supported",
+			rule:     "`<xdg>/amp/AGENTS.md`",
 			mcp:      "`amp.mcpServers` member `agentfeedback` in `<xdg>/amp/settings.jsonc` when it exists, else `settings.json`",
 		},
 	},
@@ -763,6 +779,7 @@ var registry = []Adapter{
 			skill:    "none: VS Code reads the skill the `copilot` or `claude-code` adapter installs",
 			hook:     "none",
 			reminder: "not supported",
+			rule:     "none: VS Code has no CLI mode",
 			mcp:      "`<Code/User>/mcp.json` `servers.agentfeedback`",
 		},
 	},
@@ -790,6 +807,7 @@ var registry = []Adapter{
 			skill:    "`$GEMINI_CLI_HOME/.gemini/skills/agentfeedback/SKILL.md` (default `~/.gemini/skills/agentfeedback/SKILL.md`)",
 			hook:     "none",
 			reminder: "not supported",
+			rule:     "`$GEMINI_CLI_HOME/.gemini/GEMINI.md` (default `~/.gemini/GEMINI.md`)",
 			mcp:      "none",
 		},
 	},
@@ -913,13 +931,17 @@ func (e Env) skillDirs(name string) []string {
 	return nil
 }
 
-// configFiles is every JSON, JSONC or TOML configuration file install can
-// edit under this environment; a symbolic link to one is followed.
+// configFiles is every JSON, JSONC or TOML configuration file and every
+// global instruction file install can edit under this environment; a
+// symbolic link to one is followed.
 func (e Env) configFiles() map[string]bool {
 	out := map[string]bool{}
 	for _, a := range registry {
 		config, _ := a.files(e)
 		for _, f := range config {
+			out[f] = true
+		}
+		if f := a.ruleFile(e); f != "" {
 			out[f] = true
 		}
 	}
@@ -931,11 +953,11 @@ func (e Env) configFiles() map[string]bool {
 // registry.
 func DocsTable() string {
 	var b strings.Builder
-	b.WriteString("| Harness | Detected by | Skill | Hook (default) | Reminder | MCP entry (`--mcp`) | Verified |\n")
-	b.WriteString("|---|---|---|---|---|---|---|\n")
+	b.WriteString("| Harness | Detected by | Skill | Hook (default) | Reminder | Rule | MCP entry (`--mcp`) | Verified |\n")
+	b.WriteString("|---|---|---|---|---|---|---|---|\n")
 	for _, a := range registry {
 		r := a.row
-		fmt.Fprintf(&b, "| `%s` | %s | %s | %s | %s | %s | %s %s |\n", a.Name, r.detected, r.skill, r.hook, r.reminder, r.mcp, a.Verified.Level, a.Verified.Date)
+		fmt.Fprintf(&b, "| `%s` | %s | %s | %s | %s | %s | %s | %s %s |\n", a.Name, r.detected, r.skill, r.hook, r.reminder, r.rule, r.mcp, a.Verified.Level, a.Verified.Date)
 	}
 
 	return b.String()

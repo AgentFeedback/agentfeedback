@@ -238,9 +238,12 @@ On every machine whose coding agents should file feedback, with the
 `agentfeedback` binary installed and the client configured (`doctor --init`):
 
 ```bash
-agentfeedback install                            # list the harnesses: detected, mode, skill, mcp, hook, reminder, docs; changes nothing (also --list, --json)
-agentfeedback install all                        # every detected harness: the skill, and hooks running agentfeedback hook where the harness has them
-agentfeedback install claude-code codex --with-reminder   # also a session-start hook printing agentfeedback skill reminder
+agentfeedback install                            # list the harnesses: detected, mode, skill, mcp, hook, reminder, docs, rule; changes nothing (also --list, --json)
+agentfeedback install all                        # every detected harness: the skill, hooks running agentfeedback hook, a session-start hook running agentfeedback prime, and the rule in the global instruction file
+agentfeedback install claude-code --with-reminder=false   # without the session-start hook
+agentfeedback install --check                    # is the rule section current in each detected or recorded harness? changes nothing; exit 3 when one is missing or stale
+agentfeedback install --project --yes            # the pointer section in this repository's AGENTS.md (or CLAUDE.md); --uninstall removes it
+agentfeedback prime                              # the guidance the session-start hook prints (--format cursor: Cursor's JSON)
 agentfeedback install opencode --mcp             # an MCP entry instead of the skill and the hook: stdio (agentfeedback mcp) for local, a URL for a server
 agentfeedback install claude-code --docs         # also the agentfeedback-docs skill: the reference docs, schemas and OpenAPI document for integrators and operators
 agentfeedback install all --dry-run              # print every file that would change, change nothing
@@ -256,6 +259,45 @@ Unknown names exit 2. The last stdout line is a JSON outcome (`status`
 `changed`, `backups`, `next`); progress goes to stderr. Running install twice
 changes nothing the second time (`unchanged`); a changed mode, binary path,
 server, `--with-reminder` or `--docs` replaces what the previous run added.
+
+- **The rule.** In CLI mode install writes one section into each harness's
+  global instruction file (the Rule column): a begin marker
+  `<!-- agentfeedback:begin v=<skill version> hash=<16 hex digits> -->`,
+  `## AgentFeedback` with one rule (surface friction; run
+  `agentfeedback prime` when unsure how), and `<!-- agentfeedback:end -->`.
+  It is appended after one blank line, backed up and recorded like every
+  other file. The text between the markers is install's: a run replaces a
+  section that is stale (another version), edited or unrecorded where it
+  stands, and uninstall removes it by its markers, edited or not, with the
+  blank line before it; a file with two sections, or a begin marker without
+  its end, is refused (uninstall leaves it as it is, noted). `antigravity`
+  and `gemini-cli` share `~/.gemini/GEMINI.md` unless `GEMINI_CLI_HOME` is
+  set: one section, removed with the last of the two. `--mcp` writes no rule.
+- **`--check`.** `install --check [all|<harness>...] [--project] [--json]`
+  reads the global instruction files (at the locations the manifest records)
+  and prints, per harness, `current`, `stale` (a section other than the one
+  this binary writes), `missing` (no section, or no file), or `-` (no global
+  file: `cursor`, `vscode`; or a harness the manifest records with `--mcp`);
+  with no names, the detected and recorded
+  harnesses. It writes nothing and takes no lock. `--json` prints
+  `{"status":"current"|"not_current","harnesses":[{"name","file","rule"}]}`,
+  plus `project` with `--project`. Exit 0 when every section is current, 3
+  when one is missing or stale (`-` does not count), 1 on an error, 2 on
+  usage.
+- **`--project`.** `install --project [--yes] [--uninstall] [--dry-run]`
+  writes the pointer section (the same markers; "if the `agentfeedback`
+  command is installed, run `agentfeedback prime`") into the repository
+  holding the working directory (the nearest ancestor with `.git`):
+  `AGENTS.md`, else `CLAUDE.md` when only that exists, else a new
+  `AGENTS.md`. On a terminal it asks first, naming the repository and the
+  file; elsewhere it refuses without `--yes`. A section already there is
+  replaced in place; `--uninstall` removes it and deletes the file only
+  when not a byte is left. A symbolic link or other non-regular file is
+  refused, and so is a file that changed between the read and the write.
+  It writes atomically, takes no backup, never runs git and never reads or
+  writes the manifest; harness names (allowed with `--check`) and `--mcp`
+  exit 2.
+  Commit the file yourself.
 
 The list (`--list`, or no harness named) shows, per harness wired with the
 skill and hook, the binary its hook runs and that binary's version
@@ -277,22 +319,22 @@ and the instruction-file text (`agentfeedback skill render agents-md`). Hooks
 are not wired on Windows; undo the steps by hand.
 
 <!-- harness-table:begin: generated by go test ./internal/harness -run TestDocsHarnessTable -update -->
-| Harness | Detected by | Skill | Hook (default) | Reminder | MCP entry (`--mcp`) | Verified |
-|---|---|---|---|---|---|---|
-| `claude-code` | `claude`, `$CLAUDE_CONFIG_DIR` (default `~/.claude`) | `<claude config>/skills/agentfeedback/SKILL.md` | `<claude config>/settings.json` `hooks.PostToolUseFailure` (note) and `hooks.Stop` | `hooks.SessionStart` | `claude mcp add-json agentfeedback ... --scope user` | live-checked 2026-10-07 |
-| `codex` | `codex`, `$CODEX_HOME` (default `~/.codex`) | `~/.agents/skills/agentfeedback/SKILL.md` | `<codex home>/hooks.json` `hooks.Stop` (flush only) | `hooks.SessionStart` | marked `[mcp_servers.agentfeedback]` block in `<codex home>/config.toml` | documented 2026-10-07 |
-| `cursor` | `cursor-agent`, or an `agent` that resolves into a Cursor install; `~/.cursor` | `~/.cursor/skills/agentfeedback/SKILL.md` | `~/.cursor/hooks.json` `hooks.postToolUseFailure` (note) and `hooks.stop` | `hooks.sessionStart` | `~/.cursor/mcp.json` `mcpServers.agentfeedback` | documented 2026-10-07 |
-| `opencode` | `opencode`, `${XDG_CONFIG_HOME:-~/.config}/opencode` | `<opencode>/skills/agentfeedback/SKILL.md` | plugin `<opencode>/plugins/agentfeedback.js` (on `tool.execute.after` for `bash`, and `session.idle`, which delivers the note) | not supported | `mcp.agentfeedback` in the first of `opencode.jsonc`, `opencode.json` that has an `mcp` member, else an existing `opencode.jsonc`, else `opencode.json` | live-checked 2026-10-07 |
-| `omp` | `omp`, `~/.omp` | `~/.omp/agent/skills/agentfeedback/SKILL.md` | extension `~/.omp/agent/extensions/agentfeedback.ts` (on `tool_result` errors, with the note, and `agent_end`, not for subagents) | not supported | `~/.omp/agent/mcp.json` `mcpServers.agentfeedback` | documented 2026-10-07 |
-| `pi` | `pi`, `~/.pi` | `~/.pi/agent/skills/agentfeedback/SKILL.md` | extension `~/.pi/agent/extensions/agentfeedback.ts` (on `tool_result` errors, with the note as a next-turn message, and `agent_settled`) | not supported | `~/.pi/agent/mcp.json` `mcpServers.agentfeedback`; needs pi 0.99.0 or later | documented 2026-10-07 |
-| `copilot` | `copilot`, `~/.copilot` | `~/.copilot/skills/agentfeedback/SKILL.md` | file `~/.copilot/hooks/agentfeedback.json` (`postToolUseFailure`, with the note on exit 2, and `agentStop`) | not supported | `~/.copilot/mcp-config.json` `mcpServers.agentfeedback` | documented 2026-10-07 |
-| `antigravity` | `agy`, `~/.gemini/antigravity-cli` or `~/.gemini/antigravity` | `~/.gemini/config/skills/agentfeedback/SKILL.md` and `~/.gemini/antigravity-cli/skills/agentfeedback/SKILL.md` | `~/.gemini/config/hooks.json` `agentfeedback` (on `PostToolUse`, `PreInvocation`, which delivers the note, and `Stop`) | not supported | `~/.gemini/config/mcp_config.json` `mcpServers.agentfeedback`; the key reference in the header may not be expanded | documented 2026-10-07 |
-| `devin` | `devin`, `~/.config/devin` | `~/.config/devin/skills/agentfeedback/SKILL.md` | `~/.config/devin/config.json` `hooks.Stop` (flush only) | not supported | `~/.config/devin/mcp_config.json` `mcpServers.agentfeedback` | documented 2026-10-07 |
-| `kiro` | `kiro-cli`, `~/.kiro` | `~/.kiro/skills/agentfeedback/SKILL.md` | none | not supported | `~/.kiro/settings/mcp.json` `mcpServers.agentfeedback` | documented 2026-10-07 |
-| `cline` | `cline`, `~/.cline` | `~/.cline/skills/agentfeedback/SKILL.md` | none | not supported | `~/.cline/data/settings/cline_mcp_settings.json` `mcpServers.agentfeedback`; the key reference in the header may not be expanded | documented 2026-10-07 |
-| `amp` | `amp`, `<xdg>/amp` (`<xdg>` is `${XDG_CONFIG_HOME:-~/.config}`) | `<xdg>/amp/skills/agentfeedback/SKILL.md` | none | not supported | `amp.mcpServers` member `agentfeedback` in `<xdg>/amp/settings.jsonc` when it exists, else `settings.json` | documented 2026-10-07 |
-| `vscode` | `code`, `<Code/User>`: `<xdg>/Code/User` on Linux, `~/Library/Application Support/Code/User` on macOS | none: VS Code reads the skill the `copilot` or `claude-code` adapter installs | none | not supported | `<Code/User>/mcp.json` `servers.agentfeedback` | documented 2026-10-07 |
-| `gemini-cli` | `gemini` (`~/.gemini` is shared with antigravity unless `$GEMINI_CLI_HOME` is set) | `$GEMINI_CLI_HOME/.gemini/skills/agentfeedback/SKILL.md` (default `~/.gemini/skills/agentfeedback/SKILL.md`) | none | not supported | none | documented 2026-10-07 |
+| Harness | Detected by | Skill | Hook (default) | Reminder | Rule | MCP entry (`--mcp`) | Verified |
+|---|---|---|---|---|---|---|---|
+| `claude-code` | `claude`, `$CLAUDE_CONFIG_DIR` (default `~/.claude`) | `<claude config>/skills/agentfeedback/SKILL.md` | `<claude config>/settings.json` `hooks.PostToolUseFailure` (note) and `hooks.Stop` | `hooks.SessionStart` runs `agentfeedback prime` | `<claude config>/CLAUDE.md` | `claude mcp add-json agentfeedback ... --scope user` | live-checked 2026-10-07 |
+| `codex` | `codex`, `$CODEX_HOME` (default `~/.codex`) | `~/.agents/skills/agentfeedback/SKILL.md` | `<codex home>/hooks.json` `hooks.Stop` (flush only) | `hooks.SessionStart` runs `agentfeedback prime` | `<codex home>/AGENTS.md` | marked `[mcp_servers.agentfeedback]` block in `<codex home>/config.toml` | documented 2026-10-07 |
+| `cursor` | `cursor-agent`, or an `agent` that resolves into a Cursor install; `~/.cursor` | `~/.cursor/skills/agentfeedback/SKILL.md` | `~/.cursor/hooks.json` `hooks.postToolUseFailure` (note) and `hooks.stop` | `hooks.sessionStart` runs `agentfeedback prime --format cursor` | none: Cursor's User Rules live in its settings UI, not in a file | `~/.cursor/mcp.json` `mcpServers.agentfeedback` | documented 2026-10-07 |
+| `opencode` | `opencode`, `${XDG_CONFIG_HOME:-~/.config}/opencode` | `<opencode>/skills/agentfeedback/SKILL.md` | plugin `<opencode>/plugins/agentfeedback.js` (on `tool.execute.after` for `bash`, and `session.idle`, which delivers the note) | not supported | `<opencode>/AGENTS.md` | `mcp.agentfeedback` in the first of `opencode.jsonc`, `opencode.json` that has an `mcp` member, else an existing `opencode.jsonc`, else `opencode.json` | live-checked 2026-10-07 |
+| `omp` | `omp`, `~/.omp` | `~/.omp/agent/skills/agentfeedback/SKILL.md` | extension `~/.omp/agent/extensions/agentfeedback.ts` (on `tool_result` errors, with the note, and `agent_end`, not for subagents) | not supported | `~/.omp/agent/AGENTS.md` | `~/.omp/agent/mcp.json` `mcpServers.agentfeedback` | documented 2026-10-07 |
+| `pi` | `pi`, `~/.pi` | `~/.pi/agent/skills/agentfeedback/SKILL.md` | extension `~/.pi/agent/extensions/agentfeedback.ts` (on `tool_result` errors, with the note as a next-turn message, and `agent_settled`) | not supported | `~/.pi/agent/AGENTS.md` | `~/.pi/agent/mcp.json` `mcpServers.agentfeedback`; needs pi 0.99.0 or later | documented 2026-10-07 |
+| `copilot` | `copilot`, `~/.copilot` | `~/.copilot/skills/agentfeedback/SKILL.md` | file `~/.copilot/hooks/agentfeedback.json` (`postToolUseFailure`, with the note on exit 2, and `agentStop`) | not supported | `~/.copilot/copilot-instructions.md` | `~/.copilot/mcp-config.json` `mcpServers.agentfeedback` | documented 2026-10-07 |
+| `antigravity` | `agy`, `~/.gemini/antigravity-cli` or `~/.gemini/antigravity` | `~/.gemini/config/skills/agentfeedback/SKILL.md` and `~/.gemini/antigravity-cli/skills/agentfeedback/SKILL.md` | `~/.gemini/config/hooks.json` `agentfeedback` (on `PostToolUse`, `PreInvocation`, which delivers the note, and `Stop`) | not supported | `~/.gemini/GEMINI.md` (shared with gemini-cli unless `$GEMINI_CLI_HOME` is set) | `~/.gemini/config/mcp_config.json` `mcpServers.agentfeedback`; the key reference in the header may not be expanded | documented 2026-10-07 |
+| `devin` | `devin`, `~/.config/devin` | `~/.config/devin/skills/agentfeedback/SKILL.md` | `~/.config/devin/config.json` `hooks.Stop` (flush only) | not supported | `~/.config/devin/AGENTS.md` | `~/.config/devin/mcp_config.json` `mcpServers.agentfeedback` | documented 2026-10-07 |
+| `kiro` | `kiro-cli`, `~/.kiro` | `~/.kiro/skills/agentfeedback/SKILL.md` | none | not supported | `~/.kiro/steering/AGENTS.md` | `~/.kiro/settings/mcp.json` `mcpServers.agentfeedback` | documented 2026-10-07 |
+| `cline` | `cline`, `~/.cline` | `~/.cline/skills/agentfeedback/SKILL.md` | none | not supported | `~/.cline/rules/agentfeedback.md` | `~/.cline/data/settings/cline_mcp_settings.json` `mcpServers.agentfeedback`; the key reference in the header may not be expanded | documented 2026-10-07 |
+| `amp` | `amp`, `<xdg>/amp` (`<xdg>` is `${XDG_CONFIG_HOME:-~/.config}`) | `<xdg>/amp/skills/agentfeedback/SKILL.md` | none | not supported | `<xdg>/amp/AGENTS.md` | `amp.mcpServers` member `agentfeedback` in `<xdg>/amp/settings.jsonc` when it exists, else `settings.json` | documented 2026-10-07 |
+| `vscode` | `code`, `<Code/User>`: `<xdg>/Code/User` on Linux, `~/Library/Application Support/Code/User` on macOS | none: VS Code reads the skill the `copilot` or `claude-code` adapter installs | none | not supported | none: VS Code has no CLI mode | `<Code/User>/mcp.json` `servers.agentfeedback` | documented 2026-10-07 |
+| `gemini-cli` | `gemini` (`~/.gemini` is shared with antigravity unless `$GEMINI_CLI_HOME` is set) | `$GEMINI_CLI_HOME/.gemini/skills/agentfeedback/SKILL.md` (default `~/.gemini/skills/agentfeedback/SKILL.md`) | none | not supported | `$GEMINI_CLI_HOME/.gemini/GEMINI.md` (default `~/.gemini/GEMINI.md`) | none | documented 2026-10-07 |
 <!-- harness-table:end -->
 
 - **Hooks.** Every hook runs `agentfeedback hook <harness> <event>` on the
@@ -300,8 +342,15 @@ are not wired on Windows; undo the steps by hand.
   which flushes; `kiro`, `cline`, `amp`, `vscode` and `gemini-cli` get none
   yet. After upgrading from a release that wired `flush --hook`, run
   `agentfeedback install <harness>` again: the older entries are replaced, and
-  `agentfeedback doctor` names each harness that still runs one. `--with-reminder` is supported on `claude-code`, `codex` and
-  `cursor` only; elsewhere it is noted and skipped.
+  `agentfeedback doctor` names each harness that still runs one. The
+  session-start hook (on by default, `--with-reminder=false` leaves it out)
+  runs `agentfeedback prime`, which prints the guidance (the skill's
+  CLI text, under 8,000 bytes) for the harness to add to the session;
+  Cursor's runs `prime --format cursor`, which prints
+  `{"additional_context": ...}`. A rerun replaces the `skill reminder`
+  entry older installs wired; `skill reminder` still works. It is supported
+  on `claude-code`, `codex` and `cursor` only; elsewhere an explicit
+  `--with-reminder` is noted and skipped.
 - **Refused modes.** `vscode` has no skill directory of its own (VS Code
   reads the skill the `copilot` or `claude-code` adapter installs), so
   `install vscode` without `--mcp` is refused. `gemini-cli` has no MCP entry,
@@ -382,7 +431,7 @@ are not wired on Windows; undo the steps by hand.
   `AGENT_FEEDBACK_API_KEY` in the harness's environment, and install warns
   when that is not set. Rerun install after moving the binary or changing
   the server: the entry is replaced. `--with-reminder` does not apply with
-  `--mcp`.
+  `--mcp` (noted when given explicitly).
 - **The server.** `--server local|cloud|URL`, else `url` in `config.toml`,
   else the server the last install recorded, else a prompt on a terminal
   (an empty answer means local), else local: with nothing named, install
@@ -397,7 +446,7 @@ are not wired on Windows; undo the steps by hand.
   `<file>.agentfeedback-backup`. Writes are atomic and stop when a file
   changes while install runs. A file with the same key twice in one object
   is refused (uninstall leaves it as it is and keeps its backup). A
-  configuration file (JSON, JSONC or TOML) that is a symbolic link is edited
+  configuration file (JSON, JSONC or TOML) or global instruction file that is a symbolic link is edited
   through the link: the target is written atomically in its own directory,
   the link stays, and the backup sits beside the link. A dangling link, or
   one to something other than a regular file, is refused. Two configuration

@@ -36,7 +36,8 @@ type Item struct {
 	Path  []string        `json:"path,omitempty"`
 	Key   string          `json:"key,omitempty"`
 	Value json.RawMessage `json:"value,omitempty"`
-	// Text is the exact text a TOML block inserted.
+	// Text is the exact text a TOML block or an instruction section
+	// inserted, with the line breaks put before it.
 	Text string `json:"text,omitempty"`
 	// SHA256 is the content written for a whole file.
 	SHA256 string `json:"sha256,omitempty"`
@@ -54,8 +55,17 @@ type Item struct {
 // same reports whether two items add the same thing.
 func (a Item) same(b Item) bool {
 	return a.Kind == b.Kind && a.Role == b.Role && a.File == b.File && slices.Equal(a.Path, b.Path) &&
-		a.Key == b.Key && bytes.Equal(a.Value, b.Value) && strings.TrimPrefix(a.Text, "\n") == strings.TrimPrefix(b.Text, "\n") &&
+		a.Key == b.Key && bytes.Equal(a.Value, b.Value) && a.bare() == b.bare() &&
 		a.SHA256 == b.SHA256 && slices.Equal(a.Args, b.Args) && a.URL == b.URL && slices.Equal(a.Stdio, b.Stdio)
+}
+
+// bare is the item's text without the line breaks install put before it.
+func (a Item) bare() string {
+	if a.Kind == KindManagedSection {
+		return strings.TrimLeft(a.Text, "\n")
+	}
+
+	return strings.TrimPrefix(a.Text, "\n")
 }
 
 // HarnessRecord is one wired harness in the manifest.
@@ -397,7 +407,9 @@ func (p *plan) present(it Item) (bool, error) {
 
 		return ok, nil
 	case KindTOMLBlock:
-		return bytes.Contains(f.cur, []byte(strings.TrimPrefix(it.Text, "\n"))), nil
+		return bytes.Contains(f.cur, []byte(it.bare())), nil
+	case KindManagedSection:
+		return SectionState(it.File, f.cur, it.bare()) == RuleCurrent, nil
 	}
 
 	return false, nil
@@ -542,12 +554,18 @@ func (p *plan) remove(s *step, it Item, uninstall bool) error {
 			return nil
 		}
 	}
+	if it.Kind == KindManagedSection && p.sharedSection(s.name, it.File) {
+		return nil
+	}
 	f, err := p.load(it.File)
 	if err != nil {
 		return err
 	}
 	if !f.present {
 		return nil
+	}
+	if it.Kind == KindManagedSection {
+		return p.removeSection(s, f, it, uninstall)
 	}
 	if it.Kind == KindJSONMember {
 		changed, err := memberChanged(f.cur, it)
@@ -615,6 +633,68 @@ func (p *plan) remove(s *step, it Item, uninstall bool) error {
 	return nil
 }
 
+// sharedSection reports whether a harness other than name records a
+// section in file: two harnesses can share one global instruction file, and
+// the section stays until the last of them is removed.
+func (p *plan) sharedSection(name, file string) bool {
+	for _, h := range sortedKeys(p.man.Harnesses) {
+		if h == name || p.man.Harnesses[h] == nil {
+			continue
+		}
+		if slices.ContainsFunc(p.man.Harnesses[h].Items, func(o Item) bool { return o.Kind == KindManagedSection && o.File == file }) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// removeSection takes the marked section out of f, edited or not: the
+// markers are install's. A file whose sections cannot be told apart is
+// refused during install and left as it is by uninstall.
+func (p *plan) removeSection(s *step, f *fileState, it Item, uninstall bool) error {
+	out, found, err := RemoveSection(it.File, f.cur, it.Text)
+	var se *SectionError
+	switch {
+	case errors.As(err, &se) && uninstall:
+		p.notes[s.name] = append(p.notes[s.name], se.Error()+"; it is left as it is")
+		p.touch(s, f)
+
+		return nil
+	case errors.As(err, &se):
+		return sectionRefusal(se)
+	case err != nil:
+		return err
+	}
+	if found && !bytes.Equal(out, f.cur) {
+		p.touch(s, f)
+		f.cur = out
+	}
+
+	return nil
+}
+
+func sectionRefusal(se *SectionError) error {
+	return &Refusal{Problem: se.Error(), Next: "leave at most one agentfeedback section with both its markers, then run agentfeedback install again"}
+}
+
+// recordedSep is the line breaks a recorded section in file was inserted
+// after, so a section replaced in place keeps them for its removal.
+func (p *plan) recordedSep(file string) string {
+	for _, h := range sortedKeys(p.man.Harnesses) {
+		if p.man.Harnesses[h] == nil {
+			continue
+		}
+		for _, o := range p.man.Harnesses[h].Items {
+			if o.Kind == KindManagedSection && o.File == file {
+				return o.Text[:len(o.Text)-len(o.bare())]
+			}
+		}
+	}
+
+	return ""
+}
+
 // memberChanged reports whether the member it recorded holds a value other
 // than the one install wrote; a missing member is not changed.
 func memberChanged(doc []byte, it Item) (bool, error) {
@@ -675,6 +755,32 @@ func (p *plan) add(s *step, it *Item) error {
 		}
 		p.touch(s, f)
 		f.cur, f.present = bytes.Clone(it.content), true
+
+		return nil
+	case KindManagedSection:
+		// A section already in the file, recorded or not, edited or not, is
+		// replaced in place; an identical one is left untouched.
+		doc := f.cur
+		if !f.present {
+			doc = nil
+		}
+		bare := it.bare()
+		out, inserted, err := SetSection(it.File, doc, bare)
+		var se *SectionError
+		if errors.As(err, &se) {
+			return sectionRefusal(se)
+		}
+		if err != nil {
+			return err
+		}
+		it.Text = inserted
+		if inserted == bare && len(doc) > 0 {
+			it.Text = p.recordedSep(it.File) + bare
+		}
+		if !f.present || !bytes.Equal(out, f.cur) {
+			p.touch(s, f)
+			f.cur, f.present = out, true
+		}
 
 		return nil
 	case KindTOMLBlock:
@@ -869,6 +975,11 @@ func (p *plan) install(name string, o Options) error {
 
 				continue
 			}
+			// A section the run still wants in the same file is replaced in
+			// place by add, so it keeps its position.
+			if it.Kind == KindManagedSection && slices.ContainsFunc(d.items, func(w Item) bool { return w.Kind == KindManagedSection && w.File == it.File }) {
+				continue
+			}
 			if err := p.remove(s, it, false); err != nil {
 				return err
 			}
@@ -962,7 +1073,8 @@ func (p *plan) finalize() error {
 
 			continue
 		}
-		if rec == nil {
+		fresh := rec == nil
+		if fresh {
 			rec = &FileRecord{Created: !f.exists}
 			if f.exists {
 				rec.Backup = path + BackupSuffix
@@ -985,7 +1097,11 @@ func (p *plan) finalize() error {
 		} else if f.exists && sha(f.orig) != rec.SHA256After && f.changed() {
 			rec.Diverged = true
 		}
-		rec.SHA256After = sha(f.cur)
+		// A run that leaves the file as it found it keeps the recorded
+		// hash, so a later edit outside the section still reads as one.
+		if fresh || f.changed() {
+			rec.SHA256After = sha(f.cur)
+		}
 	}
 
 	return nil
@@ -1063,6 +1179,8 @@ type HarnessStatus struct {
 	Hook     string `json:"hook"`
 	Reminder string `json:"reminder"`
 	Docs     string `json:"docs"`
+	// Rule is the section in the global instruction file.
+	Rule string `json:"rule"`
 	// Binary is the agentfeedback binary a CLI-mode harness's hooks or its
 	// stdio MCP entry run, and BinaryVersion its version when Env.Version is
 	// set.
@@ -1625,7 +1743,7 @@ func (p *plan) statuses(namesWanted []string) []HarnessStatus {
 }
 
 func (p *plan) status(name string) HarnessStatus {
-	hs := HarnessStatus{Name: name, Mode: "-", Skill: "-", MCP: "-", Hook: "-", Reminder: "-", Docs: "-"}
+	hs := HarnessStatus{Name: name, Mode: "-", Skill: "-", MCP: "-", Hook: "-", Reminder: "-", Docs: "-", Rule: "-"}
 	rec := p.man.Harnesses[name]
 	if rec == nil {
 		return hs
@@ -1648,7 +1766,7 @@ func (p *plan) status(name string) HarnessStatus {
 			hs.Binary = cmp.Or(bin, rec.Binary)
 		}
 	}
-	col := map[string]*string{RoleSkill: &hs.Skill, RoleMCP: &hs.MCP, RoleHook: &hs.Hook, RoleReminder: &hs.Reminder, RoleDocs: &hs.Docs}
+	col := map[string]*string{RoleSkill: &hs.Skill, RoleMCP: &hs.MCP, RoleHook: &hs.Hook, RoleReminder: &hs.Reminder, RoleDocs: &hs.Docs, RoleRule: &hs.Rule}
 	for _, it := range rec.Items {
 		c := col[it.Role]
 		ok, err := p.present(it)

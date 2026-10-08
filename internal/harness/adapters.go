@@ -32,6 +32,8 @@ const (
 	KindTOMLBlock  = "toml_block"
 	KindPluginFile = "plugin_file"
 	KindClaudeMCP  = "claude_mcp"
+	// KindManagedSection is the marked section in an instruction file.
+	KindManagedSection = "managed_section"
 )
 
 // Roles group items into the columns a status shows.
@@ -41,6 +43,7 @@ const (
 	RoleHook     = "hook"
 	RoleReminder = "reminder"
 	RoleDocs     = "docs"
+	RoleRule     = "rule"
 )
 
 // Env is everything the package reads from the machine; tests replace each
@@ -281,6 +284,10 @@ func (e Env) DocsDir(name string) string {
 	return filepath.Join(d[0], "agentfeedback-docs")
 }
 
+// ruleSection is the global instruction section; a variable so tests can
+// stand in for another binary's version of it.
+var ruleSection = RuleSection
+
 // docsFiles is the docs skill tree; a variable so tests can stand in for
 // another binary's version of it.
 var docsFiles = skillgen.Docs
@@ -329,6 +336,9 @@ type desire struct {
 type Options struct {
 	Mode     string
 	Reminder bool
+	// ReminderAsked is whether Reminder was given on the command line; the
+	// notes about a reminder that does not apply appear only then.
+	ReminderAsked bool
 	// Docs adds the agentfeedback-docs skill, in either mode.
 	Docs   bool
 	Server string
@@ -366,7 +376,8 @@ func (p *plan) desired(name string, o Options) (desire, error) {
 	return d, nil
 }
 
-// wiring is the skill and hook, or the MCP entry, of the mode.
+// wiring is the skill, the hook and the rule in the global instruction
+// file, or the MCP entry, of the mode.
 func (p *plan) wiring(name string, o Options) (desire, error) {
 	var d desire
 	a := adapterOf(name)
@@ -377,7 +388,7 @@ func (p *plan) wiring(name string, o Options) (desire, error) {
 		return d, r
 	}
 	if o.Mode == ModeMCP {
-		if o.Reminder {
+		if o.Reminder && o.ReminderAsked {
 			d.notes = append(d.notes, "--with-reminder does not apply with --mcp: the server's MCP instructions replace the skill")
 		}
 		items, notes, err := a.mcp(p, o)
@@ -402,8 +413,15 @@ func (p *plan) wiring(name string, o Options) (desire, error) {
 		d.items = append(d.items, items...)
 		d.notes = append(d.notes, notes...)
 	}
-	if o.Reminder && !a.Hook.Reminder {
+	if o.Reminder && o.ReminderAsked && !a.Hook.Reminder {
 		d.notes = append(d.notes, "the session-start reminder is not supported for "+name+"; nothing was added for it")
+	}
+	if f := a.ruleFile(p.env); f != "" {
+		text, err := ruleSection()
+		if err != nil {
+			return d, err
+		}
+		d.items = append(d.items, Item{Kind: KindManagedSection, Role: RoleRule, File: f, Text: text})
 	}
 
 	return d, nil
@@ -637,6 +655,9 @@ func (e Env) candidateFiles() []string {
 		out = append(out, owned...)
 		for _, d := range a.SkillDirs(e) {
 			out = append(out, filepath.Join(d, "agentfeedback", "SKILL.md"))
+		}
+		if f := a.ruleFile(e); f != "" {
+			out = append(out, f)
 		}
 	}
 
