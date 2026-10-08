@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -82,5 +83,20 @@ func TestDeliver_ProblemCut(t *testing.T) {
 	}
 	if len(d.Problem) != 65536 || string(d.Problem) != big[:65536] {
 		t.Fatalf("problem %d bytes", len(d.Problem))
+	}
+}
+
+// TestDeliver_SessionIDMarksFiled: an inbox delivery carries the body's
+// session id, so logging it marks the session as having filed.
+func TestDeliver_SessionIDMarksFiled(t *testing.T) {
+	var hits atomic.Int64
+	e := newTestEnv(t, acceptingServer(t, &hits).URL, nil)
+	d := e.c.Deliver(context.Background(), []byte(`{"kind":"friction","key":"k1","summary":"s","context":{"session_id":"inbox-s"}}`))
+	if d.Outcome.Outcome != OutcomeSubmitted || d.Outcome.SessionID != "inbox-s" {
+		t.Fatalf("delivery %+v", d.Outcome)
+	}
+	e.c.Log(d.Outcome)
+	if _, err := os.Stat(FiledMarkerPath(e.cache, "inbox-s")); err != nil {
+		t.Fatalf("marker: %v", err)
 	}
 }

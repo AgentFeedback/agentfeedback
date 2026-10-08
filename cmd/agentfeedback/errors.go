@@ -30,6 +30,10 @@ func (e *userError) Unwrap() error { return e.cause }
 
 // exitCode maps an error returned by a command to the process exit status.
 func exitCode(err error) int {
+	var es exitStatus
+	if errors.As(err, &es) {
+		return int(es)
+	}
 	var ue *userError
 	if errors.As(err, &ue) && ue.usage {
 		return 2
@@ -577,6 +581,11 @@ func errSchemaVersionFlag(got string) error {
 	return usageErr(fmt.Sprintf("--schema-version %q is not a positive integer", got), "pass a version such as 1")
 }
 
+func errContextNotObject() error {
+	return usageErr("the context given on stdin is not a JSON object, so --context cannot be added to it",
+		"drop --context or send context as an object")
+}
+
 func errPayloadNotObject() error {
 	return usageErr("the payload given on stdin is not a JSON object, so a payload flag cannot be added to it",
 		"drop the payload flags or send payload as an object")
@@ -710,6 +719,16 @@ func errHarnessBinaryUnknown(name, bin string) error {
 func errHarnessBinaryOld(name, bin, have, client string) error {
 	return failErr(fmt.Sprintf("the %s hooks run %s version %s, older than this client %s; the newer binary migrates the local database and the older one then fails", name, bin, have, client),
 		"run agentfeedback install "+name+" from the binary to keep")
+}
+
+func errHookLegacy(name string) error {
+	return failErr(name+" still runs the older flush --hook entry",
+		"run agentfeedback install "+name+" to wire agentfeedback hook")
+}
+
+func errHookSpawn(name, msg string) error {
+	return failErr(fmt.Sprintf("the %s plugin could not start agentfeedback hook (%s)", name, msg),
+		"check that the binary it names exists, or run agentfeedback install "+name+" again")
 }
 
 func errConfigUnknownKey(path, key string) error {

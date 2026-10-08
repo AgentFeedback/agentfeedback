@@ -284,7 +284,7 @@ func (c *Client) Submit(ctx context.Context, body []byte) Outcome {
 
 	res := c.send(ctx, prepared, kind, key)
 	now := c.now()
-	o := Outcome{Kind: kind, Key: key, RequestID: res.requestID, Reason: res.reason}
+	o := Outcome{Kind: kind, Key: key, RequestID: res.requestID, Reason: res.reason, SessionID: SessionIDOf(prepared)}
 	switch res.action {
 	case actAccept:
 		o.Outcome, o.ID, o.Reason = OutcomeSubmitted, res.id, ""

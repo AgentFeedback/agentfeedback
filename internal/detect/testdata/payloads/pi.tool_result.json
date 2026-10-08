@@ -1,0 +1,1 @@
+{"session_id":"pi-1","tool":"bash","input":{"command":"pytest -x"},"cwd":"/repo","is_error":true}

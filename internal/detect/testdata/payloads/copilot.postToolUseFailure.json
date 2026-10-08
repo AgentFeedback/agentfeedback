@@ -1,0 +1,8 @@
+{
+  "sessionId": "cp-1",
+  "timestamp": 1760000000000,
+  "cwd": "/repo",
+  "toolName": "bash",
+  "toolArgs": "{\"command\":\"make test\"}",
+  "error": "Exit code 2\nmake: *** [test] Error 2"
+}

@@ -22,10 +22,11 @@
 # command and flag.
 
 # ui reads list, get, stats and meta with the filters of its form, not flags.
-# ingest submits the inbox files as written, through the same operation.
+# ingest submits the inbox files as written, through the same operation;
+# flush and hook send the spooled submissions through it.
 [operations.createSubmission]
 command = "submit"
-also = ["ingest"]
+also = ["ingest", "flush", "hook"]
 
 [operations.createSubmission.body]
 kind = { arg = "<kind>" }
@@ -37,7 +38,7 @@ model = { flag = "--model" }
 harness = { flag = "--harness" }
 project = { flag = "--project" }
 occurred_at = { reason = "set to the current time; --stdin carries an explicit value" }
-context = { reason = "collected on the client; --stdin carries an explicit object" }
+context = { flag = "--context" }
 payload = { reason = "friction members from --category, --details, --suggested-fix, --fix-status, --fix-ref and --severity; any kind through --stdin; --scrub (and context.origin session-scan) replaces known secret formats in every string value of the body" }
 
 [operations.listSubmissions]

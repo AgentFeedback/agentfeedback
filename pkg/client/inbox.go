@@ -38,7 +38,7 @@ func (c *Client) Deliver(ctx context.Context, body []byte) Delivery {
 	quiet := *c
 	quiet.stderr = io.Discard
 	res := quiet.send(ctx, prepared, kind, key)
-	d := Delivery{Outcome: Outcome{Kind: kind, Key: key, RequestID: res.requestID, Reason: res.reason, Message: res.message}}
+	d := Delivery{Outcome: Outcome{Kind: kind, Key: key, RequestID: res.requestID, Reason: res.reason, Message: res.message, SessionID: SessionIDOf(prepared)}}
 	switch res.action {
 	case actAccept:
 		d.Outcome.Outcome, d.Outcome.ID, d.Outcome.Reason = OutcomeSubmitted, res.id, ""

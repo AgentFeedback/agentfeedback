@@ -338,7 +338,7 @@ func TestInstall_WiredContent(t *testing.T) {
 		t.Fatalf("%+v", r)
 	}
 	settings, _ := os.ReadFile(filepath.Join(e.home, ".claude", "settings.json"))
-	for _, want := range []string{`"command": "` + e.exe + ` flush --hook"`, `"command": "` + e.exe + ` skill reminder"`, `"command": "notify-send done"`} {
+	for _, want := range []string{`"command": "` + e.exe + ` hook claude-code Stop"`, `"command": "` + e.exe + ` hook claude-code PostToolUseFailure"`, `"command": "` + e.exe + ` skill reminder"`, `"command": "notify-send done"`} {
 		if !strings.Contains(string(settings), want) {
 			t.Errorf("settings.json lacks %s:\n%s", want, settings)
 		}
@@ -349,15 +349,17 @@ func TestInstall_WiredContent(t *testing.T) {
 		t.Error("SKILL.md is not the skill-md render")
 	}
 	plugin, _ := os.ReadFile(filepath.Join(e.home, ".config", "opencode", "plugins", "agentfeedback.js"))
-	if !strings.Contains(string(plugin), `const BIN = "`+e.exe+`";`) || !strings.Contains(string(plugin), `"session.idle"`) {
+	if !strings.Contains(string(plugin), `const BIN = "`+e.exe+`";`) || !strings.Contains(string(plugin), `"session.idle"`) ||
+		!strings.Contains(string(plugin), `"tool.execute.after"`) || !strings.Contains(string(plugin), `const SPAWN_ERR = "`+filepath.Join(e.home, ".cache", "agentfeedback", "hooks", "opencode.spawn-error.json")+`";`) {
 		t.Errorf("opencode plugin:\n%s", plugin)
 	}
 	ext, _ := os.ReadFile(filepath.Join(e.home, ".omp", "agent", "extensions", "agentfeedback.ts"))
-	if !strings.Contains(string(ext), `pi.on("agent_end"`) || !strings.Contains(string(ext), `ctx?.agent?.kind === "sub"`) {
+	if !strings.Contains(string(ext), `pi.on("agent_end"`) || !strings.Contains(string(ext), `ctx?.agent?.kind === "sub"`) ||
+		!strings.Contains(string(ext), `pi.on("tool_result"`) || !strings.Contains(string(ext), "const SPAWN_ERR = ") {
 		t.Errorf("omp extension:\n%s", ext)
 	}
 	hooks, _ := os.ReadFile(filepath.Join(e.home, ".cursor", "hooks.json"))
-	if !strings.Contains(string(hooks), "\"sessionStart\"") || !strings.Contains(string(hooks), "\t\t\t{ \"command\": \"echo bye\" },\n\t\t\t{\n") {
+	if !strings.Contains(string(hooks), "\"sessionStart\"") || !strings.Contains(string(hooks), e.exe+" hook cursor postToolUseFailure") || !strings.Contains(string(hooks), e.exe+" hook cursor stop") || !strings.Contains(string(hooks), "\t\t\t{ \"command\": \"echo bye\" },\n\t\t\t{\n") {
 		t.Errorf("cursor hooks.json:\n%s", hooks)
 	}
 	mpath := filepath.Join(e.home, ".config", "agentfeedback", "install.json")
@@ -438,7 +440,7 @@ func TestInstall_ForeignRefusals(t *testing.T) {
 		}},
 		{"identical hook", "claude-code", nil, func(e installEnv, t *testing.T) string {
 			p := filepath.Join(e.home, ".claude", "settings.json")
-			putFile(t, p, `{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "`+e.exe+` flush --hook", "timeout": 5}]}]}}`, 0o644)
+			putFile(t, p, `{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "`+e.exe+` hook claude-code Stop", "timeout": 5}]}]}}`, 0o644)
 
 			return p
 		}},
@@ -534,7 +536,7 @@ func TestInstall_SurgicalUninstallKeepsBackup(t *testing.T) {
 		t.Fatalf("%+v", r)
 	}
 	got, _ := os.ReadFile(p)
-	if strings.Contains(string(got), "flush --hook") || !strings.Contains(string(got), `"model": "sonnet"`) {
+	if strings.Contains(string(got), " hook claude-code") || !strings.Contains(string(got), `"model": "sonnet"`) {
 		t.Fatalf("surgical removal:\n%s", got)
 	}
 	if _, err := os.Stat(p + harness.BackupSuffix); err != nil {
@@ -1306,7 +1308,7 @@ func TestInstall_DivergedFile(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("%+v", r)
 	}
-	if got, _ := os.ReadFile(path); !strings.Contains(string(got), `"theme": "dark"`) || strings.Contains(string(got), "flush --hook") {
+	if got, _ := os.ReadFile(path); !strings.Contains(string(got), `"theme": "dark"`) || strings.Contains(string(got), " hook claude-code") {
 		t.Errorf("settings.json was restored from the backup or kept the hook:\n%s", got)
 	}
 	if _, err := os.Stat(path + harness.BackupSuffix); err != nil || !strings.Contains(fmt.Sprint(out["backups"]), path+harness.BackupSuffix) {
@@ -1401,7 +1403,7 @@ func TestInstall_SymlinkedConfig(t *testing.T) {
 		t.Fatalf("the link is %q (%v), want %q", got, err, real)
 	}
 	data, _ := os.ReadFile(real)
-	if !strings.Contains(string(data), e.exe+" flush --hook") {
+	if !strings.Contains(string(data), e.exe+" hook claude-code Stop") {
 		t.Fatalf("the target lacks the hook:\n%s", data)
 	}
 	backup, err := os.ReadFile(path + harness.BackupSuffix)
@@ -2015,7 +2017,7 @@ func TestInstall_SecondWaveContent(t *testing.T) {
 	const url = "https://feedback.example.test/mcp"
 	e := newInstallEnv(t)
 	h := e.home
-	flush := e.exe + " flush --hook"
+	hookOf := func(name, event string) string { return e.exe + " hook " + name + " " + event }
 	member := func(file string, path []string, want string) {
 		t.Helper()
 		data, err := os.ReadFile(filepath.Join(h, filepath.FromSlash(file)))
@@ -2056,14 +2058,22 @@ func TestInstall_SecondWaveContent(t *testing.T) {
 	out := run("install", "copilot", "antigravity", "devin", "kiro", "cline", "amp", "gemini-cli", "--with-reminder")
 	skill(".copilot/skills", ".gemini/config/skills", ".gemini/antigravity-cli/skills", ".config/devin/skills", ".kiro/skills", ".cline/skills", ".config/amp/skills", ".gemini/skills")
 	hook, _ := os.ReadFile(filepath.Join(h, ".copilot", "hooks", "agentfeedback.json"))
-	wantHook := "{\n  \"version\": 1,\n  \"hooks\": {\n    \"agentStop\": [\n      {\n        \"type\": \"command\",\n        \"bash\": " +
-		string(mustJSON(t, flush)) + ",\n        \"timeoutSec\": 5\n      }\n    ]\n  }\n}\n"
+	entry := func(event string) string {
+		return "[\n      {\n        \"type\": \"command\",\n        \"bash\": " +
+			string(mustJSON(t, hookOf("copilot", event))) + ",\n        \"timeoutSec\": 5\n      }\n    ]"
+	}
+	wantHook := "{\n  \"version\": 1,\n  \"hooks\": {\n    \"postToolUseFailure\": " + entry("postToolUseFailure") +
+		",\n    \"agentStop\": " + entry("agentStop") + "\n  }\n}\n"
 	if string(hook) != wantHook {
 		t.Errorf("copilot hook:\n%s\nwant\n%s", hook, wantHook)
 	}
-	member(".gemini/config/hooks.json", nil, `{"enabled":true,"Stop":[{"hooks":[{"type":"command","command":`+string(mustJSON(t, flush))+`,"timeout":5}]}]}`)
+	agHandler := func(event string) string {
+		return `{"type":"command","command":` + string(mustJSON(t, hookOf("antigravity", event))) + `,"timeout":5}`
+	}
+	member(".gemini/config/hooks.json", nil, `{"enabled":true,"PostToolUse":[{"matcher":"*","hooks":[`+agHandler("PostToolUse")+`]}],"PreInvocation":[`+
+		agHandler("PreInvocation")+`],"Stop":[`+agHandler("Stop")+`]}`)
 	devin, _ := os.ReadFile(filepath.Join(h, ".config", "devin", "config.json"))
-	if ok, err := harness.HasElement(devin, []string{"hooks", "Stop"}, []byte(`{"hooks":[{"type":"command","command":`+string(mustJSON(t, flush))+`,"timeout":5}]}`)); err != nil || !ok {
+	if ok, err := harness.HasElement(devin, []string{"hooks", "Stop"}, []byte(`{"hooks":[{"type":"command","command":`+string(mustJSON(t, hookOf("devin", "Stop")))+`,"timeout":5}]}`)); err != nil || !ok {
 		t.Errorf("devin config.json lacks the Stop hook (%v):\n%s", err, devin)
 	}
 	for _, f := range []string{".kiro/settings/mcp.json", ".cline/data/settings/cline_mcp_settings.json", ".config/amp/settings.json", ".gemini/config/mcp_config.json", ".copilot/mcp-config.json"} {

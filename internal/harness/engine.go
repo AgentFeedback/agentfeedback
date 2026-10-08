@@ -1763,3 +1763,41 @@ func (e Env) Server() (string, error) {
 
 	return man.Server, nil
 }
+
+// LegacyHooks lists, in registry order, the harnesses whose recorded hook
+// still runs flush --hook, the entry installs wired before agentfeedback
+// hook; a reinstall replaces it.
+func (e Env) LegacyHooks() ([]string, error) {
+	man, _, err := LoadManifest(e.ManifestPath())
+	if err != nil {
+		return nil, err
+	}
+	legacy := func(b []byte) bool {
+		return bytes.Contains(b, []byte("flush --hook")) || bytes.Contains(b, []byte(`"flush", "--hook"`))
+	}
+	var out []string
+	for _, n := range names {
+		rec := man.Harnesses[n]
+		if rec == nil || rec.Mode != ModeCLI {
+			continue
+		}
+		for _, it := range rec.Items {
+			if it.Role != RoleHook {
+				continue
+			}
+			old := legacy(it.Value) || legacy([]byte(it.Text))
+			if !old && it.Kind == KindPluginFile && it.File != "" {
+				if data, err := os.ReadFile(it.File); err == nil {
+					old = legacy(data)
+				}
+			}
+			if old {
+				out = append(out, n)
+
+				break
+			}
+		}
+	}
+
+	return out, nil
+}

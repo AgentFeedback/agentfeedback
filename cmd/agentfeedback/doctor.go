@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -20,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agentfeedback/agentfeedback/v4/internal/harness"
 	"github.com/agentfeedback/agentfeedback/v4/internal/localmode"
 	"github.com/agentfeedback/agentfeedback/v4/pkg/client"
 	"github.com/agentfeedback/agentfeedback/v4/pkg/collect"
@@ -54,11 +56,15 @@ type doctorReport struct {
 	Collect   collectCheck    `json:"collect"`
 }
 
-// harnessBinary is the binary one CLI-mode harness's hooks run.
+// harnessBinary is the binary one CLI-mode harness's hooks run, and when
+// its hook last ran; cli is set for a CLI-mode harness with a hook.
 type harnessBinary struct {
 	Name    string `json:"name"`
 	Binary  string `json:"binary"`
 	Version string `json:"version"`
+	// HookLastRun is the time the hook last ran, from the file it writes.
+	HookLastRun string `json:"hook_last_run,omitempty"`
+	cli         bool
 }
 
 // pathCheck is the agentfeedback on PATH, symlinks resolved.
@@ -350,11 +356,20 @@ func checkHarnessBinaries(clientVer string, problem func(error)) []harnessBinary
 
 		return out
 	}
+	cache, cacheErr := cacheDir(os.Getenv)
+	hooked := map[string]bool{}
+	for _, a := range harness.Adapters() {
+		hooked[a.Name] = a.Hook.Format != "none"
+	}
 	for _, h := range st {
 		if h.Binary == "" {
 			continue
 		}
-		out = append(out, harnessBinary{Name: h.Name, Binary: h.Binary, Version: h.BinaryVersion})
+		hb := harnessBinary{Name: h.Name, Binary: h.Binary, Version: h.BinaryVersion, cli: h.Mode == harness.ModeCLI && hooked[h.Name]}
+		if hb.cli && cacheErr == nil {
+			hb.HookLastRun = checkHookRun(cache, h.Name, problem)
+		}
+		out = append(out, hb)
 		if h.BinaryVersion == "missing" {
 			problem(errHarnessBinaryMissing(h.Name, h.Binary))
 
@@ -369,8 +384,47 @@ func checkHarnessBinaries(clientVer string, problem func(error)) []harnessBinary
 			problem(errHarnessBinaryOld(h.Name, h.Binary, h.BinaryVersion, clientVer))
 		}
 	}
+	if legacy, err := env.LegacyHooks(); err == nil {
+		for _, n := range legacy {
+			problem(errHookLegacy(n))
+		}
+	}
 
 	return out
+}
+
+// checkHookRun reads when the harness's hook last ran, and reports as a
+// problem a plugin's record of failing to start the hook that is newer than
+// the last run.
+func checkHookRun(cache, name string, problem func(error)) string {
+	var last time.Time
+	ts := ""
+	if data, err := os.ReadFile(hookLastRunPath(cache, name)); err == nil {
+		var r lastRun
+		if json.Unmarshal(data, &r) == nil {
+			if t, err := time.Parse(time.RFC3339, r.TS); err == nil {
+				last, ts = t, r.TS
+			}
+		}
+	}
+	data, err := os.ReadFile(hookSpawnErrorPath(cache, name))
+	if err != nil {
+		return ts
+	}
+	var se struct {
+		TS    string `json:"ts"`
+		Error string `json:"error"`
+	}
+	if json.Unmarshal(data, &se) != nil {
+		return ts
+	}
+	at, err := time.Parse(time.RFC3339Nano, se.TS)
+	if err != nil || (!last.IsZero() && !at.After(last)) {
+		return ts
+	}
+	problem(errHookSpawn(name, oneLine(se.Error)))
+
+	return ts
 }
 
 // checkMeta fetches <url>/api/v1/meta with the key and reports what the
@@ -799,6 +853,9 @@ func printReport(w io.Writer, r doctorReport) {
 	}
 	for _, h := range r.Harnesses {
 		fmt.Fprintf(w, "harness:  %s %s (%s)\n", h.Name, h.Binary, orNone(h.Version))
+		if h.cli {
+			fmt.Fprintf(w, "hook:     %s last ran at %s\n", h.Name, cmp.Or(h.HookLastRun, "never"))
+		}
 	}
 	if r.Path.Found {
 		fmt.Fprintf(w, "path:     %s (%s)\n", r.Path.Binary, orNone(r.Path.Version))

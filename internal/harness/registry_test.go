@@ -10,6 +10,10 @@ import (
 	"testing"
 )
 
+// hookCommand finds the harness and event of a wired hook: a command
+// running "hook <harness> <event>", or a plugin's run("<event>", ...).
+var hookCommand = regexp.MustCompile(`/bin/af hook ([a-z-]+) ([A-Za-z._]+)|run\("()([A-Za-z._]+)"`)
+
 var update = flag.Bool("update", false, "rewrite the generated harness table in docs/operate.md")
 
 func TestRegistry_Complete(t *testing.T) {
@@ -46,6 +50,14 @@ func TestRegistry_Complete(t *testing.T) {
 			if a.Hook.Events[k] == "" {
 				bad("event " + k + " missing")
 			}
+		}
+		switch {
+		case a.Hook.Deliver == "":
+			bad("no deliver event")
+		case a.Hook.Deliver == "none" && a.Hook.NoDeliver == "":
+			bad("deliver none without a reason")
+		case a.Hook.Deliver != "none" && a.Hook.Format == "none":
+			bad("a deliver event without a hook")
 		}
 		if a.MCP.URLShape == "" && a.MCP.NoMCP == "" {
 			bad("no MCP entry and no reason")
@@ -220,7 +232,16 @@ func TestRegistry_AgreesWithWiring(t *testing.T) {
 				t.Fatalf("%s/%s: %v", a.Name, mode, err)
 			}
 			sawHook := false
+			wired := map[string]bool{}
 			for _, it := range d.items {
+				if it.Role == RoleHook {
+					for _, m := range hookCommand.FindAllStringSubmatch(string(it.Value)+string(it.content), -1) {
+						if m[1] != "" && m[1] != a.Name {
+							t.Errorf("%s: a hook command names harness %s", a.Name, m[1])
+						}
+						wired[m[2]+m[4]] = true
+					}
+				}
 				if it.Kind == KindClaudeMCP {
 					continue
 				}
@@ -248,6 +269,30 @@ func TestRegistry_AgreesWithWiring(t *testing.T) {
 			}
 			if mode == ModeCLI && sawHook != (a.Hook.Format != "none") {
 				t.Errorf("%s: hook items %v with format %s", a.Name, sawHook, a.Hook.Format)
+			}
+			// Every wired hook names one of the registry's events, the
+			// turn-end and deliver events are wired, and nothing runs the
+			// older flush --hook.
+			if mode == ModeCLI && sawHook {
+				declared := map[string]bool{a.Hook.Deliver: true}
+				for _, ev := range a.Hook.Events {
+					declared[ev] = true
+				}
+				for ev := range wired {
+					if !declared[ev] || ev == "none" {
+						t.Errorf("%s: wired event %s is not in the registry", a.Name, ev)
+					}
+				}
+				for _, ev := range []string{a.Hook.Events[EventTurnEnd], a.Hook.Deliver} {
+					if ev != "none" && !wired[ev] {
+						t.Errorf("%s: event %s is not wired (wired %v)", a.Name, ev, wired)
+					}
+				}
+				for _, it := range d.items {
+					if it.Role == RoleHook && strings.Contains(string(it.Value)+string(it.content), "flush") {
+						t.Errorf("%s: %s still runs flush", a.Name, it.File)
+					}
+				}
 			}
 		}
 		// The docs row names the declared paths.

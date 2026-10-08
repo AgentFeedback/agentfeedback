@@ -148,7 +148,7 @@ func TestDoctor_HarnessBinaries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(rep.Harnesses, []harnessBinary{{Name: "claude-code", Binary: e.exe, Version: "4.1.0"}}) ||
+	if !slices.Equal(rep.Harnesses, []harnessBinary{{Name: "claude-code", Binary: e.exe, Version: "4.1.0", cli: true}}) ||
 		rep.Path != (pathCheck{Binary: e.exe, Version: "4.1.0", Found: true}) || hasProblem(rep, "hooks run") {
 		t.Fatalf("%+v", rep)
 	}
@@ -252,6 +252,14 @@ func TestBinaryVersion_NotARegularFile(t *testing.T) {
 func TestUnknownConfigKeys_CaseInsensitive(t *testing.T) {
 	got := unknownConfigKeys([]byte("[collect]\nDeny_Paths = [\"/x\"]\ndeny_path = [\"/y\"]\n"))
 	if !slices.Equal(got, []string{"collect.deny_path"}) {
+		t.Fatalf("%q", got)
+	}
+}
+
+// TestUnknownConfigKeys_Detect: the detect table is checked too.
+func TestUnknownConfigKeys_Detect(t *testing.T) {
+	got := unknownConfigKeys([]byte("[detect]\nnudge = false\nsame_tool = 4\nsame_tools = 4\n"))
+	if !slices.Equal(got, []string{"detect.same_tools"}) {
 		t.Fatalf("%q", got)
 	}
 }

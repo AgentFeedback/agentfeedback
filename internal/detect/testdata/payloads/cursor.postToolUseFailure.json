@@ -1,0 +1,18 @@
+{
+  "conversation_id": "conv-1",
+  "generation_id": "gen-1",
+  "model": "claude-opus",
+  "hook_event_name": "postToolUseFailure",
+  "cursor_version": "1.7.2",
+  "workspace_roots": ["/project"],
+  "user_email": null,
+  "transcript_path": null,
+  "tool_name": "Shell",
+  "tool_input": { "command": "npm test" },
+  "tool_use_id": "abc123",
+  "cwd": "/project",
+  "error_message": "Command timed out after 30s",
+  "failure_type": "timeout",
+  "duration": 5000,
+  "is_interrupt": false
+}

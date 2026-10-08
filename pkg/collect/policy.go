@@ -50,6 +50,9 @@ type Decision struct {
 	// Drop is the repository file's context.drop; the caller unions it with
 	// the user's.
 	Drop []string
+	// NudgeOff is the repository file's detect.nudge = false: the hook
+	// still counts failures but gives no note.
+	NudgeOff bool
 }
 
 // Decision reasons.
@@ -65,18 +68,19 @@ const (
 const RepoFile = ".agentfeedback.toml"
 
 // repoFileKeys are the only keys a repository file may set: each narrows.
-var repoFileKeys = []string{"collect.disabled", "collect.deny_paths", "context.drop"}
+var repoFileKeys = []string{"collect.disabled", "collect.deny_paths", "context.drop", "detect.nudge"}
 
 // Check decides whether dir may be collected from under the user policy p and
 // the repository file of the repository dir is in. The rules apply in order:
 // p.Disabled, p.DenyPaths, p.OptInOnly with p.OptInPaths, then the
-// repository file (collect.disabled, collect.deny_paths, context.drop; any
-// other key is ignored with a warning).
+// repository file (collect.disabled, collect.deny_paths, context.drop,
+// detect.nudge; any other key is ignored with a warning).
 //
 // An empty home means os.UserHomeDir(); "~" entries cannot be expanded
 // without one.
 //
-// submit and flush (the hook included) call it before anything is sent;
+// submit and flush (the hook included) call it before anything is sent, and
+// the hook command before it gives a note;
 // doctor reports the same setting problems through Lint.
 func Check(dir, home string, p Policy) Decision {
 	var d Decision
@@ -114,6 +118,7 @@ func Check(dir, home string, p Policy) Decision {
 	rf := readRepoFile(filepath.Join(r.root, RepoFile), r.root)
 	d.Warnings = append(d.Warnings, rf.warnings...)
 	d.Drop = rf.drop
+	d.NudgeOff = rf.nudgeOff
 	if rf.disabled {
 		return disable(ReasonRepoDisabled)
 	}
@@ -170,6 +175,7 @@ type repoFile struct {
 	disabled  bool
 	denyPaths []string
 	drop      []string
+	nudgeOff  bool
 	warnings  []string
 }
 
@@ -229,6 +235,13 @@ func readRepoFile(path, root string) repoFile {
 				continue
 			}
 			rf.drop = entries
+		case slices.Equal(l.path, []string{"detect", "nudge"}):
+			b, ok := v.(bool)
+			if !ok {
+				wrongType(key, "a boolean")
+				continue
+			}
+			rf.nudgeOff = !b
 		default:
 			rf.warnings = append(rf.warnings, fmt.Sprintf("%s: ignoring %q: a repository file may only narrow (%s)",
 				RepoFile, key, strings.Join(repoFileKeys, ", ")))

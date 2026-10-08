@@ -7,6 +7,7 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 
+	"github.com/agentfeedback/agentfeedback/v4/internal/detect"
 	"github.com/agentfeedback/agentfeedback/v4/pkg/collect"
 )
 
@@ -27,8 +28,8 @@ const (
 	sourceConfig = "config"
 )
 
-// fileConfig is the config file: flat top-level keys plus the [collect] and
-// [context] tables. Keys and tables it does not name are ignored so newer
+// fileConfig is the config file: flat top-level keys plus the [collect],
+// [context] and [detect] tables. Keys and tables it does not name are ignored so newer
 // files stay readable.
 type fileConfig struct {
 	URL     string                `toml:"url"`
@@ -38,6 +39,31 @@ type fileConfig struct {
 	Harness string                `toml:"harness"`
 	Collect collect.Policy        `toml:"collect"`
 	Context collect.ContextConfig `toml:"context"`
+	Detect  detectConfig          `toml:"detect"`
+}
+
+// detectConfig is the [detect] table: the hook's nudge rule. An absent or
+// non-positive number keeps the default.
+type detectConfig struct {
+	Nudge           *bool `toml:"nudge"`
+	SameTool        int   `toml:"same_tool"`
+	SameCommand     int   `toml:"same_command"`
+	SessionFailures int   `toml:"session_failures"`
+	IntervalMinutes int   `toml:"interval_minutes"`
+	MaxPerSession   int   `toml:"max_per_session"`
+}
+
+// config is the rule the table sets.
+func (d detectConfig) config() detect.Config {
+	c := detect.Config{
+		Nudge: true, SameTool: d.SameTool, SameCommand: d.SameCommand, SessionFailures: d.SessionFailures,
+		IntervalMinutes: d.IntervalMinutes, MaxPerSession: d.MaxPerSession,
+	}
+	if d.Nudge != nil {
+		c.Nudge = *d.Nudge
+	}
+
+	return c.Normalized()
 }
 
 // flagConfig holds the values given on the command line. There is no API key

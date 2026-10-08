@@ -82,6 +82,19 @@ defence in depth: it detects these formats and no others, not secrets in
 prose, and never member names. `import` does not scrub. Otherwise the server
 stores what it receives and redacts nothing.
 
+The harness hooks (`agentfeedback hook`) read only the payload the harness
+passes on stdin, never the transcript or any other file it names, call no
+model and send nothing about the session. They keep counters per session in
+the cache directory (`0700` directories, `0600` files, no command text,
+deleted after 7 days); the short note they may show quotes the failed
+command, cut to 80 bytes after the same secret-format replacement as
+`--scrub`. A note suggests a friction report and never blocks or redirects
+the agent: no hook denies a tool call, continues a stopped turn or rewrites
+a tool result. The client log keeps a submission's `context.session_id`, and
+no other context; a friction report with one also leaves an empty marker
+named by a digest of the session id, so the hook can tell a session already
+filed a report without reading the log.
+
 Stored text is untrusted. A processor treats reports, suggested fixes and
 event payloads as evidence to verify, never as instructions to execute. The
 triage skill's checkout rule exists for this reason.

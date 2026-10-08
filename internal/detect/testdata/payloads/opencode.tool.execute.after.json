@@ -1,0 +1,1 @@
+{"sessionID":"ses_1","tool":"bash","args":{"command":"go test ./...","description":"run tests"},"exit":1,"cwd":"/repo"}

@@ -394,6 +394,8 @@ func runEnvelope(kind string, args []string, stdin io.Reader, stdout, stderr io.
 			str[p.flag] = fs.String(p.flag, "", "payload."+p.member)
 		}
 	}
+	var ctxFlags contextFlags
+	fs.Var(&ctxFlags, "context", "key=value: set context.<key> to the string value over stdin's and the collected context; repeatable")
 	useStdin := fs.Bool("stdin", false, "read one JSON object from stdin and merge the flags into it")
 	dryRun := fs.Bool("dry-run", false, "print the body and check it locally; send nothing")
 	scrubFlag := fs.Bool("scrub", false, "replace known secret formats in every string value of the body with [REDACTED:<class>] before checking or sending")
@@ -530,6 +532,22 @@ func runEnvelope(kind string, args []string, stdin io.Reader, stdout, stderr io.
 	} else if len(collected.Context) > 0 {
 		obj = obj.set("context", stringMap(collected.Context).encode())
 	}
+	// --context goes over both.
+	if len(ctxFlags) > 0 {
+		var ctx rawObject
+		if raw, ok := obj.get("context"); ok {
+			if !isObject(raw) {
+				return errContextNotObject()
+			}
+			if ctx, err = parseObject(raw); err != nil {
+				return errContextNotObject()
+			}
+		}
+		for _, kv := range ctxFlags {
+			ctx = ctx.set(kv[0], jsonString(kv[1]))
+		}
+		obj = obj.set("context", ctx.encode())
+	}
 	// A body with no payload and nothing for the server to move into one
 	// gets an empty payload rather than a payload_inferred warning.
 	members := envelope.Members()
@@ -554,6 +572,22 @@ func runEnvelope(kind string, args []string, stdin io.Reader, stdout, stderr io.
 	}
 
 	return finish("submit", o, stdout)
+}
+
+// contextFlags are the --context key=value pairs in the order given.
+type contextFlags [][2]string
+
+func (c *contextFlags) String() string { return "" }
+
+// Set takes one key=value; the key must not be empty.
+func (c *contextFlags) Set(v string) error {
+	k, val, ok := strings.Cut(v, "=")
+	if !ok || strings.TrimSpace(k) == "" {
+		return fmt.Errorf("--context wants key=value with a non-empty key, got %q", v)
+	}
+	*c = append(*c, [2]string{k, val})
+
+	return nil
 }
 
 // originSessionScan reports whether the body's context.origin is
@@ -631,7 +665,7 @@ func runFlush(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	skipStartupPass = true
 	fs := newFlagSet("flush")
 	mf := addModeFlags(fs)
-	hook := fs.Bool("hook", false, "run as a harness hook: print nothing, stop within 4.5 seconds, log failures to the client log and exit 0")
+	hook := fs.Bool("hook", false, "run as a harness hook, as installs before agentfeedback hook wired it: print nothing, stop within 4.5 seconds, log failures to the client log and exit 0")
 	pos, err := parseInterleaved(fs, args, stderr)
 	if err != nil {
 		return errFlags("flush", err)
@@ -723,7 +757,13 @@ var flushHookFlush = func(ctx context.Context, c *client.Client) client.FlushRep
 // never a failing exit. An empty spool returns before the config is read;
 // any failure, the deadline included, is one error line in the client log.
 func runFlushHook(mf modeFlags) {
-	start := time.Now()
+	boundedHook(time.Now(), "flush --hook", mf)
+}
+
+// boundedHook runs flushHookBody under the flush --hook deadlines counted
+// from start; a failure is one client-log error line whose reason starts
+// with label.
+func boundedHook(start time.Time, label string, mf modeFlags) {
 	ctx, cancel := context.WithDeadline(context.Background(), start.Add(flushHookSend))
 	defer cancel()
 	cache, err := cacheDir(os.Getenv)
@@ -735,7 +775,7 @@ func runFlushHook(mf modeFlags) {
 		return
 	}
 	fail := func(msg string) {
-		client.LogTo(cache, client.Outcome{Outcome: client.OutcomeError, Reason: "flush --hook: " + oneLine(msg)}, nowFunc(), io.Discard)
+		client.LogTo(cache, client.Outcome{Outcome: client.OutcomeError, Reason: label + ": " + oneLine(msg)}, nowFunc(), io.Discard)
 	}
 	done := make(chan error, 1)
 	go func() { done <- flushHookBody(ctx, data, mf) }()
@@ -751,7 +791,7 @@ func runFlushHook(mf modeFlags) {
 	}
 }
 
-// flushHookBody is the work runFlushHook bounds; it returns the failure to
+// flushHookBody is the work boundedHook bounds; it returns the failure to
 // log, or nil. An empty spool and an empty inbox return before the config
 // is read; data is the data directory the spool and the inbox live in. In
 // local mode the inbox is ingested after the flush, within the same

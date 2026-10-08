@@ -134,7 +134,7 @@ func TestCheckRepoFile(t *testing.T) {
 
 	write(t, rf, "url = \"x\"\n")
 	d := Check(repo, base, Policy{})
-	want := `.agentfeedback.toml: ignoring "url": a repository file may only narrow (collect.disabled, collect.deny_paths, context.drop)`
+	want := `.agentfeedback.toml: ignoring "url": a repository file may only narrow (collect.disabled, collect.deny_paths, context.drop, detect.nudge)`
 	if len(d.Warnings) != 1 || d.Warnings[0] != want {
 		t.Fatalf("warning %q, want %q", d.Warnings, want)
 	}
@@ -191,5 +191,30 @@ func TestLint(t *testing.T) {
 	}
 	if d := Check(plain, home, Policy{DenyPaths: []string{"rel/deny"}}); !slices.Equal(d.Warnings, want[:1]) {
 		t.Fatalf("Check warning %q differs from Lint's", d.Warnings)
+	}
+}
+
+// TestCheckDetectNudge: a repository file's detect.nudge = false switches
+// the hook's note off without disabling collection; true is accepted and
+// changes nothing; another type is a warning.
+func TestCheckDetectNudge(t *testing.T) {
+	base := t.TempDir()
+	repo := minimalRepo(t, filepath.Join(base, "repo"))
+	rf := filepath.Join(repo, RepoFile)
+	for _, tt := range []struct {
+		body     string
+		off      bool
+		warnings int
+	}{
+		{"[detect]\nnudge = false\n", true, 0},
+		{"[detect]\nnudge = true\n", false, 0},
+		{"[detect]\nnudge = \"no\"\n", false, 1},
+		{"[detect]\nsame_tool = 1\n", false, 1},
+	} {
+		write(t, rf, tt.body)
+		d := Check(repo, base, Policy{})
+		if d.Disabled || d.NudgeOff != tt.off || len(d.Warnings) != tt.warnings {
+			t.Errorf("%q: %+v", tt.body, d)
+		}
 	}
 }

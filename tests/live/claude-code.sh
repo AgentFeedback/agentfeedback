@@ -5,9 +5,13 @@
 # entry and a settings.json with an unrelated key and Stop hook: install
 # --mcp with the server's URL, `claude mcp list` connects to it, a second
 # install changes nothing, uninstall removes only it; the same with --server
-# local, whose stdio entry runs `agentfeedback mcp`; the skill and Stop hook install, reinstall
-# unchanged, the hook command runs, and uninstall restores settings.json byte
-# for byte. Claude loading the skill needs a model session and is not checked.
+# local, whose stdio entry runs `agentfeedback mcp`; the skill and the
+# PostToolUseFailure and Stop hooks install, reinstall unchanged; the installed
+# PostToolUseFailure command, fed the same failed Bash command twice in a
+# fresh session, prints the note on the second run, and the Stop command
+# prints nothing and exits 0; uninstall restores settings.json byte for byte.
+# Claude loading the skill or acting on the note needs a model session and is
+# not checked.
 set -euo pipefail
 
 KEY=live-harness-key
@@ -40,7 +44,7 @@ claude_() { timeout 60 claude "$@"; }
 
 check() {
   mode=$1
-  local home dir json list hook bin
+  local home dir json list hook fhook bin payload out session
   home=/tmp/home-$mode
   dir="$home/.claude"
   mkdir -p "$dir"
@@ -93,13 +97,26 @@ check() {
     fail "$mode: install changed the unrelated settings: $(cat "$dir/settings.json")"
   hook=$(jq -r '[.hooks.Stop[].hooks[].command | select(test("agentfeedback"))][0] // empty' "$dir/settings.json")
   [ -n "$hook" ] || fail "$mode: no agentfeedback Stop hook in $dir/settings.json"
-  (cd /tmp && timeout 30 bash -c "$hook" </dev/null) || fail "$mode: the Stop hook command failed: $hook"
+  fhook=$(jq -r '[.hooks.PostToolUseFailure[]?.hooks[].command | select(test("agentfeedback"))][0] // empty' "$dir/settings.json")
+  [ -n "$fhook" ] || fail "$mode: no agentfeedback PostToolUseFailure hook in $dir/settings.json"
+  session="live-$mode-$$"
+  payload=$(jq -cn --arg s "$session" '{session_id: $s, cwd: "/tmp", hook_event_name: "PostToolUseFailure", tool_name: "Bash",
+    tool_input: {command: "npm test"}, error: "Exit code 1\nError: Cannot find module", is_interrupt: false}')
+  out=$(cd /tmp && timeout 30 bash -c "$fhook" <<<"$payload") || fail "$mode: the PostToolUseFailure hook command failed: $fhook"
+  [ -z "$out" ] || fail "$mode: the first failure printed a note: $out"
+  out=$(cd /tmp && timeout 30 bash -c "$fhook" <<<"$payload") || fail "$mode: the PostToolUseFailure hook command failed: $fhook"
+  jq -e '.hookSpecificOutput.hookEventName == "PostToolUseFailure" and (.hookSpecificOutput.additionalContext | contains("agentfeedback submit friction"))' <<<"$out" >/dev/null ||
+    fail "$mode: the second failure printed no note: $out"
+  out=$(cd /tmp && timeout 30 bash -c "$hook" <<<"$(jq -cn --arg s "$session" '{session_id: $s, cwd: "/tmp", hook_event_name: "Stop", stop_hook_active: false}')") ||
+    fail "$mode: the Stop hook command failed: $hook"
+  [ -z "$out" ] || fail "$mode: the Stop hook printed: $out"
+  pass "$mode: the PostToolUseFailure hook prints the note on the second failure; the Stop hook prints nothing"
   expect unchanged install claude-code --server "$URL"
   expect uninstalled uninstall claude-code
   [ ! -e "$dir/skills/agentfeedback" ] || fail "$mode: the skill is left in $dir/skills"
   cmp -s /tmp/settings.before "$dir/settings.json" || fail "$mode: uninstall did not restore settings.json: $(cat "$dir/settings.json")"
   [ ! -e "$XDG_CONFIG_HOME/agentfeedback/install.json" ] || fail "$mode: the install manifest is left"
-  pass "$mode: the skill and Stop hook install, run and uninstall, leaving settings.json as it was"
+  pass "$mode: the skill and hooks install, run and uninstall, leaving settings.json as it was"
 }
 
 check unset

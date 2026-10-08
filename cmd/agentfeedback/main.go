@@ -3,7 +3,8 @@
 // its database, and doctor, submit (friction,
 // review or any kind), flush, version, schema, skill and the read and
 // processing commands (list, get, stats, done, undo, redact, rekind, export,
-// digest), ingest and migrate are client commands; mcp serves the MCP tools
+// digest), ingest and migrate are client commands; hook is what the
+// harnesses' hooks run; mcp serves the MCP tools
 // over stdio on the local database; ui serves a read-only page over the
 // queue on loopback; install and uninstall wire the
 // client into the coding-agent harnesses. A bare invocation prints help.
@@ -47,7 +48,8 @@ var commands = []command{
 	{"backup", "backup <dest.db>: write a consistent copy of the database", runBackup},
 	{"doctor", "check the client setup: the mode (local database or server), the connection and the versions; doctor --e2e [--json]: submit, list and mark one install-check row", runDoctor},
 	{"submit", "submit friction --summary S [...] | submit <kind> --stdin [...] | submit review <run_dir> [--include-outputs] | submit review --sweep [<base>...]; --dry-run sends nothing, --scrub redacts known secret formats in the body's string values: file a submission, the outcome is the last line", runSubmit},
-	{"flush", "flush [--hook]: send the spooled submissions that are due and print the counts; --hook prints nothing, stops after 5 s and always exits 0", runFlush},
+	{"flush", "flush [--hook]: send the spooled submissions that are due and print the counts; --hook (what older installs wired) prints nothing, stops after 5 s and always exits 0", runFlush},
+	{"hook", hookSynopsis + ": run as a harness hook on the event's payload from stdin: count tool failures per session, print a short note when they pile up, send the spool at the end of a turn", runHook},
 	{"ingest", ingestSynopsis + ": submit the envelope files in the inbox (every local-mode command but doctor does this first) and print the counts", runIngest},
 	{"list", "list [filters] [--limit N] [--before-id N | --after-id N] [--include payload] [--all] [--json | --tsv]: list submissions, newest first", runList},
 	{"get", "get <id> [--json]: print one submission", runGet},
@@ -62,7 +64,7 @@ var commands = []command{
 	{"version", "print the client version", runVersion},
 	{"schema", "schema [<kind> [<version>]]: list the schemas or print one", runSchema},
 	{"skill", "skill render <form> [--server URL]: print the submission guidance in one form | skill render docs --out DIR: write the agentfeedback-docs skill | skill render agent-plugin|marketplace --out DIR: write the plugin bundle or a marketplace root | skill reminder: print the one-line session-start reminder", runSkill},
-	{"install", installSynopsis + ": wire the agentfeedback skill and Stop hook (or with --mcp an MCP entry) into the coding-agent harnesses; no harness named lists them", runInstall},
+	{"install", installSynopsis + ": wire the agentfeedback skill and hooks (or with --mcp an MCP entry) into the coding-agent harnesses; no harness named lists them", runInstall},
 	{"uninstall", uninstallSynopsis + ": remove exactly what install added, restoring untouched files from their backups", runUninstall},
 	{"mcp", mcpSynopsis + ": serve the MCP tools over stdio on the local database until stdin closes; stdout carries only the protocol", runMcp},
 	{"ui", uiSynopsis + ": serve a read-only web page over the queue on loopback until Ctrl-C", runUI},
@@ -85,8 +87,9 @@ client environment (flag > environment > config file):
   AGENT_FEEDBACK_HARNESS   harness name
 client config file: %s
   flat keys: url, api_key, machine, model, harness
-  tables: [collect] deny_paths, opt_in_only, opt_in_paths, disabled; [context] cwd, drop, app, workspace, url, channel, task_id, workflow
-  a repository .agentfeedback.toml may only narrow (collect.disabled, collect.deny_paths, context.drop)
+  tables: [collect] deny_paths, opt_in_only, opt_in_paths, disabled; [context] cwd, drop, app, workspace, url, channel, task_id, workflow;
+  [detect] nudge, same_tool, same_command, session_failures, interval_minutes, max_per_session
+  a repository .agentfeedback.toml may only narrow (collect.disabled, collect.deny_paths, context.drop, detect.nudge)
 
 server environment: API_KEY or API_KEY_FILE (serve only, not both), DATABASE_PATH,
 HTTP_LISTEN_ADDR, GRACEFUL_SHUTDOWN_TIMEOUT, SERVICE_VERSION, LOG_LEVEL,

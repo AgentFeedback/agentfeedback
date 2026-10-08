@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // TestLog is AC4: one line per outcome, owner-only, no secrets, rotation.
@@ -173,4 +174,74 @@ func TestLogToWithoutClient(t *testing.T) {
 		t.Fatalf("stderr %q", stderr.String())
 	}
 	LogTo(blocked, Disabled("disabled"), t0, nil)
+}
+
+// TestLog_SessionID: the log keeps the body's context.session_id for a
+// submission and for a flushed entry, and nothing else of the context; the
+// printed outcome never shows it.
+func TestLog_SessionID(t *testing.T) {
+	var hits atomic.Int64
+	e := newTestEnv(t, acceptingServer(t, &hits).URL, nil)
+	o := e.c.Submit(context.Background(), []byte(`{"kind":"friction","summary":"s","context":{"session_id":"sess-1","cwd":"/secret/dir"}}`))
+	var buf bytes.Buffer
+	if err := o.Write(&buf); err != nil || strings.Contains(buf.String(), "session_id") || o.SessionID != "sess-1" {
+		t.Fatalf("outcome %s %+v %v", buf.String(), o, err)
+	}
+	e.c.Submit(context.Background(), []byte(`{"kind":"friction","summary":"s","context":{"session_id":"`+strings.Repeat("x", 129)+`"}}`))
+	e.c.Submit(context.Background(), []byte(`{"kind":"friction","summary":"s","context":{"session_id":7}}`))
+	lines := logLines(t, e.cache)
+	if len(lines) != 3 || lines[0]["session_id"] != "sess-1" || lines[1]["session_id"] != nil || lines[2]["session_id"] != nil {
+		t.Fatalf("log = %v", lines)
+	}
+	data, _ := os.ReadFile(LogPath(e.cache))
+	if bytes.Contains(data, []byte("/secret/dir")) {
+		t.Error("the log holds other context")
+	}
+	if got := SessionIDOf([]byte(`{"context":{"session_id":"a"},"context2":1}`)); got != "a" {
+		t.Errorf("SessionIDOf %q", got)
+	}
+}
+
+// TestLog_FiledMarker: a friction outcome of a session that was submitted,
+// found a duplicate, spooled or flushed leaves an owner-only marker named
+// by the session id's digest; other outcomes and kinds leave none.
+func TestLog_FiledMarker(t *testing.T) {
+	cache := t.TempDir()
+	for _, tt := range []struct {
+		o    Outcome
+		want bool
+	}{
+		{Outcome{Outcome: OutcomeSubmitted, Kind: "friction", SessionID: "a"}, true},
+		{Outcome{Outcome: OutcomeDuplicate, Kind: "friction", SessionID: "b"}, true},
+		{Outcome{Outcome: OutcomeSpooled, Kind: "friction", SessionID: "c"}, true},
+		{Outcome{Outcome: OutcomeFlushed, Kind: "friction", SessionID: "d"}, true},
+		{Outcome{Outcome: OutcomeRejected, Kind: "friction", SessionID: "e"}, false},
+		{Outcome{Outcome: OutcomeSubmitted, Kind: "event", SessionID: "f"}, false},
+		{Outcome{Outcome: OutcomeSubmitted, Kind: "friction"}, false},
+	} {
+		LogTo(cache, tt.o, t0, nil)
+		path := FiledMarkerPath(cache, tt.o.SessionID)
+		info, err := os.Stat(path)
+		if (err == nil) != tt.want {
+			t.Errorf("%+v: marker %v", tt.o, err)
+		}
+		if err == nil && runtime.GOOS != "windows" && (info.Mode().Perm() != 0o600 || info.Size() != 0) {
+			t.Errorf("%+v: %v", tt.o, info.Mode())
+		}
+	}
+	if len(filepath.Base(FiledMarkerPath(cache, "a"))) != 32 || FiledMarkerPath(cache, "a") == FiledMarkerPath(cache, "b") {
+		t.Error("marker name")
+	}
+	if info, err := os.Stat(FiledDir(cache)); err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0o700) {
+		t.Errorf("dir %v %v", info, err)
+	}
+	// A later filing refreshes the marker's time.
+	old := time.Now().Add(-6 * 24 * time.Hour)
+	if err := os.Chtimes(FiledMarkerPath(cache, "a"), old, old); err != nil {
+		t.Fatal(err)
+	}
+	LogTo(cache, Outcome{Outcome: OutcomeSubmitted, Kind: "friction", SessionID: "a"}, t0, nil)
+	if info, err := os.Stat(FiledMarkerPath(cache, "a")); err != nil || time.Since(info.ModTime()) > time.Hour {
+		t.Errorf("marker not refreshed: %v %v", info, err)
+	}
 }

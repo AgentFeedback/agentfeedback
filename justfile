@@ -125,7 +125,7 @@ box +args:
     done
     exec bash scripts/in-container.sh "$@"
 
-# Install, list and uninstall the agentfeedback MCP entry, skill and Stop hook with the real Claude Code CLI in a network-less container, against a server on its loopback.
+# Install, list and uninstall the agentfeedback MCP entry, skill and hooks with the real Claude Code CLI in a network-less container, against a server on its loopback.
 live-harness:
     bash scripts/live-harness.sh
 

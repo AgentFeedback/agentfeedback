@@ -120,7 +120,7 @@ func installErr(err error) error {
 func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	fs := newFlagSet("install")
 	server := fs.String("server", "", "local, cloud or a base URL (default: url in config.toml, then the one recorded at the last install, then a prompt, then local); a URL MCP entry points at it")
-	mcp := fs.Bool("mcp", false, "add an MCP entry instead of the skill and the Stop hook: for local, a stdio entry that runs this binary's mcp command; for a server, a URL entry")
+	mcp := fs.Bool("mcp", false, "add an MCP entry instead of the skill and the hooks: for local, a stdio entry that runs this binary's mcp command; for a server, a URL entry")
 	docs := fs.Bool("docs", false, "also install the agentfeedback-docs skill (reference docs for integrators and operators)")
 	reminder := fs.Bool("with-reminder", false, "also add a session-start hook that prints a one-line reminder, where the harness supports one")
 	dryRun := fs.Bool("dry-run", false, "print what would change and change nothing")

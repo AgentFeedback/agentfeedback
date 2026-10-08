@@ -508,6 +508,7 @@ func (c *Client) flushOne(ctx context.Context, cand candidate, rep *FlushReport)
 	res := c.send(ctx, e.Body, e.Kind, e.Key)
 	now := c.now()
 	e.Attempts++
+	sid := SessionIDOf(e.Body)
 	switch res.action {
 	case actAccept:
 		if err := os.Remove(claimed); err != nil {
@@ -517,7 +518,7 @@ func (c *Client) flushOne(ctx context.Context, cand candidate, rep *FlushReport)
 		if res.duplicate {
 			rep.Duplicates++
 		}
-		c.Log(Outcome{Outcome: OutcomeFlushed, Kind: e.Kind, Key: e.Key, ID: res.id, RequestID: res.requestID})
+		c.Log(Outcome{Outcome: OutcomeFlushed, Kind: e.Kind, Key: e.Key, ID: res.id, RequestID: res.requestID, SessionID: sid})
 
 		return ""
 	case actRetry, actHold:
@@ -531,7 +532,7 @@ func (c *Client) flushOne(ctx context.Context, cand candidate, rep *FlushReport)
 			_ = os.Remove(claimed)
 		}
 		rep.Pending++
-		c.Log(Outcome{Outcome: OutcomeSpooled, Kind: e.Kind, Key: e.Key, RequestID: res.requestID, Reason: res.reason})
+		c.Log(Outcome{Outcome: OutcomeSpooled, Kind: e.Kind, Key: e.Key, RequestID: res.requestID, Reason: res.reason, SessionID: sid})
 		if res.transport || res.action == actHold || c.local {
 			return res.reason
 		}
@@ -539,7 +540,7 @@ func (c *Client) flushOne(ctx context.Context, cand candidate, rep *FlushReport)
 		return ""
 	}
 
-	o := Outcome{Outcome: OutcomeRejected, Kind: e.Kind, Key: e.Key, RequestID: res.requestID, Reason: res.reason}
+	o := Outcome{Outcome: OutcomeRejected, Kind: e.Kind, Key: e.Key, RequestID: res.requestID, Reason: res.reason, SessionID: sid}
 	if res.action == actMismatch {
 		o.Outcome = OutcomeMismatch
 		rep.Mismatched++

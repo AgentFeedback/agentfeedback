@@ -2,6 +2,7 @@ package harness
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"maps"
 	"os"
@@ -106,10 +107,18 @@ func TestDuplicateKey_UninstallLeavesFile(t *testing.T) {
 
 func TestPluginSources_IgnoreSpawnErrors(t *testing.T) {
 	for name, src := range map[string][]byte{
-		"opencode": opencodePlugin("/bin/af"), "omp": ompExtension("/bin/af"), "pi": piExtension("/bin/af"),
+		"opencode": opencodePlugin("/bin/af", "/c/err.json"), "omp": ompExtension("/bin/af", "/c/err.json"), "pi": piExtension("/bin/af", "/c/err.json"),
 	} {
-		if !strings.Contains(string(src), `child.on("error", () => {});`) || !strings.Contains(string(src), "child.unref();") {
-			t.Errorf("%s:\n%s", name, src)
+		for _, want := range []string{
+			`const BIN = "/bin/af";`, `const SPAWN_ERR = "/c/err.json";`, `const HARNESS = "` + name + `";`,
+			`spawn(BIN, ["hook", HARNESS, event]`, `child.on("error", (err`, "spawnError(err);", "}, 5000);",
+		} {
+			if !strings.Contains(string(src), want) {
+				t.Errorf("%s lacks %s:\n%s", name, want, src)
+			}
+		}
+		if strings.Contains(string(src), "flush") {
+			t.Errorf("%s still names flush:\n%s", name, src)
 		}
 	}
 }
@@ -557,5 +566,142 @@ func TestStatus_TransportFromItem(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestInstall_ReplacesOlderFlushHook: a manifest recording the older
+// flush --hook entries is reported by LegacyHooks, and a reinstall removes
+// those entries and adds the agentfeedback hook ones.
+func TestInstall_ReplacesOlderFlushHook(t *testing.T) {
+	e := testEnv(t)
+	settings := filepath.Join(e.Home, ".claude", "settings.json")
+	put(t, settings, "{\n  \"model\": \"a\"\n}\n")
+	claude, opencode := adapterOf("claude-code"), adapterOf("opencode")
+	origClaude, origOpencode := claude.hook, opencode.hook
+	t.Cleanup(func() { claude.hook, opencode.hook = origClaude, origOpencode })
+	claude.hook = func(p *plan, o Options) ([]Item, []string) {
+		return []Item{element(settings, []string{"hooks", "Stop"}, commandHook(o.Binary+" flush --hook"), RoleHook)}, nil
+	}
+	opencode.hook = func(p *plan, o Options) ([]Item, []string) {
+		old := []byte("const BIN = \"" + o.Binary + "\";\nspawn(BIN, [\"flush\", \"--hook\"], { stdio: \"ignore\" });\n")
+
+		return []Item{fileItem(KindPluginFile, RoleHook, filepath.Join(p.env.opencodeDir(), "plugins", "agentfeedback.js"), old)}, nil
+	}
+	if _, err := e.Run(cliRequest("claude-code", "opencode")); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := e.LegacyHooks(); err != nil || !slices.Equal(got, []string{"claude-code", "opencode"}) {
+		t.Fatalf("legacy %v %v", got, err)
+	}
+	claude.hook, opencode.hook = origClaude, origOpencode
+	if _, err := e.Run(cliRequest("claude-code", "opencode")); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(settings)
+	if strings.Contains(string(data), "flush --hook") || !strings.Contains(string(data), "agentfeedback hook claude-code Stop") ||
+		!strings.Contains(string(data), "agentfeedback hook claude-code PostToolUseFailure") || !strings.Contains(string(data), `"model": "a"`) {
+		t.Fatalf("settings.json:\n%s", data)
+	}
+	plugin, _ := os.ReadFile(filepath.Join(e.opencodeDir(), "plugins", "agentfeedback.js"))
+	if strings.Contains(string(plugin), "flush") || !strings.Contains(string(plugin), `run("session.idle"`) {
+		t.Fatalf("plugin:\n%s", plugin)
+	}
+	if got, err := e.LegacyHooks(); err != nil || len(got) != 0 {
+		t.Fatalf("legacy after reinstall %v %v", got, err)
+	}
+	if _, err := e.Run(Request{Harnesses: []string{"claude-code", "opencode"}, Uninstall: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(settings); string(got) != "{\n  \"model\": \"a\"\n}\n" {
+		t.Errorf("after uninstall:\n%s", got)
+	}
+}
+
+// TestInstall_HookEntries: install writes the agentfeedback hook entries,
+// with the spawn-error path under the cache directory in the plugins.
+func TestInstall_HookEntries(t *testing.T) {
+	e := testEnv(t)
+	cache := filepath.Join(e.Home, "xdg-cache")
+	e.Getenv = func(k string) string {
+		if k == "XDG_CACHE_HOME" {
+			return cache
+		}
+
+		return ""
+	}
+	names := []string{"claude-code", "codex", "cursor", "opencode", "omp", "pi", "copilot", "antigravity", "devin"}
+	if _, err := e.Run(cliRequest(names...)); err != nil {
+		t.Fatal(err)
+	}
+	bin := "/usr/local/bin/agentfeedback"
+	for _, tt := range []struct {
+		file string
+		want []string
+	}{
+		{".claude/settings.json", []string{bin + " hook claude-code PostToolUseFailure", bin + " hook claude-code Stop"}},
+		{".codex/hooks.json", []string{bin + " hook codex Stop"}},
+		{".cursor/hooks.json", []string{bin + " hook cursor postToolUseFailure", bin + " hook cursor stop", `"timeout": 5`}},
+		{".config/opencode/plugins/agentfeedback.js", []string{`await run("tool.execute.after"`, `run("session.idle"`, filepath.Join(cache, "agentfeedback", "hooks", "opencode.spawn-error.json")}},
+		{".omp/agent/extensions/agentfeedback.ts", []string{`run("tool_result"`, `run("agent_end"`, "additionalContext: text", filepath.Join(cache, "agentfeedback", "hooks", "omp.spawn-error.json")}},
+		{".pi/agent/extensions/agentfeedback.ts", []string{`run("tool_result"`, `run("agent_settled"`, `deliverAs: "nextTurn"`, filepath.Join(cache, "agentfeedback", "hooks", "pi.spawn-error.json")}},
+		{".copilot/hooks/agentfeedback.json", []string{bin + " hook copilot postToolUseFailure", bin + " hook copilot agentStop", `"timeoutSec": 5`}},
+		{".gemini/config/hooks.json", []string{bin + " hook antigravity PostToolUse", bin + " hook antigravity PreInvocation", bin + " hook antigravity Stop", `"matcher": "*"`}},
+		{".config/devin/config.json", []string{bin + " hook devin Stop"}},
+	} {
+		data, err := os.ReadFile(filepath.Join(e.Home, filepath.FromSlash(tt.file)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, w := range tt.want {
+			if !strings.Contains(string(data), w) {
+				t.Errorf("%s lacks %s:\n%s", tt.file, w, data)
+			}
+		}
+		if strings.Contains(string(data), "flush") {
+			t.Errorf("%s names flush:\n%s", tt.file, data)
+		}
+	}
+}
+
+// TestInstall_QuotedBinary: a binary path with a character a shell treats
+// specially is single-quoted in every command-string hook entry.
+func TestInstall_QuotedBinary(t *testing.T) {
+	e := testEnv(t)
+	req := cliRequest("claude-code", "codex", "cursor", "copilot", "antigravity", "devin")
+	req.Options.Binary = "/opt/my tools/it's/agentfeedback"
+	req.Options.Reminder = true
+	if _, err := e.Run(req); err != nil {
+		t.Fatal(err)
+	}
+	q := `'/opt/my tools/it'\''s/agentfeedback'`
+	for _, tt := range []struct {
+		file string
+		want []string
+	}{
+		{".claude/settings.json", []string{q + " hook claude-code PostToolUseFailure", q + " hook claude-code Stop", q + " skill reminder"}},
+		{".codex/hooks.json", []string{q + " hook codex Stop", q + " skill reminder"}},
+		{".cursor/hooks.json", []string{q + " hook cursor postToolUseFailure", q + " hook cursor stop", q + " skill reminder"}},
+		{".copilot/hooks/agentfeedback.json", []string{q + " hook copilot postToolUseFailure", q + " hook copilot agentStop"}},
+		{".gemini/config/hooks.json", []string{q + " hook antigravity PostToolUse", q + " hook antigravity PreInvocation", q + " hook antigravity Stop"}},
+		{".config/devin/config.json", []string{q + " hook devin Stop"}},
+	} {
+		data, err := os.ReadFile(filepath.Join(e.Home, filepath.FromSlash(tt.file)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var doc any
+		if err := json.Unmarshal(data, &doc); err != nil {
+			t.Fatalf("%s: %v", tt.file, err)
+		}
+		flat, _ := json.Marshal(doc)
+		for _, w := range tt.want {
+			ws, _ := json.Marshal(w)
+			if !strings.Contains(string(flat), strings.Trim(string(ws), `"`)) {
+				t.Errorf("%s lacks %s:\n%s", tt.file, w, data)
+			}
+		}
+	}
+	if got := shellBinary("/usr/local/bin/agent+feedback-1.0_x"); got != "/usr/local/bin/agent+feedback-1.0_x" {
+		t.Errorf("plain path quoted: %s", got)
 	}
 }

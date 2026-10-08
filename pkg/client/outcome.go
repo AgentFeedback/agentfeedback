@@ -35,6 +35,9 @@ type Outcome struct {
 	// Warnings are what the client changed in the body before checking or
 	// sending it, such as the values submit --scrub replaced.
 	Warnings []Warning `json:"warnings,omitempty"`
+	// SessionID is the submitted body's context.session_id, which the client
+	// log keeps; it is never printed.
+	SessionID string `json:"-"`
 }
 
 // Warning is one client-side change to the body: a code, the RFC 6901

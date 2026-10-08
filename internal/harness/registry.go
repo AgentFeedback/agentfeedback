@@ -35,7 +35,7 @@ type Instructions struct {
 	Project  []string
 }
 
-// Hook is how the harness runs a command at the end of a turn.
+// Hook is how the harness runs agentfeedback hook on its events.
 type Hook struct {
 	File func(Env) string
 	// Format is how install writes the hook, or "none".
@@ -43,6 +43,11 @@ type Hook struct {
 	// NoHook is why no hook is wired when Format is "none".
 	NoHook string
 	Events map[string]string
+	// Deliver is the harness event at which the hook's note reaches the
+	// agent, or "none".
+	Deliver string
+	// NoDeliver is why Deliver is "none".
+	NoDeliver string
 	// Reminder is whether the session-start reminder can be wired.
 	Reminder bool
 }
@@ -172,8 +177,27 @@ func fixed(f func(Env) string) func(p *plan) (string, error) {
 	return func(p *plan) (string, error) { return f(p.env), nil }
 }
 
-func flushCmd(o Options) string  { return o.Binary + " flush --hook" }
-func remindCmd(o Options) string { return o.Binary + " skill reminder" }
+// shellBinary is the binary path as one shell word: as is when it holds
+// only [A-Za-z0-9._/+-], else single-quoted with each ' written as '\”.
+func shellBinary(bin string) string {
+	for _, r := range bin {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("._/+-", r)) {
+			return "'" + strings.ReplaceAll(bin, "'", `'\''`) + "'"
+		}
+	}
+
+	return bin
+}
+
+// hookCmd is the hook command for one of the harness's events.
+func hookCmd(o Options, harness, event string) string {
+	return shellBinary(o.Binary) + " hook " + harness + " " + event
+}
+
+func remindCmd(o Options) string { return shellBinary(o.Binary) + " skill reminder" }
+
+// noHookDeliver is the NoDeliver of a harness without hooks.
+const noHookDeliver = "no hook is wired"
 
 func undocumentedEnvNote(name string) string {
 	return name + " documents no environment-variable syntax for MCP headers; check that it connects (a 401 means the key reference was not expanded)"
@@ -208,8 +232,10 @@ func (e Env) vscodeUserDir() string {
 
 // copilotHook is the hook file install writes for Copilot.
 func copilotHook(bin string) []byte {
-	compact := obj("version", "1", "hooks", string(obj("agentStop",
-		"["+string(obj("type", str("command"), "bash", str(bin+" flush --hook"), "timeoutSec", "5"))+"]")))
+	entry := func(event string) string {
+		return "[" + string(obj("type", str("command"), "bash", str(shellBinary(bin)+" hook copilot "+event), "timeoutSec", "5")) + "]"
+	}
+	compact := obj("version", "1", "hooks", string(obj("postToolUseFailure", entry("postToolUseFailure"), "agentStop", entry("agentStop"))))
 	var buf bytes.Buffer
 	_ = json.Indent(&buf, compact, "", "  ")
 	buf.WriteByte('\n')
@@ -247,6 +273,7 @@ var registry = []Adapter{
 			File:     func(e Env) string { return filepath.Join(e.claudeDir(), "settings.json") },
 			Format:   "json-element",
 			Events:   events("PostToolUseFailure", "Stop", "SessionStart"),
+			Deliver:  "PostToolUseFailure",
 			Reminder: true,
 		},
 		MCP:      MCP{File: Env.claudeJSON, Path: []string{"mcpServers"}, EnvRef: "${AGENT_FEEDBACK_API_KEY}"},
@@ -254,7 +281,10 @@ var registry = []Adapter{
 		Verified: Verified{Level: LevelLiveChecked, Date: verifiedDate, Note: "the just live-harness gate"},
 		hook: func(p *plan, o Options) ([]Item, []string) {
 			f := filepath.Join(p.env.claudeDir(), "settings.json")
-			items := []Item{element(f, []string{"hooks", "Stop"}, commandHook(flushCmd(o)), RoleHook)}
+			items := []Item{
+				element(f, []string{"hooks", "PostToolUseFailure"}, commandHook(hookCmd(o, "claude-code", "PostToolUseFailure")), RoleHook),
+				element(f, []string{"hooks", "Stop"}, commandHook(hookCmd(o, "claude-code", "Stop")), RoleHook),
+			}
 			if o.Reminder {
 				items = append(items, element(f, []string{"hooks", "SessionStart"}, commandHook(remindCmd(o)), RoleReminder))
 			}
@@ -271,7 +301,7 @@ var registry = []Adapter{
 		row: docsRow{
 			detected: "`claude`, `$CLAUDE_CONFIG_DIR` (default `~/.claude`)",
 			skill:    "`<claude config>/skills/agentfeedback/SKILL.md`",
-			hook:     "`<claude config>/settings.json` `hooks.Stop`",
+			hook:     "`<claude config>/settings.json` `hooks.PostToolUseFailure` (note) and `hooks.Stop`",
 			reminder: "`hooks.SessionStart`",
 			mcp:      "`claude mcp add-json agentfeedback ... --scope user`",
 		},
@@ -286,17 +316,19 @@ var registry = []Adapter{
 			Project: []string{"AGENTS.md"},
 		},
 		Hook: Hook{
-			File:     func(e Env) string { return filepath.Join(e.codexHome(), "hooks.json") },
-			Format:   "json-element",
-			Events:   events("PostToolUse", "Stop", "SessionStart"),
-			Reminder: true,
+			File:      func(e Env) string { return filepath.Join(e.codexHome(), "hooks.json") },
+			Format:    "json-element",
+			Events:    events("none", "Stop", "SessionStart"),
+			Deliver:   "none",
+			NoDeliver: "no failure signal in the hook payload",
+			Reminder:  true,
 		},
 		MCP:      MCP{File: func(e Env) string { return filepath.Join(e.codexHome(), "config.toml") }, Path: []string{"mcp_servers"}, EnvRef: "bearer_token_env_var"},
 		Sessions: Sessions{Locations: []string{"<codex home>/sessions"}, Reader: "codex-rollout"},
 		Verified: documented(),
 		hook: func(p *plan, o Options) ([]Item, []string) {
 			f := filepath.Join(p.env.codexHome(), "hooks.json")
-			items := []Item{element(f, []string{"hooks", "Stop"}, commandHook(flushCmd(o)), RoleHook)}
+			items := []Item{element(f, []string{"hooks", "Stop"}, commandHook(hookCmd(o, "codex", "Stop")), RoleHook)}
 			if o.Reminder {
 				items = append(items, element(f, []string{"hooks", "SessionStart"}, commandHook(remindCmd(o)), RoleReminder))
 			}
@@ -319,7 +351,7 @@ var registry = []Adapter{
 		row: docsRow{
 			detected: "`codex`, `$CODEX_HOME` (default `~/.codex`)",
 			skill:    "`~/.agents/skills/agentfeedback/SKILL.md`",
-			hook:     "`<codex home>/hooks.json` `hooks.Stop`",
+			hook:     "`<codex home>/hooks.json` `hooks.Stop` (flush only)",
 			reminder: "`hooks.SessionStart`",
 			mcp:      "marked `[mcp_servers.agentfeedback]` block in `<codex home>/config.toml`",
 		},
@@ -337,6 +369,7 @@ var registry = []Adapter{
 			File:     homePath(".cursor", "hooks.json"),
 			Format:   "json-element",
 			Events:   events("postToolUseFailure", "stop", "sessionStart"),
+			Deliver:  "postToolUseFailure",
 			Reminder: true,
 		},
 		MCP:      MCP{File: homePath(".cursor", "mcp.json"), Path: []string{"mcpServers"}, EnvRef: "${env:AGENT_FEEDBACK_API_KEY}"},
@@ -344,7 +377,10 @@ var registry = []Adapter{
 		Verified: documented(),
 		hook: func(p *plan, o Options) ([]Item, []string) {
 			f := filepath.Join(p.env.Home, ".cursor", "hooks.json")
-			items := []Item{element(f, []string{"hooks", "stop"}, obj("command", str(flushCmd(o)), "timeout", "5"), RoleHook)}
+			items := []Item{
+				element(f, []string{"hooks", "postToolUseFailure"}, obj("command", str(hookCmd(o, "cursor", "postToolUseFailure")), "timeout", "5"), RoleHook),
+				element(f, []string{"hooks", "stop"}, obj("command", str(hookCmd(o, "cursor", "stop")), "timeout", "5"), RoleHook),
+			}
 			if o.Reminder {
 				items = append(items, element(f, []string{"hooks", "sessionStart"}, obj("command", str(remindCmd(o)), "timeout", "5"), RoleReminder))
 			}
@@ -361,7 +397,7 @@ var registry = []Adapter{
 		row: docsRow{
 			detected: "`cursor-agent`, or an `agent` that resolves into a Cursor install; `~/.cursor`",
 			skill:    "`~/.cursor/skills/agentfeedback/SKILL.md`",
-			hook:     "`~/.cursor/hooks.json` `hooks.stop`",
+			hook:     "`~/.cursor/hooks.json` `hooks.postToolUseFailure` (note) and `hooks.stop`",
 			reminder: "`hooks.sessionStart`",
 			mcp:      "`~/.cursor/mcp.json` `mcpServers.agentfeedback`",
 		},
@@ -376,15 +412,16 @@ var registry = []Adapter{
 			Project: []string{"AGENTS.md"},
 		},
 		Hook: Hook{
-			File:   func(e Env) string { return filepath.Join(e.opencodeDir(), "plugins", "agentfeedback.js") },
-			Format: "plugin",
-			Events: events("tool.execute.after", "session.idle", "none"),
+			File:    func(e Env) string { return filepath.Join(e.opencodeDir(), "plugins", "agentfeedback.js") },
+			Format:  "plugin",
+			Events:  events("tool.execute.after", "session.idle", "none"),
+			Deliver: "session.idle",
 		},
 		MCP:      MCP{File: func(e Env) string { return filepath.Join(e.opencodeDir(), "opencode.jsonc") }, Path: []string{"mcp"}, EnvRef: "{env:AGENT_FEEDBACK_API_KEY}"},
 		Sessions: Sessions{Locations: []string{"~/.local/share/opencode/opencode.db"}, Reader: "opencode-sqlite"},
 		Verified: Verified{Level: LevelLiveChecked, Date: verifiedDate, Note: "OpenCode 1.18.34: opencode debug skill lists the skill and opencode mcp list connects the MCP entry; the plugin was not run in a session"},
 		hook: func(p *plan, o Options) ([]Item, []string) {
-			return []Item{fileItem(KindPluginFile, RoleHook, filepath.Join(p.env.opencodeDir(), "plugins", "agentfeedback.js"), opencodePlugin(o.Binary))}, nil
+			return []Item{fileItem(KindPluginFile, RoleHook, filepath.Join(p.env.opencodeDir(), "plugins", "agentfeedback.js"), opencodePlugin(o.Binary, p.env.SpawnErrorPath("opencode")))}, nil
 		},
 		mcpValue: func(u string) string {
 			return string(obj("type", str("remote"), "url", str(u), "enabled", "true", "oauth", "false",
@@ -401,7 +438,7 @@ var registry = []Adapter{
 		row: docsRow{
 			detected: "`opencode`, `${XDG_CONFIG_HOME:-~/.config}/opencode`",
 			skill:    "`<opencode>/skills/agentfeedback/SKILL.md`",
-			hook:     "plugin `<opencode>/plugins/agentfeedback.js` (on `session.idle`)",
+			hook:     "plugin `<opencode>/plugins/agentfeedback.js` (on `tool.execute.after` for `bash`, and `session.idle`, which delivers the note)",
 			reminder: "not supported",
 			mcp:      "`mcp.agentfeedback` in the first of `opencode.jsonc`, `opencode.json` that has an `mcp` member, else an existing `opencode.jsonc`, else `opencode.json`",
 		},
@@ -416,15 +453,16 @@ var registry = []Adapter{
 			Project: []string{"AGENTS.md"},
 		},
 		Hook: Hook{
-			File:   homePath(".omp", "agent", "extensions", "agentfeedback.ts"),
-			Format: "extension",
-			Events: events("none", "agent_end", "none"),
+			File:    homePath(".omp", "agent", "extensions", "agentfeedback.ts"),
+			Format:  "extension",
+			Events:  events("tool_result", "agent_end", "none"),
+			Deliver: "tool_result",
 		},
 		MCP:      MCP{File: homePath(".omp", "agent", "mcp.json"), Path: []string{"mcpServers"}, EnvRef: "${AGENT_FEEDBACK_API_KEY}"},
 		Sessions: Sessions{Locations: []string{"~/.omp/agent/sessions"}, Reader: "none", NoReader: "no reader yet"},
 		Verified: Verified{Level: LevelDocumented, Date: verifiedDate, Note: "omp 18.8.0 is installed on the delivery machine but lists neither MCP servers nor skills outside a model session"},
 		hook: func(p *plan, o Options) ([]Item, []string) {
-			return []Item{fileItem(KindPluginFile, RoleHook, filepath.Join(p.env.Home, ".omp", "agent", "extensions", "agentfeedback.ts"), ompExtension(o.Binary))}, nil
+			return []Item{fileItem(KindPluginFile, RoleHook, filepath.Join(p.env.Home, ".omp", "agent", "extensions", "agentfeedback.ts"), ompExtension(o.Binary, p.env.SpawnErrorPath("omp")))}, nil
 		},
 		mcpValue: func(u string) string {
 			return string(obj("type", str("http"), "url", str(u), "headers", bearer("${AGENT_FEEDBACK_API_KEY}")))
@@ -436,7 +474,7 @@ var registry = []Adapter{
 		row: docsRow{
 			detected: "`omp`, `~/.omp`",
 			skill:    "`~/.omp/agent/skills/agentfeedback/SKILL.md`",
-			hook:     "extension `~/.omp/agent/extensions/agentfeedback.ts` (on `agent_end`, not for subagents)",
+			hook:     "extension `~/.omp/agent/extensions/agentfeedback.ts` (on `tool_result` errors, with the note, and `agent_end`, not for subagents)",
 			reminder: "not supported",
 			mcp:      "`~/.omp/agent/mcp.json` `mcpServers.agentfeedback`",
 		},
@@ -451,16 +489,17 @@ var registry = []Adapter{
 			Project: []string{"AGENTS.md"},
 		},
 		Hook: Hook{
-			File:   homePath(".pi", "agent", "extensions", "agentfeedback.ts"),
-			Format: "extension",
-			Events: events("none", "agent_settled", "none"),
+			File:    homePath(".pi", "agent", "extensions", "agentfeedback.ts"),
+			Format:  "extension",
+			Events:  events("tool_result", "agent_settled", "none"),
+			Deliver: "tool_result",
 		},
 		MCP:      MCP{File: homePath(".pi", "agent", "mcp.json"), Path: []string{"mcpServers"}, EnvRef: "${AGENT_FEEDBACK_API_KEY}"},
 		Sessions: Sessions{Locations: []string{"~/.pi/agent/sessions"}, Reader: "none", NoReader: "no reader yet"},
 		Caveats:  []string{"the MCP entry needs pi 0.99.0 or later"},
 		Verified: documented(),
 		hook: func(p *plan, o Options) ([]Item, []string) {
-			return []Item{fileItem(KindPluginFile, RoleHook, filepath.Join(p.env.Home, ".pi", "agent", "extensions", "agentfeedback.ts"), piExtension(o.Binary))}, nil
+			return []Item{fileItem(KindPluginFile, RoleHook, filepath.Join(p.env.Home, ".pi", "agent", "extensions", "agentfeedback.ts"), piExtension(o.Binary, p.env.SpawnErrorPath("pi")))}, nil
 		},
 		mcpValue: func(u string) string {
 			return string(obj("url", str(u), "headers", bearer("${AGENT_FEEDBACK_API_KEY}")))
@@ -472,7 +511,7 @@ var registry = []Adapter{
 		row: docsRow{
 			detected: "`pi`, `~/.pi`",
 			skill:    "`~/.pi/agent/skills/agentfeedback/SKILL.md`",
-			hook:     "extension `~/.pi/agent/extensions/agentfeedback.ts` (on `agent_settled`)",
+			hook:     "extension `~/.pi/agent/extensions/agentfeedback.ts` (on `tool_result` errors, with the note as a next-turn message, and `agent_settled`)",
 			reminder: "not supported",
 			mcp:      "`~/.pi/agent/mcp.json` `mcpServers.agentfeedback`; needs pi 0.99.0 or later",
 		},
@@ -487,9 +526,10 @@ var registry = []Adapter{
 			Project: []string{".github/copilot-instructions.md", "AGENTS.md"},
 		},
 		Hook: Hook{
-			File:   Env.copilotHookFile,
-			Format: "whole-file",
-			Events: events("postToolUseFailure", "agentStop", "sessionStart"),
+			File:    Env.copilotHookFile,
+			Format:  "whole-file",
+			Events:  events("postToolUseFailure", "agentStop", "sessionStart"),
+			Deliver: "postToolUseFailure",
 		},
 		MCP:      MCP{File: func(e Env) string { return filepath.Join(e.copilotDir(), "mcp-config.json") }, Path: []string{"mcpServers"}, EnvRef: "${AGENT_FEEDBACK_API_KEY}"},
 		Sessions: Sessions{Locations: []string{"~/.copilot/session-state/<id>/events.jsonl"}, Reader: "copilot-events"},
@@ -510,7 +550,7 @@ var registry = []Adapter{
 		row: docsRow{
 			detected: "`copilot`, `~/.copilot`",
 			skill:    "`~/.copilot/skills/agentfeedback/SKILL.md`",
-			hook:     "file `~/.copilot/hooks/agentfeedback.json` (`agentStop`)",
+			hook:     "file `~/.copilot/hooks/agentfeedback.json` (`postToolUseFailure`, with the note on exit 2, and `agentStop`)",
 			reminder: "not supported",
 			mcp:      "`~/.copilot/mcp-config.json` `mcpServers.agentfeedback`",
 		},
@@ -529,16 +569,23 @@ var registry = []Adapter{
 			Project: []string{"GEMINI.md", "AGENTS.md"},
 		},
 		Hook: Hook{
-			File:   func(e Env) string { return filepath.Join(e.geminiDir(), "config", "hooks.json") },
-			Format: "json-member",
-			Events: events("PostToolUse", "Stop", "none"),
+			File:    func(e Env) string { return filepath.Join(e.geminiDir(), "config", "hooks.json") },
+			Format:  "json-member",
+			Events:  events("PostToolUse", "Stop", "none"),
+			Deliver: "PreInvocation",
 		},
 		MCP:      MCP{File: func(e Env) string { return filepath.Join(e.geminiDir(), "config", "mcp_config.json") }, Path: []string{"mcpServers"}, EnvRef: "${AGENT_FEEDBACK_API_KEY}"},
 		Sessions: Sessions{Locations: []string{"~/.gemini/antigravity*/brain/<id>/.system_generated/logs/transcript.jsonl"}, Reader: "antigravity-transcript"},
 		Caveats:  []string{"the legacy Cascade configuration is not wired", "~/.gemini/GEMINI.md is shared with gemini-cli"},
 		Verified: documented(),
 		hook: func(p *plan, o Options) ([]Item, []string) {
-			v := obj("enabled", "true", "Stop", "["+string(commandHook(flushCmd(o)))+"]")
+			handler := func(event string) string {
+				return string(obj("type", str("command"), "command", str(hookCmd(o, "antigravity", event)), "timeout", "5"))
+			}
+			v := obj("enabled", "true",
+				"PostToolUse", "["+string(obj("matcher", str("*"), "hooks", "["+handler("PostToolUse")+"]"))+"]",
+				"PreInvocation", "["+handler("PreInvocation")+"]",
+				"Stop", "["+handler("Stop")+"]")
 
 			return []Item{member(filepath.Join(p.env.geminiDir(), "config", "hooks.json"), nil, v, RoleHook)}, nil
 		},
@@ -552,7 +599,7 @@ var registry = []Adapter{
 		row: docsRow{
 			detected: "`agy`, `~/.gemini/antigravity-cli` or `~/.gemini/antigravity`",
 			skill:    "`~/.gemini/config/skills/agentfeedback/SKILL.md` and `~/.gemini/antigravity-cli/skills/agentfeedback/SKILL.md`",
-			hook:     "`~/.gemini/config/hooks.json` `agentfeedback` (on `Stop`)",
+			hook:     "`~/.gemini/config/hooks.json` `agentfeedback` (on `PostToolUse`, `PreInvocation`, which delivers the note, and `Stop`)",
 			reminder: "not supported",
 			mcp:      "`~/.gemini/config/mcp_config.json` `mcpServers.agentfeedback`; the key reference in the header may not be expanded",
 		},
@@ -567,16 +614,18 @@ var registry = []Adapter{
 			Project: []string{"AGENTS.md"},
 		},
 		Hook: Hook{
-			File:   func(e Env) string { return filepath.Join(e.devinDir(), "config.json") },
-			Format: "json-element",
-			Events: events("PostToolUse", "Stop", "SessionStart"),
+			File:      func(e Env) string { return filepath.Join(e.devinDir(), "config.json") },
+			Format:    "json-element",
+			Events:    events("PostToolUse", "Stop", "SessionStart"),
+			Deliver:   "none",
+			NoDeliver: "nudge not wired yet",
 		},
 		MCP:      MCP{File: func(e Env) string { return filepath.Join(e.devinDir(), "mcp_config.json") }, Path: []string{"mcpServers"}, EnvRef: "${env:AGENT_FEEDBACK_API_KEY}"},
 		Sessions: Sessions{Reader: "none", NoReader: "Devin documents no local session location"},
 		Caveats:  []string{"Devin also runs Claude Code's hooks from ~/.claude/settings.json, so a double flush is possible and harmless"},
 		Verified: documented(),
 		hook: func(p *plan, o Options) ([]Item, []string) {
-			return []Item{element(filepath.Join(p.env.devinDir(), "config.json"), []string{"hooks", "Stop"}, commandHook(flushCmd(o)), RoleHook)}, nil
+			return []Item{element(filepath.Join(p.env.devinDir(), "config.json"), []string{"hooks", "Stop"}, commandHook(hookCmd(o, "devin", "Stop")), RoleHook)}, nil
 		},
 		mcpValue: func(u string) string {
 			return string(obj("url", str(u), "transport", str("http"), "headers", bearer("${env:AGENT_FEEDBACK_API_KEY}")))
@@ -588,7 +637,7 @@ var registry = []Adapter{
 		row: docsRow{
 			detected: "`devin`, `~/.config/devin`",
 			skill:    "`~/.config/devin/skills/agentfeedback/SKILL.md`",
-			hook:     "`~/.config/devin/config.json` `hooks.Stop`",
+			hook:     "`~/.config/devin/config.json` `hooks.Stop` (flush only)",
 			reminder: "not supported",
 			mcp:      "`~/.config/devin/mcp_config.json` `mcpServers.agentfeedback`",
 		},
@@ -602,7 +651,7 @@ var registry = []Adapter{
 			Global:  dirs(homePath(".kiro", "steering", "AGENTS.md")),
 			Project: []string{".kiro/steering/", "AGENTS.md"},
 		},
-		Hook:     Hook{Format: "none", NoHook: "the skill, the MCP entry and the instruction file carry it", Events: events("none", "none", "none")},
+		Hook:     Hook{Format: "none", NoHook: "the skill, the MCP entry and the instruction file carry it", Events: events("none", "none", "none"), Deliver: "none", NoDeliver: noHookDeliver},
 		MCP:      MCP{File: homePath(".kiro", "settings", "mcp.json"), Path: []string{"mcpServers"}, EnvRef: "${AGENT_FEEDBACK_API_KEY}"},
 		Sessions: Sessions{Locations: []string{"~/.kiro/sessions/"}, Reader: "none", NoReader: "no reader yet"},
 		Caveats:  []string{"KIRO_HOME is not followed"},
@@ -631,7 +680,7 @@ var registry = []Adapter{
 			Global:  dirs(homePath(".cline", "rules", "agentfeedback.md")),
 			Project: []string{".clinerules/"},
 		},
-		Hook:     Hook{Format: "none", NoHook: "the skill, the MCP entry and the instruction file carry it", Events: events("none", "none", "none")},
+		Hook:     Hook{Format: "none", NoHook: "the skill, the MCP entry and the instruction file carry it", Events: events("none", "none", "none"), Deliver: "none", NoDeliver: noHookDeliver},
 		MCP:      MCP{File: Env.clineMCPFile, Path: []string{"mcpServers"}, EnvRef: "${AGENT_FEEDBACK_API_KEY}"},
 		Sessions: Sessions{Locations: []string{"~/.cline/data/sessions/"}, Reader: "none", NoReader: "no reader yet; the documented locations disagree"},
 		Verified: documented(),
@@ -657,7 +706,7 @@ var registry = []Adapter{
 			Global:  func(e Env) []string { return []string{filepath.Join(e.ampDir(), "AGENTS.md")} },
 			Project: []string{"AGENTS.md"},
 		},
-		Hook:     Hook{Format: "none", NoHook: "Amp hooks are TypeScript plugins, not wired yet", Events: events("none", "none", "none")},
+		Hook:     Hook{Format: "none", NoHook: "Amp hooks are TypeScript plugins, not wired yet", Events: events("none", "none", "none"), Deliver: "none", NoDeliver: noHookDeliver},
 		MCP:      MCP{File: func(e Env) string { return filepath.Join(e.ampDir(), "settings.json") }, Path: []string{"amp.mcpServers"}, EnvRef: "${AGENT_FEEDBACK_API_KEY}"},
 		Sessions: Sessions{Reader: "none", NoReader: "Amp keeps its threads on its server"},
 		Verified: documented(),
@@ -686,7 +735,7 @@ var registry = []Adapter{
 			Global:  func(e Env) []string { return []string{filepath.Join(e.copilotDir(), "copilot-instructions.md")} },
 			Project: []string{".github/copilot-instructions.md", "AGENTS.md"},
 		},
-		Hook:     Hook{Format: "none", NoHook: "VS Code has no skill of its own to pair a hook with", Events: events("none", "none", "none")},
+		Hook:     Hook{Format: "none", NoHook: "VS Code has no skill of its own to pair a hook with", Events: events("none", "none", "none"), Deliver: "none", NoDeliver: noHookDeliver},
 		MCP:      MCP{File: func(e Env) string { return filepath.Join(e.vscodeUserDir(), "mcp.json") }, Path: []string{"servers"}, EnvRef: "${env:AGENT_FEEDBACK_API_KEY}"},
 		Sessions: Sessions{Reader: "none", NoReader: "VS Code keeps chat sessions in SQLite at an undocumented path"},
 		Verified: documented(),
@@ -718,7 +767,7 @@ var registry = []Adapter{
 			Global:  func(e Env) []string { return []string{filepath.Join(e.geminiDir(), "GEMINI.md")} },
 			Project: []string{"GEMINI.md"},
 		},
-		Hook:     Hook{Format: "none", NoHook: "not wired yet", Events: events("AfterTool", "AfterAgent", "SessionStart")},
+		Hook:     Hook{Format: "none", NoHook: "not wired yet", Events: events("AfterTool", "AfterAgent", "SessionStart"), Deliver: "none", NoDeliver: noHookDeliver},
 		MCP:      MCP{NoMCP: "not wired yet"},
 		Sessions: Sessions{Locations: []string{"~/.gemini/tmp/<project_hash>/chats/"}, Reader: "gemini-cli-jsonl"},
 		Caveats:  []string{"detected by its binary only: ~/.gemini is shared with antigravity"},

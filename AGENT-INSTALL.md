@@ -175,8 +175,12 @@ after `--key-from-stdin`). Never add `--force` on your own.
 
 ### Step 2.3: Wire the harness
 
-`agentfeedback install` adds the skill and a Stop hook that sends anything
-the client spooled while the server was unreachable. It backs up every file
+`agentfeedback install` adds the skill and hooks running `agentfeedback
+hook`: they count the session's failed tool calls, show the agent a short
+note suggesting a friction report when failures pile up, and at the end of a
+turn send anything the client spooled while the server was unreachable. Run
+it again after an upgrade: it replaces the `flush --hook` entries earlier
+releases wired. It backs up every file
 it touches, and `agentfeedback uninstall <harness>` reverts it. It reads the
 server from the configuration of step 2.2. The harnesses it knows:
 `claude-code`, `codex`, `cursor`, `opencode`, `omp`, `pi`, `copilot`,
@@ -212,7 +216,7 @@ Then step 3.
 ### Step 2.4: Wire Claude Code or Codex through its plugin marketplace
 
 Only when the human chose a plugin in step 2.3. The plugin brings the skill
-without the Stop hook. Claude Code:
+without the hooks. Claude Code:
 
 ```sh
 claude plugin marketplace add AgentFeedback/agentfeedback && claude plugin install agentfeedback@agentfeedback
@@ -222,7 +226,7 @@ Codex: run `codex plugin marketplace add AgentFeedback/agentfeedback && codex pl
 in place of that command.
 
 **Verify:** the command exits 0 and `claude plugin list` (or `codex plugin
-list`) shows `agentfeedback`. There is no Stop hook: put "run `agentfeedback
+list`) shows `agentfeedback`. There are no hooks: put "run `agentfeedback
 flush` now and then" in step 4's `human_todo`.
 
 **Outcome:**
@@ -247,7 +251,7 @@ DISABLE_TELEMETRY=1 npx --yes skills add AgentFeedback/agentfeedback --skill age
 ```
 
 **Verify:** exit code 0 and the output lists `agentfeedback` as installed
-for `<agent>`. There is no Stop hook: put "run `agentfeedback flush` now and
+for `<agent>`. There are no hooks: put "run `agentfeedback flush` now and
 then" in step 4's `human_todo`.
 
 **Outcome:**
@@ -352,7 +356,7 @@ Only after steps 2.1, 2.2 and one of 2.3 to 2.5.
 `"url": {"value": "<URL>", "source": "config"}` and `"api_key": {"set":
 true, "source": "config"}`. A `"source": "env"` means an exported
 `AGENT_FEEDBACK_URL` or `AGENT_FEEDBACK_API_KEY` overrides the new
-configuration (the Stop hook still uses the file): ask the human to remove
+configuration (the hooks still use the file): ask the human to remove
 it, unless they set it on purpose for the triage skill (stack playbook step
 S6). Otherwise each entry in `problems` says what to fix; fix only what needs
 no credential, and ask the human for the rest.

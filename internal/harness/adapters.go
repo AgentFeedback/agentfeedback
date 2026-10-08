@@ -1,6 +1,6 @@
 // Package harness wires the agentfeedback binary into the coding-agent
-// harnesses it knows: a skill and a Stop hook (or an MCP entry instead) per
-// harness, recorded in a manifest so uninstall removes exactly what install
+// harnesses it knows: a skill and the hooks running agentfeedback hook (or an
+// MCP entry instead) per harness, recorded in a manifest so uninstall removes exactly what install
 // added. User files are edited byte for byte and backed up before the first
 // change.
 package harness
@@ -83,6 +83,21 @@ func (e Env) xdgConfig() string {
 	}
 
 	return filepath.Join(e.Home, ".config")
+}
+
+// xdgCache is ${XDG_CACHE_HOME:-~/.cache}.
+func (e Env) xdgCache() string {
+	if d := e.Getenv("XDG_CACHE_HOME"); d != "" && filepath.IsAbs(d) {
+		return d
+	}
+
+	return filepath.Join(e.Home, ".cache")
+}
+
+// SpawnErrorPath is the file a plugin writes when it cannot start the hook
+// command for the harness.
+func (e Env) SpawnErrorPath(name string) string {
+	return filepath.Join(e.xdgCache(), "agentfeedback", "hooks", name+".spawn-error.json")
 }
 
 func (e Env) codexHome() string {
@@ -432,54 +447,155 @@ func (p *plan) opencodeConfig() (string, error) {
 	return plain, nil
 }
 
-const pluginHeader = `// Written by agentfeedback install; agentfeedback uninstall removes it.
-// Sends the spooled AgentFeedback submissions when a session goes idle.
+// pluginHelper is the code every plugin and extension shares: run spawns
+// the hook with the payload on stdin, collects its stdout and resolves with
+// it, or with "" after 5 s or on any failure; a failure to start the hook
+// is recorded in SPAWN_ERR for doctor. It never throws. typed adds the
+// TypeScript annotations.
+func pluginHelper(bin, spawnErr, harness string, typed bool) string {
+	t := func(ts string) string {
+		if typed {
+			return ts
+		}
+
+		return ""
+	}
+
+	return `// Written by agentfeedback install; agentfeedback uninstall removes it.
+// Runs agentfeedback hook on failed tool calls and at the end of a turn, and
+// passes on the short note it prints.
 import { spawn } from "node:child_process";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 
-const BIN = `
+const BIN = ` + string(jsonString(bin)) + `;
+const SPAWN_ERR = ` + string(jsonString(spawnErr)) + `;
+const HARNESS = ` + string(jsonString(harness)) + `;
+const MAX_OUT = 65536;
 
-func opencodePlugin(bin string) []byte {
-	return []byte(pluginHeader + string(jsonString(bin)) + `;
+function spawnError(err` + t(": unknown") + `)` + t(": void") + ` {
+  try {
+    mkdirSync(dirname(SPAWN_ERR), { recursive: true, mode: 0o700 });
+    writeFileSync(SPAWN_ERR, JSON.stringify({ ts: new Date().toISOString(), error: String(err) }) + "\n", { mode: 0o600 });
+  } catch {}
+}
 
-export const AgentFeedbackFlush = async () => ({
+function run(event` + t(": string") + `, payload` + t(": unknown") + `)` + t(": Promise<string>") + ` {
+  return new Promise((resolve) => {
+    let out = "";
+    let done = false;
+    let child` + t(": any") + `;
+    let timer` + t(": any") + `;
+    const finish = (text` + t(": string") + `) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve(text);
+    };
+    timer = setTimeout(() => {
+      try {
+        child?.kill();
+      } catch {}
+      finish("");
+    }, 5000);
+    try {
+      child = spawn(BIN, ["hook", HARNESS, event], { stdio: ["pipe", "pipe", "ignore"] });
+      child.on("error", (err` + t(": unknown") + `) => {
+        spawnError(err);
+        finish("");
+      });
+      child.stdout.on("data", (d` + t(": any") + `) => {
+        if (out.length < MAX_OUT) out += String(d);
+      });
+      child.on("close", () => finish(out.slice(0, MAX_OUT)));
+      child.stdin.on("error", () => {});
+      child.stdin.end(JSON.stringify(payload ?? {}));
+    } catch (err) {
+      spawnError(err);
+      finish("");
+    }
+  });
+}
+
+// note is the additionalContext of the hook's output, or "".
+function note(out` + t(": string") + `)` + t(": string") + ` {
+  try {
+    const v = JSON.parse(out);
+    return typeof v?.additionalContext === "string" ? v.additionalContext : "";
+  } catch {
+    return "";
+  }
+}
+`
+}
+
+func opencodePlugin(bin, spawnErr string) []byte {
+	return []byte(pluginHelper(bin, spawnErr, "opencode", false) + `
+export const AgentFeedback = async ({ client, directory }) => ({
+  "tool.execute.after": async (input, output) => {
+    if (input?.tool !== "bash") return;
+    const exit = output?.metadata?.exit;
+    if (typeof exit !== "number" || exit === 0) return;
+    await run("tool.execute.after", { sessionID: input.sessionID, tool: input.tool, args: input.args, exit, cwd: directory });
+  },
   event: async ({ event }) => {
     if (event?.type !== "session.idle") return;
+    const sessionID = event.properties?.sessionID;
+    const text = note(await run("session.idle", { sessionID, cwd: directory }));
+    if (!text || !sessionID) return;
     try {
-      const child = spawn(BIN, ["flush", "--hook"], { stdio: "ignore", detached: true });
-      child.on("error", () => {});
-      child.unref();
+      await client.session.prompt({ path: { id: sessionID }, body: { noReply: true, parts: [{ type: "text", text }] } });
     } catch {}
   },
 });
 `)
 }
 
-func ompExtension(bin string) []byte {
-	return []byte(pluginHeader + string(jsonString(bin)) + `;
-
+func ompExtension(bin, spawnErr string) []byte {
+	return []byte(pluginHelper(bin, spawnErr, "omp", true) + `
 export default function (pi: any) {
+  pi.on("tool_result", async (event: any, ctx: any) => {
+    if (!event?.isError) return;
+    const text = note(
+      await run("tool_result", {
+        session_id: ctx?.sessionManager?.getSessionId?.(),
+        tool: event.toolName,
+        input: event.input,
+        cwd: ctx?.cwd ?? process.cwd(),
+        is_error: true,
+      }),
+    );
+    if (text) return { additionalContext: text };
+  });
   pi.on("agent_end", (_event: unknown, ctx: any) => {
     if (ctx?.agent?.kind === "sub") return;
-    try {
-      const child = spawn(BIN, ["flush", "--hook"], { stdio: "ignore", detached: true });
-      child.on("error", () => {});
-      child.unref();
-    } catch {}
+    void run("agent_end", { session_id: ctx?.sessionManager?.getSessionId?.(), cwd: ctx?.cwd ?? process.cwd() });
   });
 }
 `)
 }
 
-func piExtension(bin string) []byte {
-	return []byte(pluginHeader + string(jsonString(bin)) + `;
-
+func piExtension(bin, spawnErr string) []byte {
+	return []byte(pluginHelper(bin, spawnErr, "pi", true) + `
 export default function (pi: any) {
-  pi.on("agent_settled", () => {
+  pi.on("tool_result", async (event: any, ctx: any) => {
+    if (!event?.isError) return;
+    const text = note(
+      await run("tool_result", {
+        session_id: ctx?.sessionManager?.getSessionId?.(),
+        tool: event.toolName,
+        input: event.input,
+        cwd: ctx?.cwd ?? process.cwd(),
+        is_error: true,
+      }),
+    );
+    if (!text) return;
     try {
-      const child = spawn(BIN, ["flush", "--hook"], { stdio: "ignore", detached: true });
-      child.on("error", () => {});
-      child.unref();
+      pi.sendMessage({ customType: "agentfeedback", content: text, display: false }, { deliverAs: "nextTurn" });
     } catch {}
+  });
+  pi.on("agent_settled", (_event: unknown, ctx: any) => {
+    void run("agent_settled", { session_id: ctx?.sessionManager?.getSessionId?.(), cwd: ctx?.cwd ?? process.cwd() });
   });
 }
 `)
