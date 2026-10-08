@@ -26,7 +26,8 @@ pkg/collect/                    client context collection: project, machine and 
 infra/agentfeedback/            compose stacks (local build, image-based deploy) and .env.example
 scripts/                        in-container.sh (runs a command in the gate toolchain image), live-harness.sh (the live Claude Code check), e2e.sh (live v1 contract suite: every openapi.yaml operation, fails on an uncovered one), gate-e2e.sh, deploy.sh, release.sh (the release step behind
                                 `just release`), eval-cluster.py (live cluster.py calibration; discloses report text), playbooks.py (the playbook gate: routes through both
-                                install playbooks, the Verify condition of each step, `check`, `list`, `run`)
+                                install playbooks, the Verify condition of each step, `check`, `list`, `run`), check-docs.py (the docs gate: links, anchors, route tables),
+                                contract-check.py (the contract gate's checks, api.md examples included)
 references.go                   embeds the docs, schemas, OpenAPI document and install playbooks for the docs skill (go:embed cannot reach the root from internal/)
 .goreleaser.yaml                release build: six archives, install.sh asset, SHA256SUMS over both (docs/releases.md)
 AGENT-INSTALL.md                client install playbook for agents: one command, one verification, one JSON outcome per step
@@ -40,9 +41,10 @@ plugins/agentfeedback/          Agent Plugins bundle (plugin.json, .claude-plugi
 skills/agentfeedback-triage/    processor skill on the agentfeedback CLI or its stdio MCP tools (SKILL.md routing to playbooks/, six playbooks, fix-it-session.md starting from the session logs on an empty queue; optional scripts/cluster.py + reference/clustering.md)
 tests/skill/                    hermetic tests: run-tests.sh for install.sh (offline fixture release), test_cluster.py for cluster.py (no requests), triage-playbooks.py runs every triage playbook's bash blocks against a throwaway server, and the fix-it session's start (bash blocks step by step, then its MCP-only tool calls against `agentfeedback mcp`) on an empty queue over a fixture session store per harness
 tests/playbooks/                test_playbooks.py for scripts/playbooks.py (stub playbooks, no Docker); Dockerfile of the gate's clean machine (systemd, users stack and client)
+tests/docs/                     test_check_docs.py for scripts/check-docs.py (fixture trees, no git); test_api_examples.py for contract-check.py's api.md example check (inline OpenAPI document)
 tests/ci/                       Dockerfile of the gate toolchain image: the Go toolchain go.mod pins, Node, uv, just, shellcheck and the Claude Code CLI; base images pinned by digest, CLIs by version
 tests/live/                     claude-code.sh, the live harness check's assertions (run by scripts/live-harness.sh)
-docs/                           api.md (contract of the running service), openapi.yaml (v1 contract of the next major release; embed.go makes it a Go package for internal/api), operate.md, develop.md, security.md, releases.md; recipes/ holds http-curl.md and http-powershell.md, the prompt forms rendered by `just skills`
+docs/                           api.md (narrative of the v1 contract, one example per operation, JSON bodies checked), openapi.yaml (the v1 contract; embed.go makes it a Go package for internal/api), operate.md, develop.md, security.md, sessions.md (the session logs: harness stores, states, digest format), releases.md; recipes/ holds http-curl.md and http-powershell.md, the prompt forms rendered by `just skills`
 schemas/                        JSON Schema 2020-12: the submission envelope and the kind schemas (friction, review); embed.go makes them a Go package for pkg/schema
 conformance/                    the executable contract: decode fixtures, hash vectors, the warning list, a Python reference implementation (README inside)
 ```
@@ -85,12 +87,14 @@ python3 scripts/playbooks.py check            # the playbooks' structure: one co
 python3 scripts/playbooks.py list             # the extracted commands in run order with the human's answers filled in; nothing runs
 python3 scripts/playbooks.py --help           # the AF_PLAYBOOK_* inputs
 python3 tests/playbooks/test_playbooks.py     # the extractor's tests
-just contract                                 # contract gate: the two commands below
+just contract                                 # contract gate: the three commands below
+uv run --locked --script tests/docs/test_api_examples.py  # the api.md example check's tests
 uv run --locked --script scripts/contract-check.py   # schemas valid 2020-12, every example validates, fixtures agree with conformance/reference
 npx --yes @redocly/cli@2.54.2 lint docs/openapi.yaml # OpenAPI lint (recommended ruleset, redocly.yaml)
 python3 conformance/reference/fixtures.py     # the fixtures alone, no dependencies
+just docs-check                               # relative links and anchors in every Markdown file, the README and AGENTS.md route tables (scripts/check-docs.py)
 shellcheck -x -P SCRIPTDIR skills/*/scripts/*.sh tests/skill/*.sh
-shellcheck -x scripts/*.sh                    # the repository scripts, release.sh included
+shellcheck -x scripts/*.sh tests/live/*.sh     # the repository scripts, release.sh included
 python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remote>... [--live]   # cluster.py calibration
 ```
 
@@ -128,8 +132,8 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
   stay green. Fixtures are written by hand from the contract and checked
   against `conformance/reference/`; a disagreement is settled by reading the
   contract, never by regenerating a fixture from an implementation. `serve`
-  implements `docs/openapi.yaml`; [api.md](api.md) describes the v3 service
-  of the latest release until the docs are rewritten for v1.
+  implements `docs/openapi.yaml`; [api.md](api.md) is its narrative, and its
+  examples are checked against it by `just contract`.
 - **One implementation of the contract's text and schema rules.**
   `pkg/schema` owns trimming, token normalisation, byte truncation,
   date-time parsing, RFC 6901 escaping and the x- keywords, and it works on
@@ -163,7 +167,11 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
   `.claude-plugin/marketplace.json` and `.agents/plugins/marketplace.json`
   are the `marketplace` render of `internal/skillgen/source/` and
   `skills/agentfeedback/scripts/install.sh`; `just skills` regenerates them
-  and they are committed with their source. `docs/recipes/http-curl.md` and
+  and they are committed with their source. Every embedded document is
+  copied as-is into the docs skill under `references/`, so its relative links
+  stay inside that set (`docs/`, `schemas/`, the install playbooks); name any
+  other repository file as a path in backticks. `just docs-check` checks the
+  rendered copies too. `docs/recipes/http-curl.md` and
   `docs/recipes/http-powershell.md` are the `prompt` and `prompt-powershell`
   renders; `GET /skill?format=prompt` serves the curl one with the server's
   URL, `scripts/e2e.sh` runs its bash blocks, and the docs skill embeds both
@@ -206,63 +214,86 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
   tag, `AF_CI_IMAGE_REBUILD=1` rebuilds from fresh base layers, and `ci-host`
   fails when the image's Go differs from `go.mod`'s `toolchain`.
 - **Compatibility.** Everything in API 1.0 keeps working. Additive changes
-  bump the API minor in api.md's version line and "Changes" section; anything else is a major
+  bump the API minor in `docs/openapi.yaml`'s `info.version` and api.md's version line and "Changes" section; anything else is a major
   release. A server change that breaks older clients also raises
   `core.ClientMinVersion`, which `/api/v1/meta` serves as `client.min_version`.
 
 ## Verification before you are done
 
-1. `just check` clean.
-2. `just staticcheck` clean and `just build-all` builds every platform.
-3. `just skills` leaves every checked-in render unchanged, the plugin bundle and both
-   marketplace manifests included (`git status --porcelain` on the renders is empty), and
-   `claude plugin validate --strict` passes on `plugins/agentfeedback` and the repository
-   root (`just ci` runs it when the `claude` CLI is installed).
-4. `just test` (`go test -race -count=1 ./...`) green.
-5. Decoder touched (`pkg/envelope/`): `just fuzz` green; a crash it finds is
-   committed under `pkg/envelope/testdata/fuzz/FuzzDecode/` as a regression
-   seed beside the fix.
-6. API touched: `just e2e` green (builds, serves on a temp database, runs
-   `scripts/e2e.sh`, which also fails on an uncovered operation), and
-   `cmd/agentfeedback/coverage.toml` and `internal/mcp/coverage.toml`
-   updated (`just test` fails otherwise).
-7. Client commands or the local target touched: `just e2e-local` green (the
-   client commands in local mode against a temporary data directory, no
-   server process).
-8. Skill scripts or triage playbooks touched: the shellcheck command above,
-   `bash tests/skill/run-tests.sh`, `python3 tests/skill/test_cluster.py` and
-   `python3 tests/skill/triage-playbooks.py` all green.
-9. `shellcheck -x scripts/*.sh` clean.
-10. Docs touched: every relative link resolves.
-11. Contract files touched (`schemas/`, `docs/openapi.yaml`, `conformance/`):
-    `just contract` green. It also validates the plugin manifest and the
-    rendered mcp.json against the vendored Agent Plugins 1.0.0 schemas
-    (`internal/skillgen/testdata/agent-plugins/`).
-12. Playbooks or the extractor touched: `python3 tests/playbooks/test_playbooks.py`
-    and `python3 scripts/playbooks.py check` green. A change to a playbook
-    command, the CLI or `install.sh` also runs the playbook gate,
-    `just playbooks <tag> tree` (any release tag, built from the working
-    tree; Docker), which runs every routed step as a non-root user in a
-    clean Debian container with systemd and fails on a non-zero exit or a
-    Verify condition that does not hold. The human's answers come from
-    `AF_PLAYBOOK_*` variables (`python3 scripts/playbooks.py --help` lists
-    them); unset is no, and the step that needs the answer is reported
-    skipped. Steps that need a third-party CLI (client 2.4 and 2.5, stack
-    S6) are checked for structure only; the release's paste check covers
-    them. `just release` runs it against the local build before the tag
-    is pushed; `just playbooks <tag>` checks a published release.
+`just ci` is the merge gate. It runs every step below, in this order,
+inside the toolchain container (items 1 to 15, the `ci-host` recipe), then
+item 16 in a network-less container, and stops at the first failure. Run a
+single step with `just box <recipe|command>`. There is no hosted CI: `just
+ci` green on the tree that is merged is the gate, and the image is built
+and published by the release step ([releases.md](releases.md)).
 
-13. Every change: `just live-harness` green (the real Claude Code CLI
-    installs, lists and uninstalls the MCP entry, skill and hooks, runs the
-    installed hooks on fixture payloads, with
-    `CLAUDE_CONFIG_DIR` unset and set to `~/.claude`).
+1. The container's Go is the `toolchain` line of `go.mod`.
+2. `just check` (gofmt, go vet, go mod tidy, build) clean, and it rewrote
+   no file: commit what it changed.
+3. `just staticcheck` clean.
+4. `just build-all` builds every platform.
+5. No generated render has uncommitted edits, `just skills` leaves every
+   checked-in render unchanged (the skills, the plugin bundle, both
+   marketplace manifests, `docs/recipes/`), and `claude plugin validate
+   --strict` passes on `plugins/agentfeedback` and the repository root.
+6. `go test -race -count=1 ./...` green, which includes the CLI and MCP
+   coverage checks (`cmd/agentfeedback/coverage.toml`,
+   `internal/mcp/coverage.toml`): an API change that leaves either stale
+   fails here.
+7. `just fuzz`: the decoder on its seed corpus for 30 s. A crash it finds
+   is committed under `pkg/envelope/testdata/fuzz/FuzzDecode/` as a
+   regression seed beside the fix.
+8. `just e2e`: builds, serves on a temporary database, runs
+   `scripts/e2e.sh`, which fails on an `openapi.yaml` operation it does not
+   exercise and runs the curl recipe's bash blocks.
+9. `just e2e-local`: the client commands in local mode against a temporary
+   data directory, no server process.
+10. `shellcheck -x -P SCRIPTDIR skills/*/scripts/*.sh tests/skill/*.sh`.
+11. The skill tests: `bash tests/skill/run-tests.sh`,
+    `python3 tests/skill/test_cluster.py`,
+    `python3 tests/skill/triage-playbooks.py`.
+12. The playbook extractor and structure: `python3
+    tests/playbooks/test_playbooks.py` and `python3 scripts/playbooks.py
+    check`.
+13. `shellcheck -x scripts/*.sh tests/live/*.sh`.
+14. `just docs-check`: every relative link and `#anchor` in every Markdown
+    file resolves, rendered copies included, and the `README.md` and
+    `AGENTS.md` route tables name every document
+    (`docs/*.md`, `docs/recipes/*.md`, `docs/openapi.yaml`, both install
+    playbooks, `llms.txt`) (`scripts/check-docs.py` and its tests).
+15. `just contract`: the schemas are valid 2020-12, every example in them,
+    in `docs/openapi.yaml` and in [api.md](api.md) validates (an api.md
+    example is the fenced block after an `<!-- example: <operationId> ... -->`
+    marker, and every operation has one; `tests/docs/test_api_examples.py` tests
+    that check), the fixtures agree with
+    `conformance/reference/`, the plugin manifest and the rendered mcp.json
+    validate against the vendored Agent Plugins 1.0.0 schemas
+    (`internal/skillgen/testdata/agent-plugins/`), and the OpenAPI lint.
+    Then no gate changed the tree.
+16. `just live-harness`: the real Claude Code CLI installs, lists and
+    uninstalls the MCP entry, skill and hooks, and runs the installed hooks
+    on fixture payloads, with `CLAUDE_CONFIG_DIR` unset and set to
+    `~/.claude`.
 
-`just ci` runs items 1 to 11 and the static half of item 12 in order inside the toolchain container,
-then item 13, and fails if `just check` rewrote a
-file or any gate changed the tree. Run a single item with `just box <recipe>`. There is no hosted CI: `just ci` green on the tree that is merged is the
-merge gate, and the image is built and published by the release step
-([releases.md](releases.md)). A change that adds a gate adds it to the `ci`
-recipe in the `justfile` and to the list above, in the same commit.
+Outside `just ci`, run before landing when the change calls for it:
+
+- A playbook command, the CLI or `install.sh` changed: the playbook gate,
+  `just playbooks <tag> tree` (any release tag at or above the client's
+  minimum version, built from the working tree; Docker), which runs every
+  routed step as a non-root user in a clean Debian container with systemd
+  and fails on a non-zero exit or a Verify condition that does not hold.
+  The human's answers come from `AF_PLAYBOOK_*` variables (`python3
+  scripts/playbooks.py --help` lists them); unset is no, and the step that
+  needs the answer is reported skipped. Steps that need a third-party CLI
+  (client 2.4 and 2.5, stack S6) are checked for structure only; the
+  release's paste check covers them. `just release` runs it against the
+  local build before the tag is pushed; `just playbooks <tag>` checks a
+  published release.
+- A `go:embed` added or moved, or `Dockerfile` or `.dockerignore` changed:
+  `just docker-build`.
+
+A change that adds a gate adds it to the `ci-host` recipe in the `justfile`
+and to the list above, in the same commit.
 
 ## Release
 

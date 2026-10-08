@@ -24,6 +24,17 @@
    the golden mcp.json internal/skillgen renders for a server) validate
    against the vendored Agent Plugins 1.0.0 schemas, and both name the same
    spec version.
+5. docs/api.md shows every docs/openapi.yaml operation: a marker comment on
+   its own line, `<!-- example: <operationId> -->`, `... <operationId>
+   request -->` or `... <operationId> response <status> -->`, applies to the
+   next fenced code block (only blank lines between). Every marker names an
+   operationId the document has and every operationId has a marker. A request
+   block is json and validates against the operation's application/json
+   request body schema; a response block is json and validates against that
+   status's application/json or application/problem+json schema. A bare
+   marker is coverage only, in any language. A line starting with
+   `<!-- example` that is not one of these forms, an unclosed example block
+   and a $ref that does not resolve are failures.
 
 OpenAPI linting is a separate step (`just contract` runs both).
 """
@@ -266,6 +277,140 @@ def check_fixtures(envelope: dict, registry: Registry, codes: set[str], families
             fail(f"conformance/warnings.json: {code!r} is not exercised by any fixture")
 
 
+API_MD = ROOT / "docs" / "api.md"
+_MARKER = re.compile(r"^<!-- example: (\S+)(?: (request|response (\S+)))? -->\s*$")
+_MARKER_START = re.compile(r"^\s*<!-- ?example")
+_FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})\s*(.*?)\s*$")
+_MARKER_FORMS = ("`<!-- example: <operationId> -->`, `<!-- example: <operationId> request -->` "
+                 "or `<!-- example: <operationId> response <status> -->`")
+
+
+def _fence_open(line: str):
+    """The opening-fence match, or None. A backtick fence whose info string
+    contains a backtick is not a fence (CommonMark; as check-docs.py)."""
+    m = _FENCE.match(line)
+    if m and m.group(1)[0] == "`" and "`" in m.group(2):
+        return None
+    return m
+
+
+def _deref(doc: dict, node, pointer: str, where: str):
+    """Follow local $refs (#/...) on an OpenAPI object; return it and its
+    pointer, or (None, None) after fail() when a target does not exist."""
+    while isinstance(node, dict) and isinstance(node.get("$ref"), str) and node["$ref"].startswith("#/"):
+        ref = node["$ref"]
+        pointer = ref[1:]
+        node = doc
+        for token in pointer.split("/")[1:]:
+            key = token.replace("~1", "/").replace("~0", "~")
+            if not isinstance(node, dict) or key not in node:
+                fail(f"{where}: $ref {ref} does not resolve")
+                return None, None
+            node = node[key]
+    return node, pointer
+
+
+def check_api_examples(doc: dict, registry: Registry, text: str, name: str) -> int:
+    """Check the example markers in text (the Markdown file shown as name);
+    return the validated count."""
+    ops: dict[str, tuple[dict, str]] = {}
+    for path, item in (doc.get("paths") or {}).items():
+        for method, op in item.items():
+            if isinstance(op, dict) and "operationId" in op:
+                ops[op["operationId"]] = (op, f"/paths/{pointer_escape(path)}/{method}")
+    lines = text.split("\n")
+    covered: set[str] = set()
+    count = 0
+    fence: str | None = None
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        m = _FENCE.match(line)
+        if fence is not None:
+            if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence) and not m.group(2):
+                fence = None
+            i += 1
+            continue
+        if _fence_open(line):
+            fence = m.group(1)
+            i += 1
+            continue
+        mk = _MARKER.match(line)
+        i += 1
+        where = f"{name}:{i}"
+        if not mk:
+            if _MARKER_START.match(line):
+                fail(f"{where}: malformed example marker {line.strip()!r}; the accepted forms are {_MARKER_FORMS}")
+            continue
+        op_id, mode, status = mk.group(1), mk.group(2), mk.group(3)
+        j = i
+        while j < len(lines) and not lines[j].strip():
+            j += 1
+        fm = _fence_open(lines[j]) if j < len(lines) else None
+        if not fm:
+            fail(f"{where}: example marker is not followed by a fenced code block")
+            continue
+        k = j + 1
+        while k < len(lines):
+            cm = _FENCE.match(lines[k])
+            if cm and cm.group(1)[0] == fm.group(1)[0] and len(cm.group(1)) >= len(fm.group(1)) and not cm.group(2):
+                break
+            k += 1
+        if k >= len(lines):
+            fail(f"{name}:{j + 1}: example block is not closed")
+            break
+        body = "\n".join(lines[j + 1:k])
+        lang = fm.group(2).split()[0] if fm.group(2) else ""
+        i = k + 1
+        if op_id not in ops:
+            fail(f"{where}: example marker names {op_id!r}, which docs/openapi.yaml does not define")
+            continue
+        covered.add(op_id)
+        if mode is None:
+            continue
+        op, op_p = ops[op_id]
+        if mode == "request":
+            rb = op.get("requestBody")
+            rb, rb_p = _deref(doc, rb, f"{op_p}/requestBody", f"{where}: {op_id} request body") if rb is not None else (None, "")
+            if rb_p is None:
+                continue
+            media = ((rb or {}).get("content") or {}).get("application/json")
+            if not media or "schema" not in media:
+                fail(f"{where}: {op_id} has no application/json request body schema")
+                continue
+            pointer = f"{rb_p}/content/application~1json/schema"
+        else:
+            resp = (op.get("responses") or {}).get(status)
+            if resp is None:
+                fail(f"{where}: {op_id} has no response {status}")
+                continue
+            resp, resp_p = _deref(doc, resp, f"{op_p}/responses/{status}", f"{where}: {op_id} response {status}")
+            if resp_p is None:
+                continue
+            content = resp.get("content") or {}
+            mime = next((t for t in ("application/json", "application/problem+json") if "schema" in (content.get(t) or {})), None)
+            if mime is None:
+                fail(f"{where}: {op_id} response {status} has no application/json or application/problem+json schema")
+                continue
+            pointer = f"{resp_p}/content/{pointer_escape(mime)}/schema"
+        if lang != "json":
+            fail(f"{where}: a {mode} example must be a json block, found {lang or 'no language'!r}")
+            continue
+        try:
+            value = json.loads(body)
+        except json.JSONDecodeError as e:
+            fail(f"{where}: example is not valid JSON: {e}")
+            continue
+        count += 1
+        validator = Draft202012Validator({"$ref": f"{OPENAPI_URI}#{pointer}"}, registry=registry, format_checker=FormatChecker())
+        for err in validator.iter_errors(value):
+            fail(f"{where}: {op_id} {mode}: {err.message} at {err.json_path}")
+    missing = sorted(set(ops) - covered)
+    if missing:
+        fail(f"{name} has no example marker for: {', '.join(missing)}")
+    return count
+
+
 AGENT_PLUGINS = ROOT / "internal" / "skillgen" / "testdata" / "agent-plugins" / "1.0.0"
 
 
@@ -317,6 +462,7 @@ def main() -> int:
     families = {c["code"] for c in warnings_doc["codes"] if c.get("family")}
     check_fixtures(schemas["schemas/envelope.v1.json"], registry, codes, families)
     check_agent_plugin()
+    examples += check_api_examples(doc, registry, API_MD.read_text(encoding="utf-8"), "docs/api.md")
 
     sys.path.insert(0, str(ROOT / "conformance"))
     from reference import decode as ref_decode, guide as ref_guide, rawjson as ref_rawjson  # noqa: E402
@@ -360,7 +506,7 @@ def main() -> int:
             print(f"contract-check: {p}", file=sys.stderr)
         print(f"contract-check: {len(problems)} problem(s)", file=sys.stderr)
         return 1
-    print(f"contract-check: {len(schemas)} schemas, {examples} examples, warnings list, manifest, fixtures and Agent Plugins manifests OK")
+    print(f"contract-check: {len(schemas)} schemas, {examples} examples, warnings list, manifest, fixtures, Agent Plugins manifests and docs/api.md examples OK")
     return 0
 
 

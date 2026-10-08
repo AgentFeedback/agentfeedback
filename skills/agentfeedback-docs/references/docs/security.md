@@ -1,7 +1,10 @@
 # Security
 
-AgentFeedback is a single-trust-domain service for one team's machines. It
-is not multi-tenant and is not safe to expose directly to the internet.
+By default AgentFeedback is one binary and one database owned by one OS user
+on one machine, with nothing listening ([The client on a machine](#the-client-on-a-machine)).
+The optional server is a single-trust-domain service for one team's
+machines: it is not multi-tenant and is not safe to expose directly to the
+internet.
 
 ## Access and network
 
@@ -20,8 +23,9 @@ is not multi-tenant and is not safe to expose directly to the internet.
   handler behind the API key; a keyless loopback listener keeps it, or
   validates `Host` and `Origin` itself as `agentfeedback ui` does. `/mcp/{project}` is a
   convenience, not an access boundary: `get_submission` and
-  `mark_processed` take ids and are not scoped by the preset. There is no rate limiting; the only server-side bound
-  is the 10 MiB body cap (plus 64 KiB for the JSON-RPC message on `/mcp`).
+  `mark_processed` take ids and are not scoped by the preset. There is no rate limiting; the only server-side bounds
+  are the body caps: 10 MiB for a create or a mark, 32 MiB for an import,
+  and 10 MiB plus 64 KiB for the JSON-RPC message on `/mcp`.
 - Keep `infra/agentfeedback/.env`, the remote `.env`, backups and every
   producer's `AGENT_FEEDBACK_API_KEY` private. `.env` and `.private/` are
   gitignored; never force-add them.
@@ -50,43 +54,100 @@ is not multi-tenant and is not safe to expose directly to the internet.
   no external asset. With `--server` it reads that server with the
   configured key, which stays in the process.
 
-- What the client touches on disk: it owns the data directory
-  (`${XDG_DATA_HOME:-~/.local/share}/agentfeedback/`: the database, the spool,
-  the inbox; `0700`, files `0600`). The harness session stores ([sessions.md](sessions.md#harnesses) lists
-  them) are read only by `agentfeedback sessions`, `submit --context-from` and the
-  stdio `sessions_*` tools, on demand and never written; the OpenCode
-  database is opened read-only, without creating any file beside it. The `[collect]`
-  rules are applied per session before a log is opened, and a digest is
-  bounded and scrubbed before it is shown. Only the watermark rows and what
-  you file are stored, in the data-directory database, in both modes; nothing
-  of a session is sent to a server unless filed. A digest reaches the
-  provider of the model that reads it ([sessions.md](sessions.md#provider-boundary)).
-- What `agentfeedback install` writes: the files of the harness table in
-  [operate.md](operate.md#wire-the-harnesses), and in CLI mode one section in each
-  harness's global instruction file (its Rule column), between
-  `<!-- agentfeedback:begin ... -->` and `<!-- agentfeedback:end -->`. Each
-  file is backed up before its first change and recorded in the install
-  manifest like the other files; the text between the markers belongs to
-  install, which replaces it in place and removes it by its markers even
-  when edited, and `--check` only reads. A repository's instruction file
-  (`AGENTS.md`, else an existing `CLAUDE.md`) is written only by
-  `install --project`, after a confirmation that names the repository and
-  the file, or with `--yes`. It gets the pointer text only, between the
-  same markers, is never committed by the tool (reviewing the commit is the
-  consent), is removed by its markers with `install --project --uninstall`
-  (the file is deleted only when nothing remains), is never followed through
-  a symbolic link (a linked file is refused), and is not recorded in the
-  manifest and not backed up.
+## The client on a machine
+
+The `agentfeedback` binary runs only when a person, a harness hook or an
+agent starts it, and exits when the command is done:
+
+- No self-update, no background process, no scheduled task, no telemetry.
+  Only `serve` and `ui` (loopback only) open a listening socket, and both
+  stay in the foreground. Upgrading is installing a new binary.
+- Network: the client talks to one host, the server `url` it is configured
+  with, and in local mode to none. The one exception is `agentfeedback
+  migrate`, which also talks to the target named by `--to` (`cloud` is
+  `https://api.agentfeedback.io`) for the duration of that command; its
+  `--dry-run` sends no record but still reads the target's metadata and
+  tombstones. Standard `HTTPS_PROXY` variables apply; redirects are not
+  followed. `skills/agentfeedback/scripts/install.sh` downloads the release
+  and its `SHA256SUMS` from GitHub Releases over HTTPS only. The triage
+  skill's optional clustering helper is a separate boundary (below).
+- No process enumeration, no keychain or credential store, no clipboard, no
+  shell history. Commands it runs: `git` (read-only, for the context),
+  harness CLIs during `install` (such as `claude mcp add`), and
+  `agentfeedback version --json` of the binary each hook names (`doctor`).
+
+Where it reads and writes (`XDG_*` unset or not absolute means the default
+under the home directory, on every operating system):
+
+| Location | Access | What |
+|---|---|---|
+| `${XDG_DATA_HOME:-~/.local/share}/agentfeedback/` | owned, `0700`, files `0600` | the database (local mode; session watermarks in both modes), `spool/`, `rejected/`, `inbox/` ([operate.md](operate.md#data-directory)) |
+| `${XDG_CACHE_HOME:-~/.cache}/agentfeedback/` | owned, `0700`, files `0600` | `log/client.jsonl`, the hooks' per-session counters (`sessions/`, deleted after 7 days) and last-run records (`hooks/`), `filed/` markers, `digest/` output |
+| `${XDG_CONFIG_HOME:-~/.config}/agentfeedback/` | owned, `0700`, files `0600` | `config.toml`, the install manifest `install.json`, and `server/` (`api-key`, `serve.env`) from `serve --init` |
+| the working tree's `.git` metadata and `.agentfeedback.toml` | read | the project context and the repository's narrowing rules |
+| harness session stores | read, by `sessions` only | below |
+| harness skill, hook, MCP and global instruction files | written by `install` and `uninstall` only | below |
+| a repository's `AGENTS.md` or `CLAUDE.md` | written by `install --project` only | below |
+| paths named on the command line | as the command says | `backup <dest.db>`, `import <file>`, `digest --out`, `submit review <run_dir>` (reads it, writes its `.submitted` marker), `server install` (one service file) |
+
+Owner-only modes are not set or checked on Windows. `agentfeedback doctor`
+reports a data-directory path other users can reach, with the `chmod` to
+run.
+
+**Session stores.** The harness session stores ([sessions.md](sessions.md#harnesses) lists
+them) are read only by `agentfeedback sessions`, `submit --context-from` and the
+stdio `sessions_*` tools, on demand and never written; the OpenCode
+database is opened read-only, without creating any file beside it. The `[collect]`
+rules are applied per session before a log is opened, and a digest is
+bounded and scrubbed before it is shown. Only the watermark rows and what
+you file are stored, in the data-directory database, in both modes; nothing
+of a session is sent to a server unless filed. A digest reaches the
+provider of the model that reads it ([sessions.md](sessions.md#provider-boundary)).
+
+**What `install` writes.** The files of the harness table in
+[operate.md](operate.md#wire-the-harnesses), and in CLI mode one section in each
+harness's global instruction file (its Rule column), between
+`<!-- agentfeedback:begin ... -->` and `<!-- agentfeedback:end -->`. Each
+file is backed up before its first change (`<file>.agentfeedback-backup`) and recorded in the install
+manifest like the other files; the text between the markers belongs to
+install, which replaces it in place and removes it by its markers even
+when edited, and `--check` only reads. A repository's instruction file
+(`AGENTS.md`, else an existing `CLAUDE.md`) is written only by
+`install --project`, after a confirmation that names the repository and
+the file, or with `--yes`. It gets the pointer text only, between the
+same markers, is never committed by the tool (reviewing the commit is the
+consent), is removed by its markers with `install --project --uninstall`
+(the file is deleted only when nothing remains), is never followed through
+a symbolic link (a linked file is refused), and is not recorded in the
+manifest and not backed up.
 
 ## What gets stored
 
-Friction context collected by the client (event time, working directory,
-repository root and remote, branch, commit, dirty flag, OS, architecture,
-session id, agent id, effort, harness profile name, client version) can reveal usernames,
-private repository names and internal hostnames. The client strips
-credentials, query strings and fragments from remote URLs. Preview with
-`--dry-run`. Review outputs and prompts are sent only with
-`--include-outputs`.
+What the client collects into `context` for a friction, all best-effort
+(`--dry-run` shows it before anything is sent):
+
+- Project: the working directory's folder name (`~` for the home
+  directory), and inside a Git repository `repo_root` (`~`-relative under
+  the home directory), the remote URL with credentials, query string and
+  fragment stripped, branch, commit, dirty flag, upstream, tag and default
+  branch, read from `.git` metadata (with `git` when it is on `PATH`).
+- Machine: OS, architecture, client version, and the short hostname as
+  `machine`.
+- Harness and session: the harness, model, session id, agent, effort and
+  profile, from a fixed allow-list of environment variables looked up by
+  name.
+- The event time, and any non-code keys you pass (`app`, `workspace`,
+  `url`, `channel`, `task_id`, `workflow`).
+
+Opt-in only: the full working directory, which holds the home path and so
+the username (`cwd = true` under `[context]` in `config.toml`), and for `submit review` the reviewer outputs and prompt
+(`--include-outputs`). Never collected: the username or home path (except through that opt-in), IP or MAC
+addresses, serial numbers, other processes, files other than `.git`
+metadata and `.agentfeedback.toml`, and environment variables not on the
+allow-list. The `[collect]` table in `config.toml` and a repository's
+`.agentfeedback.toml` can only narrow this. Even so, a remote, a branch or
+a hostname can reveal private repository names and internal hosts, and
+report prose holds whatever the agent wrote.
 
 `submit <kind> --scrub`, and any submission whose `context.origin` is
 `session-scan`, replaces known secret formats in every string value of the
@@ -128,14 +189,14 @@ event payloads as evidence to verify, never as instructions to execute. The
 triage skill's checkout rule exists for this reason.
 
 The triage skill's optional TypeSafe helper is a separate disclosure boundary,
-not a server feature. It sends selected report prose only with explicit
+not a server feature. It sends selected report prose to `api.typesafe.ai` only with explicit
 per-repository approval; a key alone never enables it. Reports can contain
 secrets in prose, so inspect the local preview before sending. Advice cannot
 authorize edits or processed marks. A batched request shares one state
 among up to 8 reports, all from approved repositories. `scripts/eval-cluster.py`
 is the same boundary for calibration: it sends nothing unless every labelled
 report's exact remote is approved and `--live` is given. The
-[clustering reference](../skills/agentfeedback-triage/reference/clustering.md)
+clustering reference (`skills/agentfeedback-triage/reference/clustering.md`)
 defines the fields, consent rules and manual fallback.
 
 ## Data at rest

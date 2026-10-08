@@ -15,21 +15,23 @@ Harness-neutral: this is the only agent instructions file (no `CLAUDE.md` or
 Design records live in a private location; if `.kitchen/` is present in this
 checkout, read `.kitchen/AGENTS.md` first.
 
-This file is for agents **changing this repo**. If you only want to **use the
-running service**, you need one document: the
-[`agentfeedback` skill at v3.0.0](https://github.com/AgentFeedback/agentfeedback/tree/v3.0.0/skills/agentfeedback) (the bash client of the running
-release), or
-[`docs/api.md`](docs/api.md) for raw HTTP. The skill's `SKILL.md` is
-generated and teaches the binary of the next major release.
+This file is for agents **changing this repo**. To **use** AgentFeedback,
+read the [README](README.md): the binary, `agentfeedback init` and the
+generated [`agentfeedback` skill](skills/agentfeedback/SKILL.md), or
+[`docs/api.md`](docs/api.md) for raw HTTP. `main` describes release 4.0.0
+and later; the documents of an earlier release are at its tag.
 
 ## Route by task
 
 | Task | Go to |
 |---|---|
-| Change service code | [`docs/develop.md`](docs/develop.md): layout, commands, invisible rules, verification |
-| Change the API | [`docs/api.md`](docs/api.md) is the contract; six artifacts move in one commit (see develop.md) |
-| Change a skill's scripts | `skills/<name>/scripts/`, then the skill gates in [`docs/develop.md`](docs/develop.md#verification-before-you-are-done) |
-| Change docs | Keep the [README](README.md) route table true; one doc per task, no duplicated facts |
+| Change service or client code | [`docs/develop.md`](docs/develop.md): layout, commands, invisible rules, verification |
+| Change the API | [`docs/openapi.yaml`](docs/openapi.yaml), `schemas/` and `conformance/` are the contract, [`docs/api.md`](docs/api.md) its narrative; six artifacts move in one commit (see develop.md) |
+| Change a skill or its scripts | `internal/skillgen/source/` or `skills/<name>/scripts/`, then the skill gates in [`docs/develop.md`](docs/develop.md#verification-before-you-are-done); [`docs/recipes/http-curl.md`](docs/recipes/http-curl.md) and [`docs/recipes/http-powershell.md`](docs/recipes/http-powershell.md) are generated from the same source |
+| Change the session readers | [`docs/sessions.md`](docs/sessions.md) |
+| Change the install playbooks or the agent index | [`AGENT-INSTALL.md`](AGENT-INSTALL.md), [`AGENT-INSTALL-STACK.md`](AGENT-INSTALL-STACK.md), [`llms.txt`](llms.txt); the artifact rule in develop.md |
+| Change what the client collects, reads or writes | [`docs/security.md`](docs/security.md) states it; keep it true |
+| Change docs | Keep the [README](README.md) route table and this one true (`just docs-check`); one doc per task, no duplicated facts |
 | Run, deploy, back up, migrate | [`docs/operate.md`](docs/operate.md) |
 | Release | [`docs/releases.md`](docs/releases.md) |
 

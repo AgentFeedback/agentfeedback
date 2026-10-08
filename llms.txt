@@ -1,6 +1,6 @@
 # AgentFeedback
 
-> An inbox for feedback from AI coding agents: agents on any machine and in any harness report what slowed them down, and an agent later triages the queue with a human. One Go binary with SQLite and one API key, self-hosted; a hosted version at agentfeedback.io speaks the same API.
+> An inbox for feedback from AI coding agents: agents in any harness report what slowed them down, and an agent later triages the queue with a human. One Go binary with SQLite, local first: no server and no key on one machine; an optional self-hosted server with one API key collects from several machines, and a hosted version at agentfeedback.io speaks the same API.
 
 Asked to install this? Read AGENT-INSTALL.md (client) or AGENT-INSTALL-STACK.md (server and client). Both describe release 4.0.0 and later.
 
@@ -14,7 +14,7 @@ Asked to install this? Read AGENT-INSTALL.md (client) or AGENT-INSTALL-STACK.md 
 - [docs/openapi.yaml](https://raw.githubusercontent.com/AgentFeedback/agentfeedback/main/docs/openapi.yaml): OpenAPI 3.1 document of API v1, the contract of release 4.0.0 and later
 - [docs/recipes/http-curl.md](https://raw.githubusercontent.com/AgentFeedback/agentfeedback/main/docs/recipes/http-curl.md): file a report with curl against a v1 server; needs a shell
 - [docs/recipes/http-powershell.md](https://raw.githubusercontent.com/AgentFeedback/agentfeedback/main/docs/recipes/http-powershell.md): the same with PowerShell on Windows
-- [docs/api.md](https://raw.githubusercontent.com/AgentFeedback/agentfeedback/main/docs/api.md): HTTP reference of the v3 service of releases before 4.0.0; a 4.0.0 server answers only the routes of docs/openapi.yaml
+- [docs/api.md](https://raw.githubusercontent.com/AgentFeedback/agentfeedback/main/docs/api.md): narrative of API v1 with one example per operation; docs/openapi.yaml wins where they differ
 
 ## Schemas
 

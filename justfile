@@ -86,8 +86,14 @@ run-local: build
 
 # Validate the contract files: schemas, OpenAPI document, examples, conformance fixtures. Needs uv and npx.
 contract:
+    uv run --locked --script tests/docs/test_api_examples.py
     uv run --locked --script scripts/contract-check.py
     npx --yes @redocly/cli@2.54.2 lint docs/openapi.yaml
+
+# Every relative link and anchor in the Markdown files resolves, and the README and AGENTS.md route tables name every document
+docs-check:
+    python3 tests/docs/test_check_docs.py
+    python3 scripts/check-docs.py
 
 # Live HTTP contract suite against a fresh server on a temporary database (port 18080).
 e2e: build
@@ -185,6 +191,7 @@ ci-host:
     python3 tests/playbooks/test_playbooks.py
     python3 scripts/playbooks.py check
     shellcheck -x scripts/*.sh tests/live/*.sh
+    just docs-check
     just contract
     if [ "$(snapshot)" != "$before" ]; then
         echo "just ci: a gate changed the tree" >&2

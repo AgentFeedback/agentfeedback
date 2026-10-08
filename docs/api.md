@@ -1,383 +1,858 @@
 # AgentFeedback HTTP API
 
-> This page describes the v3 service of the latest release. The server on
-> `main` implements the v1 contract, [openapi.yaml](openapi.yaml), and does not
-> answer the routes below.
+The HTTP API of an AgentFeedback server: write-once submissions from AI
+agents, their processing marks, aggregates, export and import, schemas,
+remote MCP and discovery. This page is the narrative. The contract is
+[openapi.yaml](openapi.yaml), the JSON Schemas under [`schemas/`](../schemas)
+and the conformance kit under `conformance/` in the repository; they
+win wherever this page disagrees, and they hold the field-by-field tables.
 
-Hand-written HTTP calls against the v1 service follow the generated recipes
-[recipes/http-curl.md](recipes/http-curl.md) and
-[recipes/http-powershell.md](recipes/http-powershell.md), which need a shell or
-an HTTP tool that can set a header.
-
-The contract producers and processors integrate against. Self-contained: read
-this, then write the calls. Prefer the shipped client scripts in
-[`skills/agentfeedback/` at v3.0.0](https://github.com/AgentFeedback/agentfeedback/tree/v3.0.0/skills/agentfeedback); they implement
-spooling, retries, receipt validation and outcome reporting. Hand-roll HTTP
-only for a producer the client does not cover.
-
-API version: **1.1**. Additions since 1.0 are listed in
-[Changes since API 1.0](#changes-since-api-10).
+API version: **1.0**. Changes since 1.0 are listed under [Changes](#changes).
 
 Contents:
 
-1. [Base URL, auth, common rules](#base-url-auth-common-rules)
-2. [The record](#the-record)
-3. [Write endpoints](#write-endpoints): frictions, reviews, events
-4. [Read endpoints](#read-endpoints): list, get, export
-5. [Processing](#processing): mark processed with a resolution
-6. [Idempotency and duplicates](#idempotency-and-duplicates)
-7. [Operational endpoints](#operational-endpoints)
-8. [Changes since API 1.0](#changes-since-api-10)
-9. [Evolution policy](#evolution-policy) and [version axes](#version-axes) of the v1 contract
+1. [Who needs HTTP](#who-needs-http)
+2. [Base URL, auth, common rules](#base-url-auth-common-rules)
+3. [Submissions](#submissions): envelope, identity, warnings
+4. Routes: [create](#create), [list](#list), [get](#get),
+   [mark one](#mark-one), [mark a batch](#mark-a-batch), [redact](#redact),
+   [stats](#stats), [export](#export), [import](#import),
+   [schemas](#schemas), [meta](#meta), [OpenAPI document](#openapi-document),
+   [MCP](#mcp), [skill](#skill), [discovery](#discovery),
+   [health, ready, metrics](#health-ready-metrics)
+5. [Evolution policy](#evolution-policy) and [version axes](#version-axes)
+6. [Changes](#changes)
+
+## Who needs HTTP
+
+The `agentfeedback` CLI and its stdio MCP tools (`agentfeedback mcp`) are the
+normal clients, and they need no server: in local mode they run the same
+handler in-process on the data-directory database
+([operate.md](operate.md#local-mode-no-server)). HTTP is for a server started
+with `agentfeedback serve`, and for producers that cannot run the binary.
+
+Hand-written calls follow the generated recipes
+[recipes/http-curl.md](recipes/http-curl.md) and
+[recipes/http-powershell.md](recipes/http-powershell.md); they need a shell or
+an HTTP tool that can set a request header.
+
+The v3 HTTP API of releases before 4.0.0 is documented at the v3.0.0 tag:
+https://github.com/AgentFeedback/agentfeedback/blob/v3.0.0/docs/api.md
 
 ## Base URL, auth, common rules
 
-Two environment variables, set by the operator on every machine that talks to
-the service. There is no hosted default.
-
-```
-AGENT_FEEDBACK_URL=http://127.0.0.1:8090
-AGENT_FEEDBACK_API_KEY=<shared key>
+```bash
+export AGENT_FEEDBACK_URL=http://127.0.0.1:8090    # the server's base URL
+export AGENT_FEEDBACK_API_KEY=<key>                # the server's API_KEY
 ```
 
-Every `/api/v1/*` request carries the key in either header:
+- **Auth.** Send the key in either header; either authorises and neither
+  shadows the other:
+  `Authorization: Bearer $AGENT_FEEDBACK_API_KEY` (scheme name
+  case-insensitive) or `X-Api-Key: $AGENT_FEEDBACK_API_KEY`. Every
+  `/api/v1/*` route and `/mcp` need it, except these, which need no key and
+  carry no data: `GET /api/v1/schemas`, `GET /api/v1/schemas/{kind}/{version}`,
+  `GET /api/v1/openapi.json`, `GET /skill`,
+  `GET /.well-known/agentfeedback.json`, `GET /health`, `GET /ready`,
+  `GET /metrics`. A missing or wrong key is 401 `unauthorized` with
+  `WWW-Authenticate: Bearer`.
+- **Headers.** Every response carries `X-Request-Id`. Every response of an
+  authenticated route, success or error, carries `Cache-Control: no-store`.
+- **Body limits.** Create, mark and batch mark: 10485760 bytes
+  (`limits.body_bytes` in [meta](#meta)). Import: 33554432 bytes
+  (`limits.import_bytes`). MCP: 10551296 bytes. Over the limit is 413
+  `request_too_large`.
+- **Errors.** `application/json` with `error` (a code from a closed list),
+  `message` (names the field or parameter, the value received when short,
+  and the accepted range), `request_id` (equals `X-Request-Id`) and, when
+  there is something to point at, `details`: items of `code`, `pointer`,
+  `message`. This is the `Error` schema in
+  [openapi.yaml](openapi.yaml), not RFC 9457 problem details. A wrong
+  method is 405 `method_not_allowed` with `Allow`; an unknown path under
+  `/api/v1/` is 404 `not_found`. `rate_limited` (429, with `Retry-After`)
+  occurs on the hosted service only; `unavailable` (503) carries
+  `Retry-After` when known.
+- **Timestamps.** Every timestamp the server writes is RFC 3339 UTC with six
+  fractional digits, e.g. `2026-09-27T10:00:01.123456Z`. Inputs (`since`,
+  `until`, `occurred_at`) accept any RFC 3339 offset; percent-encode `+` in
+  a query string.
+- **Write-once.** Content is never modified after creation. The only fields
+  that change are the five processing fields (`processed_at`, `verdict`,
+  `resolution`, `ref`, `processed_by`), set by [marking](#mark-one), and
+  redaction, which replaces content with a tombstone ([redact](#redact)).
+- **Optional members** of a record are omitted when unset, never sent as
+  `null`.
 
-```
-Authorization: Bearer $AGENT_FEEDBACK_API_KEY
-X-Api-Key: $AGENT_FEEDBACK_API_KEY
-```
+Example error, a key missing:
 
-Missing or wrong key: `401 {"error":"unauthorized","message":"missing or invalid API key"}`.
-
-Rules that apply to every endpoint:
-
-- Responses are JSON, except `GET /api/v1/export` (NDJSON) and `/health`,
-  `/ready` (plain text). Errors have the shape `{"error":"<code>","message":"<text>"}`.
-  `message` names the offending field when there is one.
-- POST bodies must be exactly one JSON object. Unknown fields are rejected with
-  `400 bad_request` naming the field. A typo is a bug, not something to drop:
-  a dropped field plus an idempotent replay would lose data for good.
-- Bodies over 10 MiB (including trailing whitespace) get
-  `413 {"error":"request_too_large","message":"request body exceeds 10 MiB"}`.
-- Timestamps are RFC 3339 in UTC, microsecond precision, e.g.
-  `2026-09-17T20:06:48.123456Z`. Query parameters accept any RFC 3339 offset.
-- Stored content is never modified after creation. The only mutable state is
-  the processing mark (`processed_at`, `resolution`).
-
-Field length limits (`400` naming the field when exceeded). They protect the
-database, not police content; free-text fields are bounded only by the body cap.
-
-| Fields | Limit |
-|---|---|
-| `machine_name`, `coordinator_model`, `skill`, `run_id`, `kind`, `key`, `category`, `project`, `harness`, `reviewers[].slot`, `reviewers[].model`, `reviewers[].status` | 200 bytes |
-| friction `summary`, `resolution` | 2000 bytes |
-| `reviewers[].note` | 4000 bytes |
-| `reviewers[]` count | 100 |
-| `context` object | 32 entries, keys 64 bytes, values 2000 bytes |
-| `details`, `suggested_fix`, `prompt`, `reviewers[].output`, event `payload` | body cap only |
-
-## The record
-
-Every submission, whatever its family, is returned in one shape:
-
+<!-- example: createSubmission response 401 -->
 ```json
 {
-  "id": 43,
-  "family": "friction",
-  "submission_type": "friction",
-  "machine_name": "workstation-a",
-  "coordinator_model": "claude-fable-5-1",
-  "run_id": null,
-  "payload": { "category": "documentation", "summary": "…", "context": { "…": "…" } },
-  "payload_hash": "9f3a…",
-  "created_at": "2026-09-17T20:06:48.123456Z",
-  "processed_at": null,
-  "resolution": null
+  "error": "unauthorized",
+  "message": "missing or invalid API key; send Authorization: Bearer <key> or X-Api-Key: <key>",
+  "request_id": "02c20310252d79435a7d839aa39802e3"
 }
 ```
 
-| Field | Meaning |
+## Submissions
+
+A submission is any JSON object. The server never rejects a body for its
+shape: the [envelope schema](../schemas/envelope.v1.json) describes what is
+stored after inference, and deviations are normalised and reported as
+warnings. The envelope members are `kind`, `schema_version`, `key`,
+`summary`, `machine`, `model`, `harness`, `project`, `occurred_at`, `context`
+and `payload`; `payload` is validated as a guide against the kind schema when
+the server ships one ([`friction`](../schemas/kinds/friction.v1.json),
+[`review`](../schemas/kinds/review.v1.json)). The stored record adds `id`,
+`uid` (a UUIDv7), `content_hash`, `created_at`, the processing fields and
+`redacted_at` (the `Submission` schema in [openapi.yaml](openapi.yaml)).
+
+**Decoding and inference.** Only four bodies are rejected: over 10485760
+bytes (413), not JSON (400 `bad_request`), JSON but not an object (400),
+nesting deeper than 512 levels (400). Everything else is stored: an unknown
+top-level member moves into `payload`, an absent `payload` is built from the
+moved members, a missing `kind` becomes `unknown`, over-long strings are
+truncated, an envelope member of the wrong type is encoded into a string
+(`coerced`), and a payload that fails its kind schema is kept as sent, with
+warnings. The ordered rules, the normalisation
+steps and the fixtures every implementation must pass are in
+`conformance/README.md` ("The write path").
+
+**Identity.** `content_hash` is the SHA-256 of the canonical JSON of `kind`,
+`schema_version`, `machine`, `model`, `harness`, `project`, `summary` and
+`payload` after inference (`conformance/README.md`, "Identity").
+`key`, `occurred_at` and `context` are outside identity. A create answers:
+
+| Case | Status |
 |---|---|
-| `id` | Positive integer, unique across all families, never reused. |
-| `family` | `friction`, `review` or `event`. Decides how the payload is shaped and how duplicates are handled. |
-| `submission_type` | `friction` for frictions; the submitting `skill` for reviews; the `kind` for events. |
-| `run_id` | Idempotency key within `(family, submission_type)`: the review `run_id` or the event `key`. `null` for frictions. |
-| `payload` | The stored content (see [Stored payload shapes](#stored-payload-shapes)). Numbers are returned exactly as stored. |
-| `payload_hash` | SHA-256 hex over the canonical content (see [Idempotency](#idempotency-and-duplicates)). Equal hashes mean the same content under the family's canonical form. |
-| `created_at` | Receipt time at the server. For frictions the client's own `context.occurred_at` records when it happened. |
-| `processed_at`, `resolution` | Set by a processor. Absent until then. |
+| new record | 201, `Location` of the new record |
+| `key` already stored under the same `kind` with the same `content_hash` (keyed replay) | 200, `Location` and body of the existing record |
+| no `key`, and an unprocessed record with the same `content_hash` was created within `dedupe_window_s` (86400 s, in [meta](#meta)) | 200, the existing record (keyless duplicate) |
+| `key` already stored under the same `kind` with a different `content_hash` | 409 `replay_mismatch`; `details[0].existing_id` names the stored record |
 
-As in API 1.0, `run_id`, `processed_at` and `resolution` are **omitted** when
-unset rather than sent as `null`. `family` and `payload_hash` are always
-present. The example above shows the omitted fields as `null` only to list
-them.
+A keyless duplicate of a processed record, or one outside the window, is a
+new record: a recurring problem files again after triage. A keyed replay of a
+redacted record still answers 200 with the tombstone, because the hash is
+kept.
 
-### Stored payload shapes
+**Warnings.** A create returns `warnings` beside the stored record: items of
+`code`, `pointer` (an RFC 6901 pointer into the stored record) and `message`.
+Warnings are never stored and never reject. The closed list of codes, one
+example each, is `conformance/warnings.json` in the repository.
 
-| Family | `payload` as stored and returned |
-|---|---|
-| friction | `{category, summary, details?, suggested_fix?, project?, harness?, context?}`; `category` and `summary` trimmed; empty optional strings omitted |
-| review | `{prompt?, reviewers}`; `reviewers` entries as submitted with empty optionals omitted |
-| event | the submitted `payload` object, compacted (insignificant whitespace removed) with key order and number spelling preserved |
+## Routes
 
-Identifier fields (`machine_name`, `coordinator_model`, `skill`, `run_id`,
-`kind`, `key`) are trimmed of surrounding whitespace before validation,
-storage and hashing. Comparison is case-sensitive.
+### Create
 
-## Write endpoints
+`POST /api/v1/submissions`
 
-### POST /api/v1/frictions
+```bash
+curl -sS -X POST "$AGENT_FEEDBACK_URL/api/v1/submissions" \
+  -H "Authorization: Bearer $AGENT_FEEDBACK_API_KEY" \
+  -H 'Content-Type: application/json' \
+  --data @friction.json
+```
 
-What slowed an agent down. The primary write path.
-
-| Field | Type | Required | Notes |
-|---|---|---|---|
-| `machine_name` | string | yes | the reporting machine's canonical name |
-| `coordinator_model` | string | yes | the reporting agent's model id; never `unknown` if you know it |
-| `category` | string | yes | free-form, e.g. `documentation`, `tooling`, `config`, `environment` |
-| `summary` | string | yes | one line, what the friction was |
-| `details` | string | no | expected vs actual, what it cost |
-| `suggested_fix` | string | no | the concrete fix; if already applied, name the commit |
-| `project` | string | no | repository or project name |
-| `harness` | string | no | e.g. `claude-code`, `opencode`, `codex` |
-| `context` | object | no | flat string map of auto-collected metadata; excluded from duplicate detection |
-
-`201` with the record when stored. `200` with the existing record when an
-identical friction (same content, same reporter, `context` ignored) was stored
-within the last 24 hours; blind retries are safe. `400 create_friction_failed`
-on validation failure.
-
-### POST /api/v1/reviews
-
-One record per completed multi-reviewer run: per-reviewer status, timing and
-grading. The client builds this from a run directory; see the
-[run-directory contract](https://github.com/AgentFeedback/agentfeedback/blob/v3.0.0/skills/agentfeedback/SKILL.md#run-directory-contract).
-
-| Field | Type | Required | Notes |
-|---|---|---|---|
-| `skill` | string | yes | the submitting skill; `friction` is reserved and rejected |
-| `machine_name`, `coordinator_model` | string | yes | as for frictions |
-| `run_id` | string | yes | idempotency key with `skill`. Uniqueness is `(family, skill, run_id)` and does not include the machine, so put the machine name in the value (`<machine>-<run_ts>-<pid>`) to keep machines from colliding |
-| `prompt` | string | no | the review prompt |
-| `reviewers` | array | yes, non-empty | one entry per reviewer |
-| `reviewers[].slot`, `.model`, `.status` | string | yes | `status` is free-form: `completed`, `timeout`, `error`, … |
-| `reviewers[].duration_s`, `.bytes` | int ≥ 0 | no | |
-| `reviewers[].output` | string | no | raw output; omit for timeouts |
-| `reviewers[].score` | int 1–5 | no | grading score |
-| `reviewers[].valid`, `.invalid` | int ≥ 0 | no | finding counts; omit when unknown, never send 0 for unknown |
-| `reviewers[].note` | string | no | grading note |
-
-`201` new, `200` identical replay, `409 replay_mismatch` when the same
-`(skill, run_id)` arrives with different content (the stored record is never
-changed; submit a correction under a new `run_id`), `400 create_review_failed`
-on validation failure.
-
-### POST /api/v1/events
-
-Anything else worth recording once: a generic write-once envelope with a
-free-form JSON object payload. Nothing in the service interprets the payload.
-
-| Field | Type | Required | Notes |
-|---|---|---|---|
-| `kind` | string | yes | producer-chosen namespace, e.g. `deploy`, `benchmark`; `friction` is reserved |
-| `key` | string | yes | idempotency key within `kind`. Uniqueness is `(family, kind, key)` and does not include the machine; put the machine name in the value |
-| `machine_name`, `coordinator_model` | string | yes | as for frictions |
-| `payload` | object | yes | any JSON object; duplicate keys anywhere in it are rejected with `400` |
-
-`201` new, `200` identical replay, `409 replay_mismatch` on different content
-under the same `(kind, key)`, `400 create_event_failed` on validation failure.
-
-## Read endpoints
-
-### GET /api/v1/submissions
-
-Filtered list, newest first (descending `id`). All parameters optional.
-
-| Param | Type | Notes |
-|---|---|---|
-| `family` | `friction` \| `review` \| `event` | |
-| `type` | string | filters `submission_type` (skill name, event kind, or `friction`) |
-| `machine` | string | filters `machine_name` |
-| `model` | string | filters `coordinator_model` |
-| `since`, `until` | RFC 3339 | `created_at >=` / `<=` |
-| `processed` | `true` \| `false` | `false` is the processor's work queue |
-| `before_id` | int | keyset cursor: only rows with `id < before_id`. Preferred for paging |
-| `offset` | int | API 1.0 offset paging, default 0, clamped to `>= 0`. Cannot be combined with `before_id` (`400`) |
-| `limit` | int | default 50, max 500 (max 100 with `include=payload`); `<= 0` becomes 50 |
-| `include` | `payload` | return full records instead of summaries |
-
-Response:
-
+<!-- example: createSubmission request -->
 ```json
 {
-  "submissions": [ { "id": 43, "family": "friction", "…": "…" } ],
-  "limit": 50,
-  "offset": 0,
-  "total": 45,
-  "has_more": false,
-  "next_before_id": null
+  "kind": "friction",
+  "key": "friction-workstation-a-019250f2",
+  "summary": "README install step 3 references a flag that no longer exists",
+  "machine": "workstation-a",
+  "model": "claude-fable-5-1",
+  "harness": "claude-code",
+  "project": "example",
+  "occurred_at": "2026-09-27T09:58:12Z",
+  "context": {"git_commit": "a1b2c3d", "client": "agentfeedback/4.0.0", "origin": "agent"},
+  "payload": {
+    "category": "documentation",
+    "details": "Step 3 says --init; the flag was removed in 3.0.",
+    "fix_status": "applied",
+    "fix_ref": "example@a1b2c3d"
+  }
 }
 ```
 
-- Rows are summaries: the record without `payload`, plus for frictions the
-  `category`, `summary`, `project` and `harness` fields lifted to the top level
-  so a list is scannable. With `include=payload` rows are the summary shape with
-  `payload` added (the lifted friction fields stay); a page can then be large (up to 100 records of up to 10 MiB each), so keep
-  `limit` small when payloads are big.
-- `total` counts every row matching the filters (ignoring `before_id`,
-  `offset` and `limit`), computed in the same read transaction as the page.
-  It is a per-response snapshot and changes as rows arrive or are marked.
-- `has_more` is true when rows older than this page match; `next_before_id` is
-  then the `id` of the page's last row, ready to pass back as `before_id`.
-- `limit` and `offset` echo the values actually used after clamping.
+201 with `Location: /api/v1/submissions/44`; the same body again is 200 with
+the same record:
 
-Draining a queue: page with `processed=false` following `next_before_id`
-until `has_more` is false. With `before_id` it is safe to act on and mark a
-page before fetching the next one (marking removes rows only above the
-cursor). With `offset` it is not: marking shifts later pages and skips rows.
-Rows created after the first page have higher ids and are picked up by the
-next pass. This is a best-effort traversal for one processor at a time, not a
-claim or lease; two concurrent processors can act on the same row.
-
-`400 bad_request` names any malformed parameter (`since must be RFC 3339`,
-`processed must be true or false`, `before_id must be a positive integer`, …).
-
-### GET /api/v1/submissions/{id}
-
-The full record. `400 bad_request` if `{id}` is not numeric,
-`404 get_submission_failed` if it does not exist.
-
-### GET /api/v1/export
-
-Every record as newline-delimited JSON (`Content-Type: application/x-ndjson`)
-in one consistent read transaction:
-
-1. A header line: `{"export_format":1,"family":null,"since":null,"exported_at":"2026-09-17T20:06:48.000000Z"}`
-   (`family`/`since` echo the filters, `null` when unfiltered).
-2. One full record per line, ascending `id`.
-3. A terminator: `{"export_complete":true,"count":676,"sha256":"<hex>"}` where
-   `sha256` is over the record lines (each with its trailing newline), header
-   excluded.
-
-A stream without the terminator, or whose record count or digest disagrees
-with it, is damaged; do not restore from it. Optional filters: `family`,
-`since`. Unfiltered exports are the logical backup and migration format; the
-`agentfeedback import` command verifies the header, count and digest, refuses
-filtered exports unless told otherwise, and preserves ids, timestamps, hashes
-and processing state (see [operate.md](operate.md#restore-and-migration)).
-For a physical backup of the live database use `agentfeedback backup`.
-
-## Processing
-
-### POST /api/v1/submissions/processed
-
-Mark or unmark a batch after acting on it. The only write that changes an
-existing row.
-
-| Field | Type | Required | Notes |
-|---|---|---|---|
-| `ids` | int array | yes, 1–500 entries, positive | duplicates are collapsed |
-| `processed` | bool | no, default `true` | `false` clears the mark |
-| `resolution` | string | no | ≤ 2000 bytes after trimming; what was done, e.g. `fixed in example@1a2b3c4`, `invalid: premise wrong`, `duplicate of 41`. Only with `processed=true`. Omitted or `null` means not given; an empty or whitespace-only string is a `400`. |
-
-One resolution applies to the whole batch. Issue one request per distinct
-resolution. The response echoes the trimmed `resolution` when one was given
-and omits it otherwise.
-
-`200` with every id classified:
-
+<!-- example: createSubmission response 201 -->
 ```json
-{"processed": true, "resolution": "fixed in example@1a2b3c4", "updated": [43, 44], "unchanged": [42], "not_found": [999]}
+{
+  "submission": {
+    "id": 44,
+    "uid": "019250f2-8c3e-7a4b-9d1e-2f3a4b5c6d7e",
+    "kind": "friction",
+    "schema_version": 1,
+    "key": "friction-workstation-a-019250f2",
+    "summary": "README install step 3 references a flag that no longer exists",
+    "machine": "workstation-a",
+    "model": "claude-fable-5-1",
+    "harness": "claude-code",
+    "project": "example",
+    "occurred_at": "2026-09-27T09:58:12.000000Z",
+    "context": {"client": "agentfeedback/4.0.0", "git_commit": "a1b2c3d", "origin": "agent"},
+    "payload": {
+      "category": "documentation",
+      "details": "Step 3 says --init; the flag was removed in 3.0.",
+      "fix_ref": "example@a1b2c3d",
+      "fix_status": "applied"
+    },
+    "content_hash": "157cf352c13503c9cac14d40ba9ab1bccd2dd8c6bb6567903a9b68881bc79c04",
+    "created_at": "2026-09-27T10:00:01.123456Z"
+  },
+  "warnings": []
+}
 ```
 
-- `updated`: the row changed. Marking an unprocessed row sets `processed_at`
-  (now) and `resolution`. Re-marking an already processed row with a different
-  non-empty `resolution` replaces the resolution and keeps the original
-  `processed_at`.
-- `unchanged`: already in the requested state with the same resolution (or no
-  resolution given). Marking is idempotent.
-- `not_found`: no such id.
-- Unmarking clears both `processed_at` and `resolution`.
-- Classification and updates happen in one transaction.
+A flat body with no `kind` and no `payload` is stored too, with warnings:
 
-`400 set_processed_failed` for empty, oversized or non-positive `ids`, or a
-`resolution` sent with `processed=false`.
+```json
+{"summary": "the linter ignores its config file", "category": "tooling", "Model": "claude-fable-5-1", "machine": "workstation-a"}
+```
 
-## Idempotency and duplicates
+<!-- example: createSubmission response 201 -->
+```json
+{
+  "submission": {
+    "id": 45,
+    "uid": "019250f4-3d1a-7e52-8c0b-6f1e2d3c4b5a",
+    "kind": "unknown",
+    "schema_version": 1,
+    "summary": "the linter ignores its config file",
+    "machine": "workstation-a",
+    "payload": {"Model": "claude-fable-5-1", "category": "tooling"},
+    "content_hash": "e4e4baa28c3c46a2cd031183d2c1fc85710c9ffb7d593ca9e84302d288f677c2",
+    "created_at": "2026-09-27T10:02:40.654321Z"
+  },
+  "warnings": [
+    {"code": "missing_kind", "pointer": "/kind", "message": "kind is missing, empty or not a string; stored as unknown"},
+    {"code": "payload_inferred", "pointer": "/payload", "message": "payload was absent; built from the members the envelope does not know"},
+    {"code": "moved_to_payload", "pointer": "/payload/Model", "message": "Model is not an envelope member; moved into payload; did you mean model"},
+    {"code": "moved_to_payload", "pointer": "/payload/category", "message": "category is not an envelope member; moved into payload"},
+    {"code": "missing_recommended", "pointer": "/model", "message": "model is recommended"}
+  ]
+}
+```
 
-| Family | Key | Identical replay | Different content, same key |
-|---|---|---|---|
-| review | `(skill, run_id)` | `200` existing record | `409 replay_mismatch` |
-| event | `(kind, key)` | `200` existing record | `409 replay_mismatch` |
-| friction | content hash, 24 h window | `200` existing record | new `201` row (it is a different friction) |
+The same `key` with different content:
 
-Uniqueness for reviews and events is enforced on `(family, submission_type,
-run_id)`: a review and an event may use the same type and key without
-colliding, and the machine name is not part of the key.
+<!-- example: createSubmission response 409 -->
+```json
+{
+  "error": "replay_mismatch",
+  "message": "key \"friction-workstation-a-019250f2\" was already used with different content",
+  "request_id": "cac965ab7ef7e9962133bac8aa047267",
+  "details": [
+    {
+      "code": "key_reused",
+      "pointer": "/key",
+      "message": "key \"friction-workstation-a-019250f2\" already names submission 44 with different content",
+      "existing_id": 44
+    }
+  ]
+}
+```
 
-Content identity is `payload_hash`, SHA-256 hex over a canonical encoding of
-`{machine_name, coordinator_model, payload}`:
+A body that is JSON but not an object:
 
-- **Frictions and reviews** use the API 1.0 canonical form unchanged: the
-  fields in the fixed order `machine_name`, `coordinator_model`, `payload`,
-  with the stored payload shape above (fixed field order, empty optionals
-  omitted). For frictions the `context` object is removed before hashing, so
-  the same friction re-filed with a new timestamp, commit or working directory
-  still dedupes. Hashes computed by a 1.0 service for the same content are
-  identical, which is what makes imported rows replay-safe.
-- **Events** use canonical JSON: object keys sorted by byte order at every
-  level, strings escaped the way Go's `encoding/json` escapes them, numbers
-  kept as their textual form (`1`, `1.0` and `1e0` are different content),
-  no insignificant whitespace, duplicate keys rejected.
+<!-- example: createSubmission response 400 -->
+```json
+{
+  "error": "bad_request",
+  "message": "body is a JSON value but not an object",
+  "request_id": "ec90a683216a22de8d72bdac3f86862b"
+}
+```
 
-A friction re-encountered after the 24 h window is a new row on purpose:
-recurrence stays visible to the processor.
+### List
 
-Concurrent identical writes are serialized by the database; exactly one row
-results. Rows imported from API 1.0 keep their original hash; rows that
-predate hashing in 1.0 get one computed with the 1.0 form at import, so every
-stored row has a hash and replays are always compared.
+`GET /api/v1/submissions`
 
-## Operational endpoints
+<!-- example: listSubmissions -->
+```bash
+curl -sS -H "Authorization: Bearer $AGENT_FEEDBACK_API_KEY" \
+  "$AGENT_FEEDBACK_URL/api/v1/submissions?processed=false&limit=1"
+```
 
-No authentication. Keep them inside the deployment boundary.
+<!-- example: listSubmissions response 200 -->
+```json
+{
+  "submissions": [
+    {
+      "id": 45,
+      "uid": "019250f4-3d1a-7e52-8c0b-6f1e2d3c4b5a",
+      "kind": "unknown",
+      "schema_version": 1,
+      "summary": "the linter ignores its config file",
+      "machine": "workstation-a",
+      "content_hash": "e4e4baa28c3c46a2cd031183d2c1fc85710c9ffb7d593ca9e84302d288f677c2",
+      "created_at": "2026-09-27T10:02:40.654321Z"
+    }
+  ],
+  "limit": 1,
+  "total": 2,
+  "has_more": true,
+  "next_before_id": 45,
+  "next_after_id": null
+}
+```
 
-- `GET /health`: process liveness, `200 OK`.
-- `GET /ready`: `200 READY` when the database answers and the schema is
-  current; `503` with `SHUTTING_DOWN` or `DB_UNAVAILABLE` otherwise.
-- `GET /metrics`: Prometheus text format. Request counters and latency
-  histograms are labelled by route pattern, allow-listed method and status
-  code, never by raw path or client input.
+- **Filters**, all optional, combined with AND: `kind` (`unknown` selects
+  un-kinded rows), `schema_version`, `key`, `machine`, `model`, `project`,
+  `harness`, `category` and `fix_status` (friction payload members; other
+  kinds never match), `origin` (`context.origin`), `exclude_kind`
+  (repeatable), `verdict`, `processed` (`false` is the triage queue),
+  `redacted` (default: both), `content_hash`, `since` and `until` (RFC 3339,
+  inclusive) on the timestamp `on` names (`created_at`, the default, or
+  `occurred_at`), and `q`: a case-insensitive substring over `summary` and
+  every string value in `payload`, at most 200 bytes. Exact semantics per
+  parameter are in [openapi.yaml](openapi.yaml).
+- **Strict query.** An unknown parameter name, an empty value or a repeated
+  singleton parameter is 400 `validation_error` naming the parameter.
+- **Rows** are the record minus `payload`; `include=payload` adds it.
+- **Paging.** `limit` is 1–500 (1–100 with `include=payload`), default 50;
+  out of range is 400. Without a cursor the page is newest first.
+  `before_id=N` pages newest first through `id < N`; `after_id=N` pages
+  oldest first through `id > N`; the two are mutually exclusive. When
+  `has_more` is true exactly one of `next_before_id` / `next_after_id` is
+  set, matching the direction used; pass it back as the same cursor.
+  `total` counts every row matching the filters, ignoring cursors and
+  `limit`, in the same read transaction as the page.
+- **Draining the queue.** Page with `processed=false` following
+  `next_before_id` until `has_more` is false. Marking a row on the current
+  page does not shift the next one, because the cursor is an id. This is a
+  traversal for one processor at a time, not a lease.
 
-## Changes since API 1.0
+<!-- example: listSubmissions response 400 -->
+```json
+{
+  "error": "validation_error",
+  "message": "limit must be between 1 and 500, got 900",
+  "request_id": "fe5ba4936b4c150d3fe3e06686ec4b1e",
+  "details": [
+    {"code": "out_of_range", "pointer": "?limit", "message": "limit must be between 1 and 500, got 900"}
+  ]
+}
+```
 
-Every 1.0 request keeps working and every 1.0 response field keeps its name,
-type and omission behaviour. Additions:
+### Get
 
-- `family` and `payload_hash` on every record; `family` as a list filter;
-  `POST /api/v1/events`.
-- `resolution` on the processed endpoint and on records; re-marking with a
-  new resolution counts as `updated`.
-- `before_id`, `include=payload`, `total`, `has_more`, `next_before_id` on
-  the list endpoint. `offset` stays supported.
-- `GET /api/v1/export`.
-- Timestamps always carry exactly six fractional digits (1.0 emitted
-  whatever precision the database held, from none to six).
-- Every stored row has a hash, so the 1.0 "legacy row without hash replays
-  without comparison" case no longer exists.
-- `payload` is returned byte-exact as stored. 1.0 re-encoded it (keys sorted,
-  numbers as floats); 1.1 keeps submission order and number spelling for new
-  rows, and PostgreSQL's key order for imported rows. Consumers must not
-  depend on key order.
-- Unmatched routes and wrong methods under `/api/v1/` return the JSON error
-  shape (`not_found`, `method_not_allowed`) instead of plain text.
-- `GET /ready` also checks the schema version.
+`GET /api/v1/submissions/{id}` returns the bare record. `{id}` must match
+`^[1-9][0-9]*$`, else 400; an absent record is 404 `not_found`.
+
+<!-- example: getSubmission -->
+```bash
+curl -sS -H "Authorization: Bearer $AGENT_FEEDBACK_API_KEY" \
+  "$AGENT_FEEDBACK_URL/api/v1/submissions/44"
+```
+
+<!-- example: getSubmission response 200 -->
+```json
+{
+  "id": 44,
+  "uid": "019250f2-8c3e-7a4b-9d1e-2f3a4b5c6d7e",
+  "kind": "friction",
+  "schema_version": 1,
+  "key": "friction-workstation-a-019250f2",
+  "summary": "README install step 3 references a flag that no longer exists",
+  "machine": "workstation-a",
+  "model": "claude-fable-5-1",
+  "harness": "claude-code",
+  "project": "example",
+  "occurred_at": "2026-09-27T09:58:12.000000Z",
+  "context": {"client": "agentfeedback/4.0.0", "git_commit": "a1b2c3d", "origin": "agent"},
+  "payload": {
+    "category": "documentation",
+    "details": "Step 3 says --init; the flag was removed in 3.0.",
+    "fix_ref": "example@a1b2c3d",
+    "fix_status": "applied"
+  },
+  "content_hash": "157cf352c13503c9cac14d40ba9ab1bccd2dd8c6bb6567903a9b68881bc79c04",
+  "created_at": "2026-09-27T10:00:01.123456Z"
+}
+```
+
+<!-- example: getSubmission response 404 -->
+```json
+{
+  "error": "not_found",
+  "message": "submission 99 not found",
+  "request_id": "a68bfb0dfdae5f7b79b9c6d402361bca"
+}
+```
+
+### Mark one
+
+`PATCH /api/v1/submissions/{id}` sets the processing mark and returns the
+record; 404 when absent.
+
+```bash
+curl -sS -X PATCH "$AGENT_FEEDBACK_URL/api/v1/submissions/44" \
+  -H "Authorization: Bearer $AGENT_FEEDBACK_API_KEY" \
+  -H 'Content-Type: application/json' \
+  --data @mark.json
+```
+
+<!-- example: markSubmission request -->
+```json
+{
+  "processed": true,
+  "verdict": "fixed",
+  "resolution": "already applied by the reporter",
+  "ref": "example@a1b2c3d",
+  "processed_by": "workstation-b/triage-2026-09-27"
+}
+```
+
+<!-- example: markSubmission response 200 -->
+```json
+{
+  "id": 44,
+  "uid": "019250f2-8c3e-7a4b-9d1e-2f3a4b5c6d7e",
+  "kind": "friction",
+  "schema_version": 1,
+  "key": "friction-workstation-a-019250f2",
+  "summary": "README install step 3 references a flag that no longer exists",
+  "machine": "workstation-a",
+  "model": "claude-fable-5-1",
+  "harness": "claude-code",
+  "project": "example",
+  "occurred_at": "2026-09-27T09:58:12.000000Z",
+  "context": {"client": "agentfeedback/4.0.0", "git_commit": "a1b2c3d", "origin": "agent"},
+  "payload": {
+    "category": "documentation",
+    "details": "Step 3 says --init; the flag was removed in 3.0.",
+    "fix_ref": "example@a1b2c3d",
+    "fix_status": "applied"
+  },
+  "content_hash": "157cf352c13503c9cac14d40ba9ab1bccd2dd8c6bb6567903a9b68881bc79c04",
+  "created_at": "2026-09-27T10:00:01.123456Z",
+  "processed_at": "2026-09-27T14:02:00.000000Z",
+  "verdict": "fixed",
+  "resolution": "already applied by the reporter",
+  "ref": "example@a1b2c3d",
+  "processed_by": "workstation-b/triage-2026-09-27"
+}
+```
+
+- The body is validated strictly: an unknown member, a wrong type or a
+  `null` `processed` is 400 `validation_error`. No content field is
+  writable.
+- `processed` defaults to `true`. `verdict`, `resolution`, `ref` and
+  `processed_by` are allowed only with `processed=true`.
+- `verdict` is a token of at most 64 bytes; documented values: `fixed`,
+  `invalid`, `duplicate`, `wont_fix`, `deferred`, `upstream`,
+  `unverifiable`. `resolution` is at most 2000 bytes, blank is 400. `ref`
+  and `processed_by` are at most 200 bytes. A `ref` that points at another
+  submission holds that row's `uid`, never its `id`.
+- Marking sets `processed_at` if unset. Re-marking with a different
+  `verdict`, `resolution` or `ref` replaces them and keeps the original
+  `processed_at`. `processed=false` clears all five processing fields.
+  Redacted rows can be marked.
+
+### Mark a batch
+
+`POST /api/v1/submissions/processed`: the same fields and rules as
+[mark one](#mark-one), plus `ids` (1–500 positive integers, duplicates
+collapsed). The answer classifies every id.
+
+```bash
+curl -sS -X POST "$AGENT_FEEDBACK_URL/api/v1/submissions/processed" \
+  -H "Authorization: Bearer $AGENT_FEEDBACK_API_KEY" \
+  -H 'Content-Type: application/json' \
+  --data '{"ids": [44, 45, 999], "processed": true, "verdict": "fixed"}'
+```
+
+<!-- example: markSubmissions request -->
+```json
+{"ids": [44, 45, 999], "processed": true, "verdict": "fixed"}
+```
+
+<!-- example: markSubmissions response 200 -->
+```json
+{"processed": true, "verdict": "fixed", "updated": [45], "unchanged": [44], "not_found": [999]}
+```
+
+`updated`: the row changed. `unchanged`: already in the requested state.
+`not_found`: no such id.
+
+### Redact
+
+`DELETE /api/v1/submissions/{id}` replaces the record with a tombstone:
+`payload` becomes `{"redacted": true}`, `summary` and `context` are removed,
+`redacted_at` is set. `id`, `uid`, `kind`, `schema_version`, `key`,
+`machine`, `model`, `harness`, `project`, `occurred_at`, `content_hash`,
+`created_at` and the processing fields stay. Repeating it is 200 unchanged;
+404 when absent. Redaction is not reversible.
+
+```bash
+curl -sS -X DELETE -H "Authorization: Bearer $AGENT_FEEDBACK_API_KEY" \
+  "$AGENT_FEEDBACK_URL/api/v1/submissions/45"
+```
+
+<!-- example: redactSubmission response 200 -->
+```json
+{
+  "id": 45,
+  "uid": "019250f4-3d1a-7e52-8c0b-6f1e2d3c4b5a",
+  "kind": "unknown",
+  "schema_version": 1,
+  "machine": "workstation-a",
+  "payload": {"redacted": true},
+  "content_hash": "e4e4baa28c3c46a2cd031183d2c1fc85710c9ffb7d593ca9e84302d288f677c2",
+  "created_at": "2026-09-27T10:02:40.654321Z",
+  "processed_at": "2026-09-27T14:05:00.000000Z",
+  "redacted_at": "2026-09-27T14:10:00.000000Z",
+  "verdict": "fixed"
+}
+```
+
+### Stats
+
+`GET /api/v1/stats` aggregates over the same filters as [list](#list)
+(everything except the cursors, `limit` and `include`).
+
+<!-- example: getStats -->
+```bash
+curl -sS -H "Authorization: Bearer $AGENT_FEEDBACK_API_KEY" \
+  "$AGENT_FEEDBACK_URL/api/v1/stats?by=project,category&top=1&bucket=week"
+```
+
+<!-- example: getStats response 200 -->
+```json
+{
+  "total": 245,
+  "open": 61,
+  "processed": 184,
+  "redacted": 2,
+  "groups": [
+    {"keys": {"project": "example", "category": "documentation"}, "total": 40, "open": 12, "processed": 28}
+  ],
+  "recurring": [
+    {
+      "content_hash": "157cf352c13503c9cac14d40ba9ab1bccd2dd8c6bb6567903a9b68881bc79c04",
+      "count": 7,
+      "first_id": 44,
+      "last_id": 1187,
+      "summary": "README install step 3 references a flag that no longer exists",
+      "kind": "friction",
+      "project": "example"
+    }
+  ],
+  "series": [
+    {"bucket": "2026-09-21", "total": 31, "open": 4}
+  ]
+}
+```
+
+- `by`: a comma list of up to three of `kind`, `project`, `category`,
+  `fix_status`, `machine`, `model`, `harness`, `verdict`,
+  `schema_version`, `origin`. Absent: no `groups`. Groups are sorted by
+  `total` descending, at most 100; a row without a value for a listed key is
+  in no group, so group totals need not add up to `total`.
+- `top`: 0–50, default 10; how many recurring content hashes to return.
+- `bucket`: `day` or `week` adds a time series on the `on` timestamp.
+- Invalid parameters are 400 `validation_error`.
+
+### Export
+
+`GET /api/v1/export` streams NDJSON, export format 2
+(`Content-Type: application/x-ndjson`), in one read transaction, ascending
+`id`. `HEAD /api/v1/export` answers the same headers with no body.
+
+<!-- example: exportSubmissions -->
+```bash
+curl -sS -H "Authorization: Bearer $AGENT_FEEDBACK_API_KEY" \
+  "$AGENT_FEEDBACK_URL/api/v1/export?after_id=43" > feedback.ndjson
+```
+
+<!-- example: exportSubmissionsHead -->
+```bash
+curl -sS -I -H "Authorization: Bearer $AGENT_FEEDBACK_API_KEY" \
+  "$AGENT_FEEDBACK_URL/api/v1/export"
+```
+
+<!-- example: exportSubmissions -->
+```text
+{"export_format":2,"kind":null,"since":null,"after_id":43,"exported_at":"2026-09-27T15:00:00.000000Z"}
+{"id":44,"uid":"019250f2-8c3e-7a4b-9d1e-2f3a4b5c6d7e","kind":"friction","schema_version":1,"key":"friction-workstation-a-019250f2","summary":"README install step 3 references a flag that no longer exists","machine":"workstation-a","model":"claude-fable-5-1","harness":"claude-code","project":"example","occurred_at":"2026-09-27T09:58:12.000000Z","context":{"client":"agentfeedback/4.0.0","git_commit":"a1b2c3d","origin":"agent"},"payload":{"category":"documentation","details":"Step 3 says --init; the flag was removed in 3.0.","fix_ref":"example@a1b2c3d","fix_status":"applied"},"content_hash":"157cf352c13503c9cac14d40ba9ab1bccd2dd8c6bb6567903a9b68881bc79c04","created_at":"2026-09-27T10:00:01.123456Z","processed_at":"2026-09-27T14:02:00.000000Z","verdict":"fixed","resolution":"already applied by the reporter","ref":"example@a1b2c3d","processed_by":"workstation-b/triage-2026-09-27"}
+{"id":45,"uid":"019250f4-3d1a-7e52-8c0b-6f1e2d3c4b5a","kind":"unknown","schema_version":1,"machine":"workstation-a","payload":{"redacted":true},"content_hash":"e4e4baa28c3c46a2cd031183d2c1fc85710c9ffb7d593ca9e84302d288f677c2","created_at":"2026-09-27T10:02:40.654321Z","processed_at":"2026-09-27T14:05:00.000000Z","redacted_at":"2026-09-27T14:10:00.000000Z","verdict":"fixed"}
+{"export_complete":true,"count":2,"first_id":44,"last_id":45,"sha256":"dc5af905018c8d65122241337d76b7326e4eb44758113483577274e0a2898076"}
+```
+
+- **Header** (line 1): `export_format`, then the filters echoed (`kind`,
+  `since`, `after_id`; `null` when unset) and `exported_at`.
+- **Records**: one full record per line; tombstones are exported as
+  tombstones.
+- **Trailer** (last line): `export_complete`, `count`, `first_id`,
+  `last_id` and `sha256`, the lowercase hex SHA-256 over the record lines
+  only, each with its trailing newline, header and trailer excluded, in
+  order. A stream without the trailer, or whose count or digest disagrees
+  with it, is damaged.
+- **Filters**: `kind`, `since` (inclusive, on `created_at`), `after_id`
+  (`id > after_id`), `limit` (1–500; absent means everything). Page a large
+  export with `after_id` set to the previous trailer's `last_id`.
+
+Backups, restore and migration with the CLI are in
+[operate.md](operate.md#restore-and-migration).
+
+### Import
+
+`POST /api/v1/import` takes an export-format-2 NDJSON body
+(`Content-Type: application/x-ndjson`, at most 33554432 bytes).
+
+<!-- example: importSubmissions -->
+```bash
+curl -sS -X POST "$AGENT_FEEDBACK_URL/api/v1/import" \
+  -H "Authorization: Bearer $AGENT_FEEDBACK_API_KEY" \
+  -H 'Content-Type: application/x-ndjson' \
+  --data-binary @feedback.ndjson
+```
+
+<!-- example: importSubmissions response 200 -->
+```json
+{
+  "imported": 1,
+  "skipped": 1,
+  "conflicts": [
+    {"line": 2, "uid": "019250f2-8c3e-7a4b-9d1e-2f3a4b5c6d7e", "existing_id": 12, "reason": "key_mismatch"}
+  ],
+  "warnings": [],
+  "first_id": 301,
+  "last_id": 301
+}
+```
+
+- The whole body is read and verified (count, digest, one JSON object per
+  record line) before anything is written. A record whose `uid` is not an
+  RFC 9562 UUID, or whose `created_at`, `occurred_at`, `processed_at` or
+  `redacted_at` does not parse as RFC 3339, is 400 `validation_error` naming
+  the line, and nothing is written.
+- Envelope members pass through the same normalisation and limits as
+  create; violations are `warnings` with a `line`, never rejections.
+- `content_hash` is recomputed for ordinary records and must equal the
+  exported value, else 400 naming the line; tombstones keep the exported
+  hash.
+- Each imported record gets a new `id`; `uid`, `created_at`, `occurred_at`
+  and the processing fields are kept.
+- An existing `uid` is skipped and counted in `skipped`; redactions and
+  processing marks never propagate to a stored row. An existing
+  `(kind, key)` under a different `uid` is skipped and counted when the
+  `content_hash` matches, otherwise skipped, counted and listed under
+  `conflicts`. A conflict never fails the request.
+
+### Schemas
+
+`GET /api/v1/schemas` lists the kinds and versions the server knows,
+including `envelope`. No key.
+
+<!-- example: listSchemas -->
+```bash
+curl -sS "$AGENT_FEEDBACK_URL/api/v1/schemas"
+```
+
+<!-- example: listSchemas response 200 -->
+```json
+{
+  "schemas": [
+    {"kind": "envelope", "versions": [1]},
+    {"kind": "friction", "versions": [1]},
+    {"kind": "review", "versions": [1]}
+  ]
+}
+```
+
+`GET /api/v1/schemas/{kind}/{version}` returns one JSON Schema document
+verbatim, `Content-Type: application/schema+json`; `envelope` is a valid
+`{kind}`. 404 when the pair is unknown. No key. The body is the file under
+[`schemas/`](../schemas).
+
+<!-- example: getSchema -->
+```bash
+curl -sS "$AGENT_FEEDBACK_URL/api/v1/schemas/friction/1"
+```
+
+### Meta
+
+`GET /api/v1/meta` returns versions, limits, kinds and features.
+`client.min_version` is the oldest client release that speaks this API,
+raised only when a server change breaks older clients; a client older than
+it should report plainly that it is too old. `client.latest_known` is the
+server version.
+
+<!-- example: getMeta -->
+```bash
+curl -sS -H "Authorization: Bearer $AGENT_FEEDBACK_API_KEY" \
+  "$AGENT_FEEDBACK_URL/api/v1/meta"
+```
+
+<!-- example: getMeta response 200 -->
+```json
+{
+  "service_version": "4.0.0",
+  "api_version": "1.0",
+  "export_format": 2,
+  "dedupe_window_s": 86400,
+  "limits": {
+    "body_bytes": 10485760,
+    "import_bytes": 33554432,
+    "list_max": 500,
+    "list_max_with_payload": 100,
+    "processed_ids_max": 500,
+    "context_entries": 32,
+    "context_value_bytes": 2000,
+    "identifier_bytes": 200,
+    "summary_bytes": 2000
+  },
+  "kinds": [
+    {"kind": "friction", "versions": [1]},
+    {"kind": "review", "versions": [1]}
+  ],
+  "features": ["q", "stats", "export.after_id", "export.limit", "import", "mcp", "redaction"],
+  "client": {"min_version": "4.0.0-rc.0", "latest_known": "4.0.0"}
+}
+```
+
+### OpenAPI document
+
+`GET /api/v1/openapi.json` returns [openapi.yaml](openapi.yaml) as JSON, in
+bundled form with the referenced schema files inlined. No key.
+
+<!-- example: getOpenApi -->
+```bash
+curl -sS "$AGENT_FEEDBACK_URL/api/v1/openapi.json"
+```
+
+### MCP
+
+`POST /mcp` is a remote MCP server over the MCP Streamable HTTP transport,
+authenticated like `/api/v1/*`. `POST /mcp/{project}` is the same with
+`project` preset for the connection. The request needs
+`Content-Type: application/json` (else 415) and an `Accept` header naming
+both `application/json` and `text/event-stream` (else 400). The answer is a
+JSON-RPC message, as `application/json` or as a server-sent event stream; a
+notification or response from the client is 202 with no body. The body limit
+is 10551296 bytes. The tools, their arguments and how the preset scopes them
+are in [operate.md](operate.md#mcp-and-discovery).
+
+```bash
+curl -sS -X POST "$AGENT_FEEDBACK_URL/mcp" \
+  -H "Authorization: Bearer $AGENT_FEEDBACK_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"1"}}}'
+```
+
+<!-- example: postMcp request -->
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "initialize",
+  "params": {
+    "protocolVersion": "2025-06-18",
+    "capabilities": {},
+    "clientInfo": {"name": "curl", "version": "1"}
+  }
+}
+```
+
+<!-- example: postMcp -->
+```text
+event: message
+data: {"jsonrpc":"2.0","id":1,"result":{"capabilities":{"logging":{},"tools":{"listChanged":true}},"instructions":"# AgentFeedback\n\n…","protocolVersion":"2025-06-18","serverInfo":{"name":"agentfeedback","version":"4.0.0"}}}
+```
+
+<!-- example: postMcpProject request -->
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "submit_feedback",
+    "arguments": {"kind": "friction", "summary": "make test needs port 5432 free and says nothing when it is taken", "category": "tooling"}
+  }
+}
+```
+
+<!-- example: postMcpProject -->
+```bash
+curl -sS -X POST "$AGENT_FEEDBACK_URL/mcp/example" \
+  -H "Authorization: Bearer $AGENT_FEEDBACK_API_KEY" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  --data @tools-call.json
+```
+
+### Skill
+
+`GET /skill` returns the submission guidance as Markdown with this server's
+base URL substituted. No key. `format`: `skill-md` (default; the guidance
+runs the binary), `agents-md`, or `prompt` (HTTP instructions inline: the
+[curl recipe](recipes/http-curl.md) with the server's URL).
+
+<!-- example: getSkill -->
+```bash
+curl -sS "$AGENT_FEEDBACK_URL/skill?format=prompt"
+```
+
+### Discovery
+
+`GET /.well-known/agentfeedback.json` says where the OpenAPI document,
+schemas, MCP endpoint and skill live. No key, no data, no secrets.
+
+<!-- example: getDiscovery -->
+```bash
+curl -sS "$AGENT_FEEDBACK_URL/.well-known/agentfeedback.json"
+```
+
+<!-- example: getDiscovery response 200 -->
+```json
+{
+  "service": "agentfeedback",
+  "version": "4.0.0",
+  "api_version": "1.0",
+  "openapi": "/api/v1/openapi.json",
+  "schemas": "/api/v1/schemas",
+  "mcp": "/mcp",
+  "skill": "/skill",
+  "auth": {"modes": ["bearer", "x-api-key"]},
+  "docs": "https://agentfeedback.dev/docs"
+}
+```
+
+### Health, ready, metrics
+
+No key; keep them inside the deployment boundary.
+
+<!-- example: getHealth -->
+```bash
+curl -sS "$AGENT_FEEDBACK_URL/health"    # 200 OK: the process is alive
+```
+
+<!-- example: getReady -->
+```bash
+curl -sS "$AGENT_FEEDBACK_URL/ready"     # 200 READY; 503 unavailable while not ready
+```
+
+<!-- example: getMetrics -->
+```bash
+curl -sS "$AGENT_FEEDBACK_URL/metrics"   # Prometheus text exposition format
+```
+
+Metric labels are the route pattern, an allow-listed method and the status
+code, never a raw path or client input. What to alert on is in
+[operate.md](operate.md#monitoring).
 
 ## Evolution policy
 
-Applies to the v1 contract of the next major release:
-[openapi.yaml](openapi.yaml), the schemas under `schemas/` and the
-conformance kit under `conformance/`. Producers and consumers can rely on it.
+Applies to this contract: [openapi.yaml](openapi.yaml), the schemas under
+[`schemas/`](../schemas) and the conformance kit under
+`conformance/`. Producers and consumers can rely
+on it.
 
 - Additive changes never bump a kind's `schema_version`: a new optional
   payload member, a new `context` key, a new documented value of an existing
@@ -404,9 +879,8 @@ conformance kit under `conformance/`. Producers and consumers can rely on it.
 
 ## Version axes
 
-The values below are those of the v1 contract of the next major release. The
-v3 service the rest of this page describes answers API 1.1 and export format
-1. Each axis moves on its own; none implies another.
+The values of this contract, release 4.0.0 and later. Each axis moves on its
+own; none implies another.
 
 | Axis | Current | Where it is read | Changes when |
 |---|---|---|---|
@@ -416,3 +890,7 @@ v3 service the rest of this page describes answers API 1.1 and export format
 | Export format | `2` | `export_format` in the export header line and in `GET /api/v1/meta` | the NDJSON export lines change shape |
 | Binary | the release version, e.g. `4.0.0` | `agentfeedback version`; `service_version` in `GET /api/v1/meta` | every release; `client.min_version` in `GET /api/v1/meta` rises only when a server change breaks older clients |
 | Skills | `metadata.version` in each `SKILL.md` | the skill's front matter | the commands or rules a skill teaches change |
+
+## Changes
+
+None since API 1.0.

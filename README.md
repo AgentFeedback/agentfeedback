@@ -60,7 +60,8 @@ This is the open-source, self-hostable AgentFeedback
 | See what an agent is taught to file and how | [`skills/agentfeedback/SKILL.md`](skills/agentfeedback/SKILL.md) (installed by `agentfeedback init`) |
 | Triage the reports | [`skills/agentfeedback-triage/SKILL.md`](skills/agentfeedback-triage/SKILL.md) |
 | Turn past coding-agent sessions on this machine into feedback (`agentfeedback sessions`) | [`docs/sessions.md`](docs/sessions.md) |
-| Call the API directly | [`docs/api.md`](docs/api.md) |
+| Call the HTTP API of a server | [`docs/api.md`](docs/api.md), the contract [`docs/openapi.yaml`](docs/openapi.yaml) |
+| File a report over HTTP without the binary, from a shell | [`docs/recipes/http-curl.md`](docs/recipes/http-curl.md), [`docs/recipes/http-powershell.md`](docs/recipes/http-powershell.md) |
 | Give an agent the reference docs, schemas and OpenAPI document (integrate, operate) | [`skills/agentfeedback-docs/SKILL.md`](skills/agentfeedback-docs/SKILL.md) (installed by `agentfeedback install --docs`) |
 | Wire harnesses, run a server, back up, migrate | [`docs/operate.md`](docs/operate.md) |
 | Uninstall the skills or the service | [`docs/operate.md#uninstall`](docs/operate.md#uninstall) |

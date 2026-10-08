@@ -1,9 +1,11 @@
 # Operate AgentFeedback
 
-Install, run, back up, upgrade and migrate the service. One container, one
-SQLite file, one API key. Every step is a command an agent can run.
+Run AgentFeedback on one machine with no server, or run a server for
+several machines; wire the harnesses, back up, upgrade and migrate. One
+binary and one SQLite file; a server adds one API key. Every step is a
+command an agent can run.
 
-Contents: [Run locally](#run-locally) · [Bare binary (no Docker)](#bare-binary-no-docker) ·
+Contents: [Local mode (no server)](#local-mode-no-server) · [Run locally](#run-locally) (a server in Docker) · [Bare binary (no Docker)](#bare-binary-no-docker) ·
 [Wire the harnesses](#wire-the-harnesses) · [Build from source](#build-from-source) ·
 [Deploy to a host](#deploy-to-a-host) ·
 [Configuration](#configuration) · [Backups](#backups) ·
@@ -13,6 +15,8 @@ Contents: [Run locally](#run-locally) · [Bare binary (no Docker)](#bare-binary-
 
 ## Run locally
 
+A server on this machine, for trying the HTTP API or serving other machines;
+reporting from this machine alone needs none ([Local mode](#local-mode-no-server)).
 Needs Docker with Compose. From the repository root:
 
 ```bash
@@ -57,6 +61,9 @@ path. `--local` forces local mode and `--server URL` targets a server for one
 invocation; a configured `url` is never ignored without `--local`. `backup
 <dest.db>` and `import` default to the same file, and `serve` started later on
 the same machine serves the same database, so the machine keeps one queue.
+Several processes may use the database at once (SQLite in WAL mode: commands,
+hooks, `ui`, a local `serve`); keep the data directory on a local filesystem,
+never on a network share, where SQLite's locking does not hold.
 
 A local write that fails (the database busy past its 5 s timeout, a full
 disk) is spooled like a failed send to a server: outcome `spooled`, exit 0,
@@ -87,8 +94,10 @@ The client creates the directory `0700` and the database files `0600`
 (SQLite gives `-wal` and `-shm` the database file's mode). A directory or
 file that already exists keeps its mode: `agentfeedback doctor` reports every
 path other users can reach with the `chmod` to run, and changes nothing. The
-cache directory, `${XDG_CACHE_HOME:-~/.cache}/agentfeedback/`, keeps only the
-client log (`log/client.jsonl`) and `digest/` output; a spool left there by a
+cache directory, `${XDG_CACHE_HOME:-~/.cache}/agentfeedback/`, holds nothing
+that is the only copy of a report: the client log (`log/client.jsonl`), the
+hooks' per-session counters (`sessions/`) and last-run records (`hooks/`),
+the `filed/` markers and `digest/` output; a spool left there by a
 version before 4.0 is reported by `doctor` and is not read any more.
 
 The same layout applies on every operating system, macOS and Windows
@@ -794,7 +803,7 @@ not propagate. `install-check` rows stay behind unless `--kind` or
 `--include-kind` names that kind. A record whose (kind, key) the target holds
 under another uid is printed as one `conflict` line and skipped. The run
 stops at the first failure and says how many records landed. `--dry-run`
-sends nothing: it prints the count per kind, the first record of each, and
+sends no record (it still reads the target's metadata and tombstones): it prints the count per kind, the first record of each, and
 the source tombstones the target still holds unredacted; redact those on the
 target by hand. `--to cloud` targets the hosted service at
 `https://api.agentfeedback.io`.
@@ -834,9 +843,13 @@ export is not format 2, so `agentfeedback import` does not take it.
 
 ## Key rotation
 
-No overlap window. Edit `API_KEY` in the host `.env`, `docker compose up -d`,
-then update `AGENT_FEEDBACK_API_KEY` on every producer. Spooled payloads on
-producers retry with the new key on their next call.
+No overlap window. For the compose stacks, edit `API_KEY` in the host `.env`
+and run `docker compose up -d`; for a server from `serve --init`, run
+`agentfeedback serve --init --force` and the restart command of your form
+([Bare binary](#bare-binary-no-docker)). Then update the key on every client
+(`agentfeedback doctor --init --url <URL> --key-from-stdin`, or
+`AGENT_FEEDBACK_API_KEY`). Spooled payloads on clients retry with the new
+key on their next call. Local mode has no key.
 
 ## Retention
 
