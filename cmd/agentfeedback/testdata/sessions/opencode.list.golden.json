@@ -1,0 +1,33 @@
+{
+  "stores": [
+    {
+      "harness": "opencode",
+      "location": "<HOME>/.local/share/opencode",
+      "state": "present"
+    }
+  ],
+  "sessions": [
+    {
+      "ref": "opencode:ses_golden0001",
+      "harness": "opencode",
+      "session_id": "ses_golden0001",
+      "path": "<HOME>/.local/share/opencode/opencode.db",
+      "project": "<CWD>",
+      "cwds": [
+        "<CWD>"
+      ],
+      "start": "2026-10-08T07:00:01Z",
+      "end": "2026-10-08T07:00:46Z",
+      "counts": {
+        "entries": 21,
+        "prompts": 4,
+        "tool_calls": 9,
+        "tool_errors": 5,
+        "interrupts": 1,
+        "denials": 1,
+        "unparsed": 0
+      },
+      "state": "new"
+    }
+  ]
+}

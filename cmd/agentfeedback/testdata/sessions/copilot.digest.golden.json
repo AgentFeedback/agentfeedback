@@ -1,0 +1,133 @@
+{
+  "notice": "This digest is shown to the model that reads it and so reaches that model's provider; agentfeedback itself stores and sends none of it.",
+  "detector_version": "1",
+  "sessions": [
+    {
+      "ref": "copilot:golden-1",
+      "harness": "copilot",
+      "session_id": "golden-1",
+      "project": "<CWD>",
+      "cwd": "<CWD>",
+      "start": "2026-10-08T07:39:40.000Z",
+      "end": "2026-10-08T07:40:40.000Z",
+      "model": "gpt-test-2",
+      "from_offset": 0,
+      "truncated": false,
+      "counts": {
+        "entries": 21,
+        "prompts": 2,
+        "tool_calls": 6,
+        "tool_errors": 3,
+        "interrupts": 2,
+        "denials": 1,
+        "unparsed": 1
+      },
+      "events": [
+        {
+          "span": "e-0002",
+          "ref": "copilot:golden-1#e-0002",
+          "at": "2026-10-08T07:39:46.892Z",
+          "type": "prompt",
+          "summary": "Fix the build, it doesn't work."
+        },
+        {
+          "span": "e-0004",
+          "ref": "copilot:golden-1#e-0004",
+          "at": "2026-10-08T07:39:50.100Z",
+          "type": "tool_call",
+          "tool": "bash",
+          "args_digest": "854004a0c269",
+          "status": "error",
+          "exit_code": 1,
+          "error_class": "exit",
+          "excerpt": "main.go:3: undefined: foo (key [REDACTED:aws_access_key])"
+        },
+        {
+          "span": "e-0008",
+          "ref": "copilot:golden-1#e-0008",
+          "at": "2026-10-08T07:40:10.000Z",
+          "type": "tool_call",
+          "tool": "create",
+          "args_digest": "c6d02c79bb43",
+          "status": "denied",
+          "error_class": "denied",
+          "excerpt": "The user rejected this tool call."
+        },
+        {
+          "span": "e-0012",
+          "ref": "copilot:golden-1#e-0012",
+          "at": "2026-10-08T07:40:16.000Z",
+          "type": "tool_call",
+          "tool": "bash",
+          "args_digest": "fae3e8309456",
+          "status": "error",
+          "exit_code": 1,
+          "error_class": "exit",
+          "excerpt": "no server",
+          "self": true
+        },
+        {
+          "span": "e-0020",
+          "ref": "copilot:golden-1#e-0020",
+          "at": "2026-10-08T07:40:17.500Z",
+          "type": "tool_call",
+          "tool": "github-create_pull_request",
+          "args_digest": "2453bdbfba5c",
+          "status": "error",
+          "error_class": "tool_error",
+          "excerpt": "Failed to create pull request: runtime settings are not configured for this session"
+        },
+        {
+          "span": "e-0015",
+          "ref": "copilot:golden-1#e-0015",
+          "at": "2026-10-08T07:40:20.000Z",
+          "type": "tool_call",
+          "tool": "bash",
+          "args_digest": "6012d921359b",
+          "status": "interrupted",
+          "error_class": "interrupted",
+          "excerpt": "Operation aborted by user"
+        },
+        {
+          "span": "e-0017",
+          "ref": "copilot:golden-1#e-0017",
+          "at": "2026-10-08T07:40:30.000Z",
+          "type": "prompt",
+          "summary": "Still failing. Why did you do that again? Use [REDACTED:github_token] for the push."
+        }
+      ],
+      "retries": [
+        {
+          "span": "e-0006",
+          "of_span": "e-0004",
+          "tool": "bash",
+          "args_digest": "854004a0c269"
+        }
+      ],
+      "denials": [
+        "e-0008"
+      ],
+      "flagged": [
+        {
+          "span": "e-0002",
+          "phrase": "doesn't work"
+        },
+        {
+          "span": "e-0017",
+          "phrase": "still failing"
+        },
+        {
+          "span": "e-0017",
+          "phrase": "why did you"
+        },
+        {
+          "span": "e-0017",
+          "phrase": "again"
+        }
+      ],
+      "final_excerpt": "Done. The build passes now."
+    }
+  ],
+  "errors": [],
+  "deferred": []
+}

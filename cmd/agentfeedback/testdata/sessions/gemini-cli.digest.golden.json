@@ -1,0 +1,145 @@
+{
+  "notice": "This digest is shown to the model that reads it and so reaches that model's provider; agentfeedback itself stores and sends none of it.",
+  "detector_version": "1",
+  "sessions": [
+    {
+      "ref": "gemini-cli:session-2026-10-08T07-39-c0ffee01",
+      "harness": "gemini-cli",
+      "session_id": "session-2026-10-08T07-39-c0ffee01",
+      "project": "<CWD>",
+      "cwd": "<CWD>",
+      "start": "2026-10-08T07:39:40.000Z",
+      "end": "2026-10-08T07:40:40.000Z",
+      "model": "gemini-test-2",
+      "from_offset": 0,
+      "truncated": false,
+      "counts": {
+        "entries": 12,
+        "prompts": 2,
+        "tool_calls": 7,
+        "tool_errors": 3,
+        "interrupts": 1,
+        "denials": 2,
+        "unparsed": 1
+      },
+      "events": [
+        {
+          "span": "m-0002",
+          "ref": "gemini-cli:session-2026-10-08T07-39-c0ffee01#m-0002",
+          "at": "2026-10-08T07:39:46.892Z",
+          "type": "prompt",
+          "summary": "Fix the build, it doesn't work."
+        },
+        {
+          "span": "m-0003",
+          "ref": "gemini-cli:session-2026-10-08T07-39-c0ffee01#m-0003",
+          "at": "2026-10-08T07:39:50.000Z",
+          "type": "tool_call",
+          "tool": "run_shell_command",
+          "args_digest": "854004a0c269",
+          "status": "error",
+          "exit_code": 1,
+          "error_class": "exit",
+          "excerpt": "main.go:3: undefined: foo (key [REDACTED:aws_access_key])\nExit Code: 1\nProcess Group PGID: 4242"
+        },
+        {
+          "span": "m-0005",
+          "ref": "gemini-cli:session-2026-10-08T07-39-c0ffee01#m-0005",
+          "at": "2026-10-08T07:40:10.000Z",
+          "type": "tool_call",
+          "tool": "write_file",
+          "args_digest": "052c2e4dc73a",
+          "status": "denied",
+          "error_class": "denied",
+          "excerpt": "[Operation Cancelled] Reason: User denied execution."
+        },
+        {
+          "span": "m-0006",
+          "ref": "gemini-cli:session-2026-10-08T07-39-c0ffee01#m-0006",
+          "at": "2026-10-08T07:40:20.000Z",
+          "type": "tool_call",
+          "tool": "run_shell_command",
+          "args_digest": "6012d921359b",
+          "status": "interrupted",
+          "error_class": "interrupted",
+          "excerpt": "[Operation Cancelled] Reason: Operation cancelled by user"
+        },
+        {
+          "span": "m-0006",
+          "ref": "gemini-cli:session-2026-10-08T07-39-c0ffee01#m-0006",
+          "at": "2026-10-08T07:40:20.000Z",
+          "type": "tool_call",
+          "tool": "web_fetch",
+          "args_digest": "1e130b1cb326",
+          "status": "denied",
+          "error_class": "denied",
+          "excerpt": "Tool execution denied by policy."
+        },
+        {
+          "span": "m-0007",
+          "ref": "gemini-cli:session-2026-10-08T07-39-c0ffee01#m-0007",
+          "at": "2026-10-08T07:40:27.000Z",
+          "type": "tool_call",
+          "tool": "run_shell_command",
+          "args_digest": "fae3e8309456",
+          "status": "error",
+          "exit_code": 1,
+          "error_class": "exit",
+          "excerpt": "{\n  \"error\": \"no server\"\n}\nExit Code: 1\nProcess Group PGID: 4244",
+          "self": true
+        },
+        {
+          "span": "m-0007",
+          "ref": "gemini-cli:session-2026-10-08T07-39-c0ffee01#m-0007",
+          "at": "2026-10-08T07:40:27.000Z",
+          "type": "tool_call",
+          "tool": "read_file",
+          "args_digest": "85214084bfb2",
+          "status": "error",
+          "error_class": "tool_error",
+          "excerpt": "File not found: missing.txt"
+        },
+        {
+          "span": "m-0008",
+          "ref": "gemini-cli:session-2026-10-08T07-39-c0ffee01#m-0008",
+          "at": "2026-10-08T07:40:30.000Z",
+          "type": "prompt",
+          "summary": "Still failing. Why did you do that again? Use [REDACTED:github_token] for the push."
+        }
+      ],
+      "retries": [
+        {
+          "span": "m-0004",
+          "of_span": "m-0003",
+          "tool": "run_shell_command",
+          "args_digest": "854004a0c269"
+        }
+      ],
+      "denials": [
+        "m-0005",
+        "m-0006"
+      ],
+      "flagged": [
+        {
+          "span": "m-0002",
+          "phrase": "doesn't work"
+        },
+        {
+          "span": "m-0008",
+          "phrase": "still failing"
+        },
+        {
+          "span": "m-0008",
+          "phrase": "why did you"
+        },
+        {
+          "span": "m-0008",
+          "phrase": "again"
+        }
+      ],
+      "final_excerpt": "Done. The build passes now."
+    }
+  ],
+  "errors": [],
+  "deferred": []
+}

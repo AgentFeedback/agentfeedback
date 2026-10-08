@@ -1,0 +1,33 @@
+{
+  "stores": [
+    {
+      "harness": "gemini-cli",
+      "location": "<HOME>/.gemini/tmp",
+      "state": "present"
+    }
+  ],
+  "sessions": [
+    {
+      "ref": "gemini-cli:session-2026-10-08T07-39-c0ffee01",
+      "harness": "gemini-cli",
+      "session_id": "session-2026-10-08T07-39-c0ffee01",
+      "path": "<HOME>/.gemini/tmp/golden-proj/chats/session-2026-10-08T07-39-c0ffee01.jsonl",
+      "project": "<CWD>",
+      "cwds": [
+        "<CWD>"
+      ],
+      "start": "2026-10-08T07:39:40Z",
+      "end": "2026-10-08T07:40:40Z",
+      "counts": {
+        "entries": 12,
+        "prompts": 2,
+        "tool_calls": 7,
+        "tool_errors": 3,
+        "interrupts": 1,
+        "denials": 2,
+        "unparsed": 1
+      },
+      "state": "new"
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "stores": [
+    {
+      "harness": "copilot",
+      "location": "<HOME>/.copilot/session-state",
+      "state": "present"
+    }
+  ],
+  "sessions": [
+    {
+      "ref": "copilot:golden-1",
+      "harness": "copilot",
+      "session_id": "golden-1",
+      "path": "<HOME>/.copilot/session-state/golden-1/events.jsonl",
+      "project": "<CWD>",
+      "cwds": [
+        "<CWD>"
+      ],
+      "start": "2026-10-08T07:39:40Z",
+      "end": "2026-10-08T07:40:40Z",
+      "counts": {
+        "entries": 21,
+        "prompts": 2,
+        "tool_calls": 6,
+        "tool_errors": 3,
+        "interrupts": 2,
+        "denials": 1,
+        "unparsed": 1
+      },
+      "state": "new"
+    }
+  ]
+}

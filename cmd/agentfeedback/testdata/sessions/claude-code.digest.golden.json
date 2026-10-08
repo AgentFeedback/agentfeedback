@@ -1,0 +1,105 @@
+{
+  "notice": "This digest is shown to the model that reads it and so reaches that model's provider; agentfeedback itself stores and sends none of it.",
+  "detector_version": "1",
+  "sessions": [
+    {
+      "ref": "claude-code:golden-1",
+      "harness": "claude-code",
+      "session_id": "golden-1",
+      "project": "<CWD>",
+      "cwd": "<CWD>",
+      "start": "2026-10-08T07:39:40.000Z",
+      "end": "2026-10-08T07:40:40.000Z",
+      "model": "claude-test-2",
+      "from_offset": 0,
+      "truncated": false,
+      "counts": {
+        "entries": 13,
+        "prompts": 2,
+        "tool_calls": 4,
+        "tool_errors": 1,
+        "interrupts": 1,
+        "denials": 1,
+        "unparsed": 1
+      },
+      "events": [
+        {
+          "span": "u-0001",
+          "ref": "claude-code:golden-1#u-0001",
+          "at": "2026-10-08T07:39:46.892Z",
+          "type": "prompt",
+          "summary": "Fix the build, it doesn't work."
+        },
+        {
+          "span": "a-0002",
+          "ref": "claude-code:golden-1#a-0002",
+          "at": "2026-10-08T07:39:50.000Z",
+          "type": "tool_call",
+          "tool": "Bash",
+          "args_digest": "854004a0c269",
+          "status": "error",
+          "exit_code": 1,
+          "error_class": "exit",
+          "excerpt": "Exit code 1\nmain.go:3: undefined: foo (key [REDACTED:aws_access_key])"
+        },
+        {
+          "span": "a-0006",
+          "ref": "claude-code:golden-1#a-0006",
+          "at": "2026-10-08T07:40:10.000Z",
+          "type": "tool_call",
+          "tool": "Write",
+          "args_digest": "30113a875603",
+          "status": "denied",
+          "error_class": "denied",
+          "excerpt": "The user doesn't want to proceed with this tool use. The tool use was rejected."
+        },
+        {
+          "span": "a-0008",
+          "ref": "claude-code:golden-1#a-0008",
+          "at": "2026-10-08T07:40:20.000Z",
+          "type": "tool_call",
+          "tool": "Bash",
+          "args_digest": "6012d921359b",
+          "status": "interrupted",
+          "error_class": "interrupted",
+          "excerpt": "[Request interrupted by user for tool use]"
+        },
+        {
+          "span": "u-0010",
+          "ref": "claude-code:golden-1#u-0010",
+          "at": "2026-10-08T07:40:30.000Z",
+          "type": "prompt",
+          "summary": "Why did you do that again? Use [REDACTED:github_token] for the push."
+        }
+      ],
+      "retries": [
+        {
+          "span": "a-0004",
+          "of_span": "a-0002",
+          "tool": "Bash",
+          "args_digest": "854004a0c269"
+        }
+      ],
+      "denials": [
+        "a-0006"
+      ],
+      "flagged": [
+        {
+          "span": "u-0001",
+          "phrase": "doesn't work"
+        },
+        {
+          "span": "u-0010",
+          "phrase": "why did you"
+        },
+        {
+          "span": "u-0010",
+          "phrase": "again"
+        }
+      ],
+      "final_excerpt": "Done. The build passes now."
+    }
+  ],
+  "errors": [],
+  "deferred": []
+}

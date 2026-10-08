@@ -16,6 +16,9 @@ const (
 	LevelDocumented    = "documented"
 	LevelFixtureTested = "fixture-tested"
 	LevelLiveChecked   = "live-checked"
+	// LevelUnsupported is valid only for a Sessions record: the session
+	// stores were examined and are not read.
+	LevelUnsupported = "unsupported"
 )
 
 // Hook events an adapter declares; the value is the harness's own event
@@ -70,6 +73,9 @@ type Sessions struct {
 	Reader    string
 	// NoReader is why Reader is "none".
 	NoReader string
+	// Verified is how far the reader, or the decision not to read the
+	// stores, was checked.
+	Verified Verified
 }
 
 // Verified is how far an adapter record was checked against the harness.
@@ -277,7 +283,7 @@ var registry = []Adapter{
 			Reminder: true,
 		},
 		MCP:      MCP{File: Env.claudeJSON, Path: []string{"mcpServers"}, EnvRef: "${AGENT_FEEDBACK_API_KEY}"},
-		Sessions: Sessions{Locations: []string{"<claude config>/projects/<cwd>/<uuid>.jsonl"}, Reader: "claude-code-jsonl"},
+		Sessions: Sessions{Locations: []string{"<claude config>/projects/<cwd>/<uuid>.jsonl"}, Reader: "claude-code-jsonl", Verified: Verified{Level: LevelFixtureTested, Date: verifiedDate, Note: "internal/sessions fixtures and golden tests"}},
 		Verified: Verified{Level: LevelLiveChecked, Date: verifiedDate, Note: "the just live-harness gate"},
 		hook: func(p *plan, o Options) ([]Item, []string) {
 			f := filepath.Join(p.env.claudeDir(), "settings.json")
@@ -324,7 +330,7 @@ var registry = []Adapter{
 			Reminder:  true,
 		},
 		MCP:      MCP{File: func(e Env) string { return filepath.Join(e.codexHome(), "config.toml") }, Path: []string{"mcp_servers"}, EnvRef: "bearer_token_env_var"},
-		Sessions: Sessions{Locations: []string{"<codex home>/sessions"}, Reader: "codex-rollout"},
+		Sessions: Sessions{Locations: []string{"<codex home>/sessions/YYYY/MM/DD/rollout-*.jsonl", "<codex home>/archived_sessions/"}, Reader: "codex-rollout", Verified: Verified{Level: LevelFixtureTested, Date: verifiedDate, Note: "fixtures written from upstream source: Codex rust-v0.161.0"}},
 		Verified: documented(),
 		hook: func(p *plan, o Options) ([]Item, []string) {
 			f := filepath.Join(p.env.codexHome(), "hooks.json")
@@ -372,8 +378,9 @@ var registry = []Adapter{
 			Deliver:  "postToolUseFailure",
 			Reminder: true,
 		},
-		MCP:      MCP{File: homePath(".cursor", "mcp.json"), Path: []string{"mcpServers"}, EnvRef: "${env:AGENT_FEEDBACK_API_KEY}"},
-		Sessions: Sessions{Locations: []string{"~/.cursor/projects/*/agent-transcripts/"}, Reader: "none", NoReader: "the transcript format is not settled yet"},
+		MCP: MCP{File: homePath(".cursor", "mcp.json"), Path: []string{"mcpServers"}, EnvRef: "${env:AGENT_FEEDBACK_API_KEY}"},
+		Sessions: Sessions{Locations: []string{"~/.cursor/projects/*/agent-transcripts/"}, Reader: "none", NoReader: "the session stores were examined and are not read; see docs/sessions.md",
+			Verified: Verified{Level: LevelUnsupported, Date: verifiedDate, Note: "docs/sessions.md#cursor"}},
 		Verified: documented(),
 		hook: func(p *plan, o Options) ([]Item, []string) {
 			f := filepath.Join(p.env.Home, ".cursor", "hooks.json")
@@ -418,7 +425,7 @@ var registry = []Adapter{
 			Deliver: "session.idle",
 		},
 		MCP:      MCP{File: func(e Env) string { return filepath.Join(e.opencodeDir(), "opencode.jsonc") }, Path: []string{"mcp"}, EnvRef: "{env:AGENT_FEEDBACK_API_KEY}"},
-		Sessions: Sessions{Locations: []string{"~/.local/share/opencode/opencode.db"}, Reader: "opencode-sqlite"},
+		Sessions: Sessions{Locations: []string{"$OPENCODE_DB, else <data home>/opencode/opencode.db and opencode-*.db"}, Reader: "opencode-sqlite", Verified: Verified{Level: LevelLiveChecked, Date: verifiedDate, Note: "OpenCode 1.18.35: sessions list and digest on a real database, read-only, the store unchanged; fixtures and golden tests"}},
 		Verified: Verified{Level: LevelLiveChecked, Date: verifiedDate, Note: "OpenCode 1.18.34: opencode debug skill lists the skill and opencode mcp list connects the MCP entry; the plugin was not run in a session"},
 		hook: func(p *plan, o Options) ([]Item, []string) {
 			return []Item{fileItem(KindPluginFile, RoleHook, filepath.Join(p.env.opencodeDir(), "plugins", "agentfeedback.js"), opencodePlugin(o.Binary, p.env.SpawnErrorPath("opencode")))}, nil
@@ -459,7 +466,7 @@ var registry = []Adapter{
 			Deliver: "tool_result",
 		},
 		MCP:      MCP{File: homePath(".omp", "agent", "mcp.json"), Path: []string{"mcpServers"}, EnvRef: "${AGENT_FEEDBACK_API_KEY}"},
-		Sessions: Sessions{Locations: []string{"~/.omp/agent/sessions"}, Reader: "none", NoReader: "no reader yet"},
+		Sessions: Sessions{Locations: []string{"~/.omp/agent/sessions"}, Reader: "none", NoReader: "no reader yet", Verified: documented()},
 		Verified: Verified{Level: LevelDocumented, Date: verifiedDate, Note: "omp 18.8.0 is installed on the delivery machine but lists neither MCP servers nor skills outside a model session"},
 		hook: func(p *plan, o Options) ([]Item, []string) {
 			return []Item{fileItem(KindPluginFile, RoleHook, filepath.Join(p.env.Home, ".omp", "agent", "extensions", "agentfeedback.ts"), ompExtension(o.Binary, p.env.SpawnErrorPath("omp")))}, nil
@@ -495,7 +502,7 @@ var registry = []Adapter{
 			Deliver: "tool_result",
 		},
 		MCP:      MCP{File: homePath(".pi", "agent", "mcp.json"), Path: []string{"mcpServers"}, EnvRef: "${AGENT_FEEDBACK_API_KEY}"},
-		Sessions: Sessions{Locations: []string{"~/.pi/agent/sessions"}, Reader: "none", NoReader: "no reader yet"},
+		Sessions: Sessions{Locations: []string{"~/.pi/agent/sessions"}, Reader: "none", NoReader: "no reader yet", Verified: documented()},
 		Caveats:  []string{"the MCP entry needs pi 0.99.0 or later"},
 		Verified: documented(),
 		hook: func(p *plan, o Options) ([]Item, []string) {
@@ -532,8 +539,8 @@ var registry = []Adapter{
 			Deliver: "postToolUseFailure",
 		},
 		MCP:      MCP{File: func(e Env) string { return filepath.Join(e.copilotDir(), "mcp-config.json") }, Path: []string{"mcpServers"}, EnvRef: "${AGENT_FEEDBACK_API_KEY}"},
-		Sessions: Sessions{Locations: []string{"~/.copilot/session-state/<id>/events.jsonl"}, Reader: "copilot-events"},
-		Caveats:  []string{"COPILOT_HOME is not followed"},
+		Sessions: Sessions{Locations: []string{"<copilot home>/session-state/<id>/events.jsonl"}, Reader: "copilot-events", Verified: Verified{Level: LevelFixtureTested, Date: verifiedDate, Note: "fixtures written from upstream source: Copilot CLI 1.0.92 session-events schema"}},
+		Caveats:  []string{"install does not follow COPILOT_HOME; sessions do"},
 		Verified: documented(),
 		hook: func(p *plan, o Options) ([]Item, []string) {
 			return []Item{fileItem(KindPluginFile, RoleHook, p.env.copilotHookFile(), copilotHook(o.Binary))}, nil
@@ -574,8 +581,9 @@ var registry = []Adapter{
 			Events:  events("PostToolUse", "Stop", "none"),
 			Deliver: "PreInvocation",
 		},
-		MCP:      MCP{File: func(e Env) string { return filepath.Join(e.geminiDir(), "config", "mcp_config.json") }, Path: []string{"mcpServers"}, EnvRef: "${AGENT_FEEDBACK_API_KEY}"},
-		Sessions: Sessions{Locations: []string{"~/.gemini/antigravity*/brain/<id>/.system_generated/logs/transcript.jsonl"}, Reader: "antigravity-transcript"},
+		MCP: MCP{File: func(e Env) string { return filepath.Join(e.geminiDir(), "config", "mcp_config.json") }, Path: []string{"mcpServers"}, EnvRef: "${AGENT_FEEDBACK_API_KEY}"},
+		Sessions: Sessions{Locations: []string{"~/.gemini/antigravity*/brain/<id>/.system_generated/logs/transcript.jsonl"}, Reader: "none", NoReader: "the session stores were examined and are not read; see docs/sessions.md",
+			Verified: Verified{Level: LevelUnsupported, Date: verifiedDate, Note: "docs/sessions.md#antigravity"}},
 		Caveats:  []string{"the legacy Cascade configuration is not wired", "~/.gemini/GEMINI.md is shared with gemini-cli"},
 		Verified: documented(),
 		hook: func(p *plan, o Options) ([]Item, []string) {
@@ -621,7 +629,7 @@ var registry = []Adapter{
 			NoDeliver: "nudge not wired yet",
 		},
 		MCP:      MCP{File: func(e Env) string { return filepath.Join(e.devinDir(), "mcp_config.json") }, Path: []string{"mcpServers"}, EnvRef: "${env:AGENT_FEEDBACK_API_KEY}"},
-		Sessions: Sessions{Reader: "none", NoReader: "Devin documents no local session location"},
+		Sessions: Sessions{Reader: "none", NoReader: "Devin documents no local session location", Verified: documented()},
 		Caveats:  []string{"Devin also runs Claude Code's hooks from ~/.claude/settings.json, so a double flush is possible and harmless"},
 		Verified: documented(),
 		hook: func(p *plan, o Options) ([]Item, []string) {
@@ -653,7 +661,7 @@ var registry = []Adapter{
 		},
 		Hook:     Hook{Format: "none", NoHook: "the skill, the MCP entry and the instruction file carry it", Events: events("none", "none", "none"), Deliver: "none", NoDeliver: noHookDeliver},
 		MCP:      MCP{File: homePath(".kiro", "settings", "mcp.json"), Path: []string{"mcpServers"}, EnvRef: "${AGENT_FEEDBACK_API_KEY}"},
-		Sessions: Sessions{Locations: []string{"~/.kiro/sessions/"}, Reader: "none", NoReader: "no reader yet"},
+		Sessions: Sessions{Locations: []string{"~/.kiro/sessions/"}, Reader: "none", NoReader: "no reader yet", Verified: documented()},
 		Caveats:  []string{"KIRO_HOME is not followed"},
 		Verified: documented(),
 		mcpValue: func(u string) string {
@@ -682,7 +690,7 @@ var registry = []Adapter{
 		},
 		Hook:     Hook{Format: "none", NoHook: "the skill, the MCP entry and the instruction file carry it", Events: events("none", "none", "none"), Deliver: "none", NoDeliver: noHookDeliver},
 		MCP:      MCP{File: Env.clineMCPFile, Path: []string{"mcpServers"}, EnvRef: "${AGENT_FEEDBACK_API_KEY}"},
-		Sessions: Sessions{Locations: []string{"~/.cline/data/sessions/"}, Reader: "none", NoReader: "no reader yet; the documented locations disagree"},
+		Sessions: Sessions{Locations: []string{"~/.cline/data/sessions/"}, Reader: "none", NoReader: "no reader yet; the documented locations disagree", Verified: documented()},
 		Verified: documented(),
 		mcpValue: func(u string) string {
 			return string(obj("type", str("streamableHttp"), "url", str(u), "headers", bearer("${AGENT_FEEDBACK_API_KEY}")))
@@ -708,7 +716,7 @@ var registry = []Adapter{
 		},
 		Hook:     Hook{Format: "none", NoHook: "Amp hooks are TypeScript plugins, not wired yet", Events: events("none", "none", "none"), Deliver: "none", NoDeliver: noHookDeliver},
 		MCP:      MCP{File: func(e Env) string { return filepath.Join(e.ampDir(), "settings.json") }, Path: []string{"amp.mcpServers"}, EnvRef: "${AGENT_FEEDBACK_API_KEY}"},
-		Sessions: Sessions{Reader: "none", NoReader: "Amp keeps its threads on its server"},
+		Sessions: Sessions{Reader: "none", NoReader: "Amp keeps its threads on its server", Verified: documented()},
 		Verified: documented(),
 		mcpValue: func(u string) string {
 			return string(obj("url", str(u), "headers", bearer("${AGENT_FEEDBACK_API_KEY}")))
@@ -737,7 +745,7 @@ var registry = []Adapter{
 		},
 		Hook:     Hook{Format: "none", NoHook: "VS Code has no skill of its own to pair a hook with", Events: events("none", "none", "none"), Deliver: "none", NoDeliver: noHookDeliver},
 		MCP:      MCP{File: func(e Env) string { return filepath.Join(e.vscodeUserDir(), "mcp.json") }, Path: []string{"servers"}, EnvRef: "${env:AGENT_FEEDBACK_API_KEY}"},
-		Sessions: Sessions{Reader: "none", NoReader: "VS Code keeps chat sessions in SQLite at an undocumented path"},
+		Sessions: Sessions{Reader: "none", NoReader: "VS Code keeps chat sessions in SQLite at an undocumented path", Verified: documented()},
 		Verified: documented(),
 		mcpValue: func(u string) string {
 			return string(obj("type", str("http"), "url", str(u), "headers", bearer("${env:AGENT_FEEDBACK_API_KEY}")))
@@ -769,7 +777,7 @@ var registry = []Adapter{
 		},
 		Hook:     Hook{Format: "none", NoHook: "not wired yet", Events: events("AfterTool", "AfterAgent", "SessionStart"), Deliver: "none", NoDeliver: noHookDeliver},
 		MCP:      MCP{NoMCP: "not wired yet"},
-		Sessions: Sessions{Locations: []string{"~/.gemini/tmp/<project_hash>/chats/"}, Reader: "gemini-cli-jsonl"},
+		Sessions: Sessions{Locations: []string{"<gemini dir>/tmp/<project>/chats/session-*.jsonl"}, Reader: "gemini-cli-jsonl", Verified: Verified{Level: LevelFixtureTested, Date: verifiedDate, Note: "fixtures written from upstream source: Gemini CLI 0.63.0"}},
 		Caveats:  []string{"detected by its binary only: ~/.gemini is shared with antigravity"},
 		Verified: documented(),
 		files:    func(Env) ([]string, []string) { return nil, nil },

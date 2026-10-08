@@ -159,7 +159,7 @@ func (c *sessionContext) apply(obj rawObject) rawObject {
 // stdin context; --context flags still go over it.
 func (c *sessionContext) context() map[string]string {
 	return map[string]string{
-		"origin": "session-scan", "detector": sessions.Detector,
+		"origin": "session-scan", "detector": c.facts.Detector,
 		"session_id": c.facts.SessionID, "session_harness": c.facts.Harness,
 	}
 }

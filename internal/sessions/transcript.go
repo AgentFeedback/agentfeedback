@@ -2,6 +2,8 @@ package sessions
 
 import (
 	"encoding/json"
+	"path/filepath"
+	"slices"
 	"time"
 )
 
@@ -69,6 +71,37 @@ type call struct {
 	resultOffset int64
 	status       string
 	content      string
+	// exitCode is the exit code the store records natively, nil when it
+	// records none.
+	exitCode *int
+}
+
+// seen widens the transcript's start and end to at and returns at in UTC.
+func (t *transcript) seen(at time.Time) time.Time {
+	at = at.UTC()
+	if t.start.IsZero() || at.Before(t.start) {
+		t.start = at
+	}
+	if at.After(t.end) {
+		t.end = at
+	}
+
+	return at
+}
+
+// addCwd records cwd as the last working directory and, the first time,
+// among cwds, and returns it. An empty or relative cwd is ignored and ""
+// returned: a relative one would resolve against the reading process.
+func (t *transcript) addCwd(cwd string) string {
+	if cwd == "" || !filepath.IsAbs(cwd) {
+		return ""
+	}
+	t.lastCwd = cwd
+	if !slices.Contains(t.cwds, cwd) {
+		t.cwds = append(t.cwds, cwd)
+	}
+
+	return cwd
 }
 
 // counts tallies the entries at or after from.

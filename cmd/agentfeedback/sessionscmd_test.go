@@ -84,7 +84,7 @@ func TestSessions_ListDigestMarkStatus(t *testing.T) {
 	var l sessions.Listing
 	decodeJSON(t, r.stdout, &l)
 	if r.code != 0 || len(l.Sessions) != 1 || l.Sessions[0].Ref != "claude-code:s1" || l.Sessions[0].State != sessions.StateNew ||
-		len(l.Stores) != 1 || l.Stores[0].Location != filepath.Join(cfg, "projects") {
+		len(l.Stores) != len(sessions.Harnesses()) || l.Stores[0].Harness != sessions.HarnessClaudeCode || l.Stores[0].Location != filepath.Join(cfg, "projects") || r.stderr != "" {
 		t.Fatalf("list --json: %+v", r)
 	}
 	if r := runCLI(t, "", "sessions", "list"); r.code != 0 || !strings.Contains(r.stdout, "claude-code:s1") || !strings.Contains(r.stdout, "new") {
@@ -133,8 +133,8 @@ func TestSessions_ListDigestMarkStatus(t *testing.T) {
 
 	for _, args := range [][]string{
 		{"sessions"}, {"sessions", "nope"}, {"sessions", "digest"}, {"sessions", "digest", "claude-code:s1", "--unprocessed"},
-		{"sessions", "digest", "claude-code:s1", "--limit", "2"}, {"sessions", "digest", "codex:s1"},
-		{"sessions", "mark", "claude-code:s1", "--outcome", "maybe"}, {"sessions", "list", "--harness", "codex"},
+		{"sessions", "digest", "claude-code:s1", "--limit", "2"}, {"sessions", "digest", "amp:s1"},
+		{"sessions", "mark", "claude-code:s1", "--outcome", "maybe"}, {"sessions", "list", "--harness", "amp"},
 		{"sessions", "mark", "claude-code:s1", "--outcome", "filed", "--ref", "uid-1"},
 		{"sessions", "list", "--since", "yesterday"}, {"sessions", "status", "--limit", "3"},
 	} {
@@ -226,7 +226,7 @@ func TestSubmit_ContextFrom(t *testing.T) {
 		body.OccurredAt != "2026-10-08T07:00:09.250000Z" {
 		t.Fatalf("body %s", lines[0])
 	}
-	for k, v := range map[string]string{"origin": "session-scan", "detector": sessions.Detector, "session_id": "s1", "session_harness": "claude-code", "folder": "session-proj"} {
+	for k, v := range map[string]string{"origin": "session-scan", "detector": sessions.DetectorFor("claude-code"), "session_id": "s1", "session_harness": "claude-code", "folder": "session-proj"} {
 		if body.Context[k] != v {
 			t.Errorf("context.%s = %q, want %q (%s)", k, body.Context[k], v, lines[0])
 		}
@@ -275,7 +275,7 @@ func TestSubmit_ContextFrom(t *testing.T) {
 		{[]string{"--context-from", "claude-code:s1#u-3", "--key", "k"}, 2, "--key"},
 		{[]string{"--context-from", "claude-code:s1#u-3", "--project", "p"}, 2, "--project"},
 		{[]string{"--context-from", "claude-code:s1"}, 2, "names no span"},
-		{[]string{"--context-from", "codex:s1#u-3"}, 2, "no session reader"},
+		{[]string{"--context-from", "amp:s1#u-3"}, 2, "no session reader"},
 		{[]string{"--context-from", "claude-code:s1#u-3", "--ordinal", "0"}, 2, "--ordinal"},
 		{[]string{"--ordinal", "2"}, 2, "--context-from"},
 		{[]string{"--context-from", "claude-code:nope#u-3"}, 1, "session not found"},
@@ -380,5 +380,62 @@ func TestSubmit_ContextFromOwnsModelTimeAndScrub(t *testing.T) {
 	r = runCLI(t, stdin, "submit", "friction", "--stdin", "--dry-run", "--context-from", "claude-code:s2#u-1")
 	if r.code != 1 || !strings.Contains(r.stderr, "records no time") || r.stdout != "" {
 		t.Fatalf("span without a time: %+v", r)
+	}
+}
+
+// TestSessionsEnvOf: every store directory comes from an absolute
+// variable, else its default under the home directory; a relative value is
+// ignored, and OPENCODE_DB is taken as set.
+func TestSessionsEnvOf(t *testing.T) {
+	home := filepath.FromSlash("/h")
+	abs := func(p string) string { return filepath.Join(home, "abs", p) }
+	set := map[string]string{
+		"CLAUDE_CONFIG_DIR": abs("claude"), "CODEX_HOME": abs("codex"), "COPILOT_HOME": abs("copilot"),
+		"GEMINI_CLI_HOME": abs("gemini"), "XDG_DATA_HOME": abs("data"), "OPENCODE_DB": "rel/opencode.db",
+	}
+	got := sessionsEnvOf(func(k string) string { return set[k] }, home, fileConfig{})
+	if got.Home != home || got.ClaudeConfigDir != abs("claude") || got.CodexHome != abs("codex") || got.CopilotHome != abs("copilot") ||
+		got.GeminiDir != filepath.Join(abs("gemini"), ".gemini") || got.DataHome != abs("data") || got.OpenCodeDB != "rel/opencode.db" {
+		t.Fatalf("absolute: %+v", got)
+	}
+	for k := range set {
+		if k != "OPENCODE_DB" {
+			set[k] = "relative/" + k
+		}
+	}
+	got = sessionsEnvOf(func(k string) string { return set[k] }, home, fileConfig{})
+	if got.ClaudeConfigDir != filepath.Join(home, ".claude") || got.CodexHome != filepath.Join(home, ".codex") ||
+		got.CopilotHome != filepath.Join(home, ".copilot") || got.GeminiDir != filepath.Join(home, ".gemini") ||
+		got.DataHome != filepath.Join(home, ".local", "share") {
+		t.Fatalf("relative: %+v", got)
+	}
+	got = sessionsEnvOf(func(string) string { return "" }, home, fileConfig{})
+	if got.CodexHome != filepath.Join(home, ".codex") || got.OpenCodeDB != "" {
+		t.Fatalf("unset: %+v", got)
+	}
+}
+
+func TestSessions_AbsentStoreNote(t *testing.T) {
+	sessionsWorld(t)
+	if r := runCLI(t, "", "sessions", "list"); r.code != 0 || r.stderr != "" {
+		t.Fatalf("list without --harness names absent stores: %+v", r)
+	}
+	if r := runCLI(t, "", "sessions", "list", "--harness", sessions.HarnessClaudeCode); r.code != 0 ||
+		!strings.Contains(r.stderr, "claude-code session store") || !strings.Contains(r.stderr, "is absent") {
+		t.Fatalf("list --harness claude-code: %+v", r)
+	}
+}
+
+func TestPrintDigest_SelfMarker(t *testing.T) {
+	var b strings.Builder
+	out := sessions.DigestOutput{Sessions: []sessions.SessionDigest{{Ref: "claude-code:s", Events: []sessions.Event{
+		{Span: "a", Type: "tool_call", Tool: "Bash", Status: "error", Self: true},
+		{Span: "b", Type: "tool_call", Tool: "Bash", Status: "error"},
+	}}}}
+	if err := printDigest(&b, out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(b.String(), "error  (agentfeedback's own command)  #a\n") || strings.Count(b.String(), "own command") != 1 {
+		t.Fatalf("%s", b.String())
 	}
 }

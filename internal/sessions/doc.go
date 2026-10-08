@@ -5,13 +5,31 @@
 //
 // # Readers
 //
-// One reader per log format. Only the Claude Code reader is implemented
-// (registry reader "claude-code-jsonl"): sessions live at
-// <ClaudeConfigDir>/projects/<encoded launch cwd>/<session-uuid>.jsonl,
-// where the encoding turns every byte outside [A-Za-z0-9] into '-'.
-// Subdirectories of a project directory are not read; a project directory
-// that cannot be listed is named in Store.Problems. Harnesses without an
-// implemented reader are not listed.
+// One reader per log format, each in its own file, which registers it from
+// an init function; readerOrder fixes the listing order by harness, and
+// its name is the registry's Sessions.Reader. A reader whose store is not
+// in a format it understands reports the store unsupported-format.
+// Harnesses without a registered reader are not listed. The readers, by
+// registry name:
+//
+//   - claude-code-jsonl (claude.go): <ClaudeConfigDir>/projects/<encoded
+//     launch cwd>/<session-uuid>.jsonl, where the encoding turns every byte
+//     outside [A-Za-z0-9] into '-'. Subdirectories of a project directory
+//     are not read. Gated on the encoded directory name.
+//   - codex-rollout (codex.go): <CodexHome>/sessions/YYYY/MM/DD/rollout-*.jsonl
+//     and <CodexHome>/archived_sessions/rollout-*.jsonl. Gated on the cwd of
+//     the session_meta first line, read before the rest of the file.
+//   - copilot-events (copilot.go): <CopilotHome>/session-state/<session
+//     id>/events.jsonl. Gated on the cwd of the workspace.yaml beside it.
+//   - gemini-cli-jsonl (gemini.go): <GeminiDir>/tmp/<project>/chats/session-*.jsonl.
+//     Gated on the path in <project>/.project_root.
+//   - opencode-sqlite (opencode.go): Env.OpenCodeDB, else opencode.db and
+//     opencode-*.db in <DataHome>/opencode, opened read-only. Gated on the
+//     session row's directory.
+//
+// Cursor and Antigravity stores were examined and are not read: their
+// registry records say why. A directory of a store that cannot be listed
+// is named in Store.Problems and its sessions are not listed.
 //
 // # Policy before opening
 //
@@ -27,10 +45,21 @@
 // longer exists, so no repository file applies); one disabled directory
 // makes the session StateDisabled, one denied directory StateDenied.
 //
+// The Claude Code reader gates on the encoded project directory name. A
+// reader whose store records a session's working directory in metadata
+// kept apart from the session (a database row, a workspace file, a
+// .project_root file), or in a first line read alone (Codex), gates on
+// that directory instead: Disabled makes the session StateDisabled, and
+// the directory is checked like a recorded one before the session is
+// opened. Every directory the session records is checked again after the
+// read.
+//
 // # States
 //
 // Precedence: disabled, denied, then unreadable (open or read failed),
-// unsupported-format (no line parses as an object with a string "type"),
+// unsupported-format (no line parses as an entry, or a compressed Codex
+// rollout, a legacy Gemini CLI .json session, an OpenCode database without
+// the expected tables),
 // unknown-project (the file parses but records no cwd), then the watermark
 // states: absent (a sessions_seen row whose file is gone), new (no row, or
 // a row never marked), processed (complete-line size and first-line hash
@@ -55,5 +84,8 @@
 //     that cites it; Key: the idempotency key of such a submission.
 //
 // A ref names a session as "<harness>:<session id>"; an event's ref adds
-// "#<span>", the uuid of the log entry that carries it.
+// "#<span>", the reader's id of the log entry that carries it: the uuid
+// (Claude Code), the call id, item id or "L<line offset>" (Codex), the
+// event id (Copilot), the message id (Gemini CLI), the message or part id
+// (OpenCode).
 package sessions

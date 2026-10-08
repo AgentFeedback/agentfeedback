@@ -1,16 +1,10 @@
 package sessions
 
 import (
-	"bufio"
-	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"io"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 
@@ -22,6 +16,8 @@ const HarnessClaudeCode = "claude-code"
 
 // claudeReader reads Claude Code's JSONL session logs.
 type claudeReader struct{}
+
+func init() { register(claudeReader{}) }
 
 func (claudeReader) harness() string { return HarnessClaudeCode }
 func (claudeReader) name() string    { return "claude-code-jsonl" }
@@ -172,37 +168,24 @@ const (
 	denyText2     = "has been denied"
 )
 
+func (r claudeReader) load(env Env, c candidate) (*transcript, error) {
+	return loadFile(env, c, r.parse)
+}
+
 // parse reads the complete lines of r into a transcript.
 func (claudeReader) parse(r io.Reader) (*transcript, error) {
 	t := &transcript{}
 	calls := map[string]*call{}
-	br := bufio.NewReaderSize(r, 64<<10)
-	var offset int64
-	for {
-		line, err := br.ReadBytes('\n')
-		if len(line) > 0 && line[len(line)-1] == '\n' {
-			t.addLine(offset, line, calls)
-			offset += int64(len(line))
-		}
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
+	if err := scanJSONL(r, t, func(offset int64, body []byte) bool { return t.addLine(offset, body, calls) }); err != nil {
+		return nil, err
 	}
-	t.size = offset
 	t.summarise(true)
 
 	return t, nil
 }
 
-func (t *transcript) addLine(offset int64, line []byte, calls map[string]*call) {
-	body := bytes.TrimRight(line, "\r\n")
-	if offset == 0 {
-		sum := sha256.Sum256(body)
-		t.head = hex.EncodeToString(sum[:])
-	}
+// addLine adds the entry of one line and reports whether it parsed.
+func (t *transcript) addLine(offset int64, body []byte, calls map[string]*call) bool {
 	var l ccLine
 	if err := json.Unmarshal(body, &l); err != nil {
 		// A member of an unexpected type: keep the line if its type is
@@ -211,42 +194,20 @@ func (t *transcript) addLine(offset int64, line []byte, calls map[string]*call) 
 			Type json.RawMessage `json:"type"`
 		}
 		if json.Unmarshal(body, &minimal) != nil {
-			t.badLines = append(t.badLines, offset)
-
-			return
+			return false
 		}
 		l = ccLine{Type: minimal.Type}
 	}
 	var typ string
 	if len(l.Type) == 0 || json.Unmarshal(l.Type, &typ) != nil {
-		t.badLines = append(t.badLines, offset)
-
-		return
+		return false
 	}
-	t.parsed++
-	// A relative cwd is ignored: it would resolve against the reading
-	// process.
-	if l.Cwd != "" && !filepath.IsAbs(l.Cwd) {
-		l.Cwd = ""
-	}
-	e := entry{offset: offset, span: l.UUID, cwd: l.Cwd, kind: kindOther}
+	e := entry{offset: offset, span: l.UUID, cwd: t.addCwd(l.Cwd), kind: kindOther}
 	if ts, err := time.Parse(time.RFC3339Nano, l.Timestamp); err == nil {
-		e.at = ts.UTC()
-		if t.start.IsZero() || e.at.Before(t.start) {
-			t.start = e.at
-		}
-		if e.at.After(t.end) {
-			t.end = e.at
-		}
+		e.at = t.seen(ts)
 	}
 	if l.SessionID != "" && t.sessionID == "" {
 		t.sessionID = l.SessionID
-	}
-	if l.Cwd != "" {
-		t.lastCwd = l.Cwd
-		if !slices.Contains(t.cwds, l.Cwd) {
-			t.cwds = append(t.cwds, l.Cwd)
-		}
 	}
 
 	switch typ {
@@ -335,6 +296,8 @@ func (t *transcript) addLine(offset int64, line []byte, calls map[string]*call) 
 		e.kind = kindOther
 	}
 	t.entries = append(t.entries, e)
+
+	return true
 }
 
 func userTextKind(s string) string {

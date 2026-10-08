@@ -71,6 +71,17 @@ func TestRegistry_Complete(t *testing.T) {
 		if !slices.Contains([]string{LevelDocumented, LevelFixtureTested, LevelLiveChecked}, a.Verified.Level) || !date.MatchString(a.Verified.Date) {
 			bad("verification " + a.Verified.Level + " " + a.Verified.Date)
 		}
+		// A Sessions record may also be unsupported: examined and not read.
+		sv := a.Sessions.Verified
+		if !slices.Contains([]string{LevelDocumented, LevelFixtureTested, LevelLiveChecked, LevelUnsupported}, sv.Level) || !date.MatchString(sv.Date) {
+			bad("sessions verification " + sv.Level + " " + sv.Date)
+		}
+		switch {
+		case sv.Level == LevelUnsupported && a.Sessions.Reader != "none":
+			bad("unsupported sessions with a reader")
+		case (sv.Level == LevelFixtureTested || sv.Level == LevelLiveChecked) && a.Sessions.Reader == "none":
+			bad("sessions " + sv.Level + " without a reader")
+		}
 		// Every mode is either wired or refused with a next step.
 		for _, mode := range []string{ModeCLI, ModeMCP} {
 			ok, reason := Supports(a.Name, mode)

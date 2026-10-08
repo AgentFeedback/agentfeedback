@@ -1,0 +1,162 @@
+{
+  "notice": "This digest is shown to the model that reads it and so reaches that model's provider; agentfeedback itself stores and sends none of it.",
+  "detector_version": "1",
+  "sessions": [
+    {
+      "ref": "opencode:ses_golden0001",
+      "harness": "opencode",
+      "session_id": "ses_golden0001",
+      "project": "<CWD>",
+      "cwd": "<CWD>",
+      "start": "2026-10-08T07:00:01.000Z",
+      "end": "2026-10-08T07:00:46.000Z",
+      "model": "test-model-2",
+      "from_offset": 0,
+      "truncated": false,
+      "counts": {
+        "entries": 21,
+        "prompts": 4,
+        "tool_calls": 9,
+        "tool_errors": 5,
+        "interrupts": 1,
+        "denials": 1,
+        "unparsed": 0
+      },
+      "events": [
+        {
+          "span": "msg_0001",
+          "ref": "opencode:ses_golden0001#msg_0001",
+          "at": "2026-10-08T07:00:01.000Z",
+          "type": "prompt",
+          "summary": "Run the tests and fix what fails."
+        },
+        {
+          "span": "prt_0006",
+          "ref": "opencode:ses_golden0001#prt_0006",
+          "at": "2026-10-08T07:00:05.000Z",
+          "type": "tool_call",
+          "tool": "bash",
+          "args_digest": "1bb497e3e13a",
+          "status": "error",
+          "exit_code": 1,
+          "error_class": "exit",
+          "excerpt": "--- FAIL: TestParse (0.00s)\nFAIL\texample.test/proj\t0.012s"
+        },
+        {
+          "span": "msg_0003",
+          "ref": "opencode:ses_golden0001#msg_0003",
+          "at": "2026-10-08T07:00:15.000Z",
+          "type": "prompt",
+          "summary": "The tests are still failing, run them again."
+        },
+        {
+          "span": "prt_0009",
+          "ref": "opencode:ses_golden0001#prt_0009",
+          "at": "2026-10-08T07:00:17.000Z",
+          "type": "tool_call",
+          "tool": "bash",
+          "args_digest": "1bb497e3e13a",
+          "status": "error",
+          "exit_code": 1,
+          "error_class": "exit",
+          "excerpt": "--- FAIL: TestParse (0.00s)\nFAIL\texample.test/proj\t0.011s"
+        },
+        {
+          "span": "prt_0010",
+          "ref": "opencode:ses_golden0001#prt_0010",
+          "at": "2026-10-08T07:00:21.000Z",
+          "type": "tool_call",
+          "tool": "bash",
+          "args_digest": "17f69ae2697b",
+          "status": "denied",
+          "error_class": "denied",
+          "excerpt": "The user rejected permission to use this specific tool call."
+        },
+        {
+          "span": "prt_0011",
+          "ref": "opencode:ses_golden0001#prt_0011",
+          "at": "2026-10-08T07:00:23.000Z",
+          "type": "tool_call",
+          "tool": "bash",
+          "args_digest": "dcce2c2cc9cc",
+          "status": "error",
+          "exit_code": 1,
+          "error_class": "exit",
+          "excerpt": "agentfeedback: no server configured",
+          "self": true
+        },
+        {
+          "span": "prt_0011b",
+          "ref": "opencode:ses_golden0001#prt_0011b",
+          "at": "2026-10-08T07:00:26.000Z",
+          "type": "tool_call",
+          "tool": "webfetch",
+          "args_digest": "8da62753c0b2",
+          "status": "error",
+          "error_class": "tool_error",
+          "excerpt": "Request failed with status code: 404"
+        },
+        {
+          "span": "prt_0011c",
+          "ref": "opencode:ses_golden0001#prt_0011c",
+          "at": "2026-10-08T07:00:28.000Z",
+          "type": "tool_call",
+          "tool": "bash",
+          "args_digest": "c5e719fa6788",
+          "status": "error",
+          "error_class": "tool_error",
+          "excerpt": "=== RUN   TestSlow\n\n<shell_metadata>\nshell tool terminated command after exceeding timeout 120000 ms.\n</shell_metadata>"
+        },
+        {
+          "span": "msg_0005",
+          "ref": "opencode:ses_golden0001#msg_0005",
+          "at": "2026-10-08T07:00:31.000Z",
+          "type": "prompt",
+          "summary": "Run the linter instead."
+        },
+        {
+          "span": "prt_0013",
+          "ref": "opencode:ses_golden0001#prt_0013",
+          "at": "2026-10-08T07:00:33.000Z",
+          "type": "tool_call",
+          "tool": "bash",
+          "args_digest": "734309488784",
+          "status": "interrupted",
+          "error_class": "interrupted",
+          "excerpt": "level=info msg=\"[runner] linting\"\n\n<shell_metadata>\nUser aborted the command\n</shell_metadata>"
+        },
+        {
+          "span": "msg_0007",
+          "ref": "opencode:ses_golden0001#msg_0007",
+          "at": "2026-10-08T07:00:45.000Z",
+          "type": "prompt",
+          "summary": "Summarise where things stand."
+        }
+      ],
+      "retries": [
+        {
+          "span": "prt_0009",
+          "of_span": "prt_0006",
+          "tool": "bash",
+          "args_digest": "1bb497e3e13a"
+        }
+      ],
+      "denials": [
+        "prt_0010"
+      ],
+      "flagged": [
+        {
+          "span": "msg_0003",
+          "phrase": "still failing"
+        },
+        {
+          "span": "msg_0003",
+          "phrase": "again"
+        }
+      ],
+      "final_excerpt": "TestParse still fails on empty input; the linter run was stopped."
+    }
+  ],
+  "errors": [],
+  "deferred": []
+}

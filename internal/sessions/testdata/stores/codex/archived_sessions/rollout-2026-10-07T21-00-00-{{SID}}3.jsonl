@@ -1,0 +1,6 @@
+{"timestamp":"2026-10-07T21:00:00.000Z","type":"session_meta","payload":{"id":"{{SID}}3","session_id":"{{SID}}3","timestamp":"2026-10-07T21:00:00.000Z","cwd":"{{CWD}}","originator":"codex_cli_rs","cli_version":"0.161.0","source":"exec"}}
+{"timestamp":"2026-10-07T21:00:01.000Z","type":"turn_context","payload":{"turn_id":"turn-a1","cwd":"{{CWD}}","model":"gpt-test-1","approval_policy":"never","sandbox_policy":{"type":"read-only"}}}
+{"timestamp":"2026-10-07T21:00:02.000Z","type":"event_msg","payload":{"type":"user_message","message":"List the files."}}
+{"timestamp":"2026-10-07T21:00:03.000Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"{\"cmd\":\"ls\"}","call_id":"call_a1"}}
+{"timestamp":"2026-10-07T21:00:04.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_a1","output":"Wall time: 0.0010 seconds\nProcess exited with code 0\nOutput:\nmain.go\n"}}
+{"timestamp":"2026-10-07T21:00:05.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Here are the files."}]}}

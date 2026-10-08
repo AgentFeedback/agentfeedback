@@ -1,0 +1,85 @@
+{
+  "stores": [
+    {
+      "harness": "codex",
+      "location": "<HOME>/.codex/sessions",
+      "state": "present"
+    }
+  ],
+  "sessions": [
+    {
+      "ref": "codex:0199c3a1-0000-7000-8000-000000000003",
+      "harness": "codex",
+      "session_id": "0199c3a1-0000-7000-8000-000000000003",
+      "path": "<HOME>/.codex/archived_sessions/rollout-2026-10-07T21-00-00-0199c3a1-0000-7000-8000-000000000003.jsonl",
+      "project": "<CWD>",
+      "cwds": [
+        "<CWD>"
+      ],
+      "start": "2026-10-07T21:00:00Z",
+      "end": "2026-10-07T21:00:05Z",
+      "counts": {
+        "entries": 6,
+        "prompts": 1,
+        "tool_calls": 1,
+        "tool_errors": 0,
+        "interrupts": 0,
+        "denials": 0,
+        "unparsed": 0
+      },
+      "state": "new"
+    },
+    {
+      "ref": "codex:0199c3a1-0000-7000-8000-000000000001",
+      "harness": "codex",
+      "session_id": "0199c3a1-0000-7000-8000-000000000001",
+      "path": "<HOME>/.codex/sessions/2026/10/08/rollout-2026-10-08T07-39-40-0199c3a1-0000-7000-8000-000000000001.jsonl",
+      "project": "<CWD>",
+      "cwds": [
+        "<CWD>"
+      ],
+      "start": "2026-10-08T07:39:40Z",
+      "end": "2026-10-08T07:40:41Z",
+      "counts": {
+        "entries": 29,
+        "prompts": 2,
+        "tool_calls": 7,
+        "tool_errors": 3,
+        "interrupts": 2,
+        "denials": 1,
+        "unparsed": 1
+      },
+      "state": "new"
+    },
+    {
+      "ref": "codex:0199c3a1-0000-7000-8000-000000000002_0199c3a1-0000-7000-8000-000000000008",
+      "harness": "codex",
+      "session_id": "0199c3a1-0000-7000-8000-000000000002_0199c3a1-0000-7000-8000-000000000008",
+      "path": "<HOME>/.codex/sessions/2026/10/08/rollout-2026-10-08T08-10-00-0199c3a1-0000-7000-8000-000000000002_0199c3a1-0000-7000-8000-000000000008.jsonl",
+      "project": "<CWD>",
+      "cwds": [
+        "<CWD>"
+      ],
+      "start": "2026-10-08T08:10:00Z",
+      "end": "2026-10-08T08:10:22Z",
+      "counts": {
+        "entries": 18,
+        "prompts": 1,
+        "tool_calls": 5,
+        "tool_errors": 2,
+        "interrupts": 1,
+        "denials": 1,
+        "unparsed": 0
+      },
+      "state": "new"
+    },
+    {
+      "ref": "codex:0199c3a1-0000-7000-8000-000000000004",
+      "harness": "codex",
+      "session_id": "0199c3a1-0000-7000-8000-000000000004",
+      "path": "<HOME>/.codex/sessions/2026/10/08/rollout-2026-10-08T09-00-00-0199c3a1-0000-7000-8000-000000000004.jsonl.zst",
+      "state": "unsupported-format",
+      "reason": "compressed rollout"
+    }
+  ]
+}

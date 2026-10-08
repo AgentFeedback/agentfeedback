@@ -1,0 +1,252 @@
+{
+  "notice": "This digest is shown to the model that reads it and so reaches that model's provider; agentfeedback itself stores and sends none of it.",
+  "detector_version": "1",
+  "sessions": [
+    {
+      "ref": "codex:0199c3a1-0000-7000-8000-000000000003",
+      "harness": "codex",
+      "session_id": "0199c3a1-0000-7000-8000-000000000003",
+      "project": "<CWD>",
+      "cwd": "<CWD>",
+      "start": "2026-10-07T21:00:00.000Z",
+      "end": "2026-10-07T21:00:05.000Z",
+      "model": "gpt-test-1",
+      "from_offset": 0,
+      "truncated": false,
+      "counts": {
+        "entries": 6,
+        "prompts": 1,
+        "tool_calls": 1,
+        "tool_errors": 0,
+        "interrupts": 0,
+        "denials": 0,
+        "unparsed": 0
+      },
+      "events": [
+        {
+          "span": "L530",
+          "ref": "codex:0199c3a1-0000-7000-8000-000000000003#L530",
+          "at": "2026-10-07T21:00:02.000Z",
+          "type": "prompt",
+          "summary": "List the files."
+        }
+      ],
+      "retries": [],
+      "denials": [],
+      "flagged": [],
+      "final_excerpt": "Here are the files."
+    },
+    {
+      "ref": "codex:0199c3a1-0000-7000-8000-000000000001",
+      "harness": "codex",
+      "session_id": "0199c3a1-0000-7000-8000-000000000001",
+      "project": "<CWD>",
+      "cwd": "<CWD>",
+      "start": "2026-10-08T07:39:40.000Z",
+      "end": "2026-10-08T07:40:41.000Z",
+      "model": "gpt-test-2",
+      "from_offset": 0,
+      "truncated": false,
+      "counts": {
+        "entries": 29,
+        "prompts": 2,
+        "tool_calls": 7,
+        "tool_errors": 3,
+        "interrupts": 2,
+        "denials": 1,
+        "unparsed": 1
+      },
+      "events": [
+        {
+          "span": "L1284",
+          "ref": "codex:0199c3a1-0000-7000-8000-000000000001#L1284",
+          "at": "2026-10-08T07:39:41.300Z",
+          "type": "prompt",
+          "summary": "Fix the build, it doesn't work."
+        },
+        {
+          "span": "call_01",
+          "ref": "codex:0199c3a1-0000-7000-8000-000000000001#call_01",
+          "at": "2026-10-08T07:39:50.000Z",
+          "type": "tool_call",
+          "tool": "exec_command",
+          "args_digest": "854004a0c269",
+          "status": "error",
+          "exit_code": 1,
+          "error_class": "exit",
+          "excerpt": "main.go:3: undefined: foo (key [REDACTED:aws_access_key])"
+        },
+        {
+          "span": "call_03",
+          "ref": "codex:0199c3a1-0000-7000-8000-000000000001#call_03",
+          "at": "2026-10-08T07:40:10.000Z",
+          "type": "tool_call",
+          "tool": "shell",
+          "args_digest": "17f69ae2697b",
+          "status": "denied",
+          "error_class": "denied",
+          "excerpt": "exec command rejected by user"
+        },
+        {
+          "span": "call_04",
+          "ref": "codex:0199c3a1-0000-7000-8000-000000000001#call_04",
+          "at": "2026-10-08T07:40:20.000Z",
+          "type": "tool_call",
+          "tool": "exec_command",
+          "args_digest": "6012d921359b",
+          "status": "interrupted",
+          "error_class": "interrupted"
+        },
+        {
+          "span": "L4044",
+          "ref": "codex:0199c3a1-0000-7000-8000-000000000001#L4044",
+          "at": "2026-10-08T07:40:30.000Z",
+          "type": "prompt",
+          "summary": "Still failing. Why did you do that again? Use [REDACTED:github_token] for the push."
+        },
+        {
+          "span": "call_05",
+          "ref": "codex:0199c3a1-0000-7000-8000-000000000001#call_05",
+          "at": "2026-10-08T07:40:31.000Z",
+          "type": "tool_call",
+          "tool": "exec_command",
+          "args_digest": "fae3e8309456",
+          "status": "error",
+          "exit_code": 1,
+          "error_class": "exit",
+          "excerpt": "no server",
+          "self": true
+        },
+        {
+          "span": "call_06",
+          "ref": "codex:0199c3a1-0000-7000-8000-000000000001#call_06",
+          "at": "2026-10-08T07:40:33.000Z",
+          "type": "tool_call",
+          "tool": "shell",
+          "args_digest": "22cc66aa7d26",
+          "status": "error",
+          "exit_code": 2,
+          "error_class": "exit",
+          "excerpt": "FAIL pkg/x"
+        }
+      ],
+      "retries": [
+        {
+          "span": "call_02",
+          "of_span": "call_01",
+          "tool": "exec_command",
+          "args_digest": "854004a0c269"
+        }
+      ],
+      "denials": [
+        "call_03"
+      ],
+      "flagged": [
+        {
+          "span": "L1284",
+          "phrase": "doesn't work"
+        },
+        {
+          "span": "L4044",
+          "phrase": "still failing"
+        },
+        {
+          "span": "L4044",
+          "phrase": "why did you"
+        },
+        {
+          "span": "L4044",
+          "phrase": "again"
+        }
+      ],
+      "final_excerpt": "Done. The build passes now."
+    },
+    {
+      "ref": "codex:0199c3a1-0000-7000-8000-000000000002_0199c3a1-0000-7000-8000-000000000008",
+      "harness": "codex",
+      "session_id": "0199c3a1-0000-7000-8000-000000000002_0199c3a1-0000-7000-8000-000000000008",
+      "project": "<CWD>",
+      "cwd": "<CWD>",
+      "start": "2026-10-08T08:10:00.000Z",
+      "end": "2026-10-08T08:10:22.000Z",
+      "model": "gpt-test-3",
+      "from_offset": 0,
+      "truncated": false,
+      "counts": {
+        "entries": 18,
+        "prompts": 1,
+        "tool_calls": 5,
+        "tool_errors": 2,
+        "interrupts": 1,
+        "denials": 1,
+        "unparsed": 0
+      },
+      "events": [
+        {
+          "span": "item-u1",
+          "ref": "codex:0199c3a1-0000-7000-8000-000000000002_0199c3a1-0000-7000-8000-000000000008#item-u1",
+          "at": "2026-10-08T08:10:03.000Z",
+          "type": "prompt",
+          "summary": "Run the tests, the suite is broken."
+        },
+        {
+          "span": "call_p1",
+          "ref": "codex:0199c3a1-0000-7000-8000-000000000002_0199c3a1-0000-7000-8000-000000000008#call_p1",
+          "at": "2026-10-08T08:10:05.000Z",
+          "type": "tool_call",
+          "tool": "exec_command",
+          "args_digest": "1bb497e3e13a",
+          "status": "error",
+          "exit_code": 1,
+          "error_class": "exit",
+          "excerpt": "FAIL pkg/y"
+        },
+        {
+          "span": "call_p2",
+          "ref": "codex:0199c3a1-0000-7000-8000-000000000002_0199c3a1-0000-7000-8000-000000000008#call_p2",
+          "at": "2026-10-08T08:10:10.000Z",
+          "type": "tool_call",
+          "tool": "exec_command",
+          "args_digest": "3075ad321add",
+          "status": "denied",
+          "error_class": "denied"
+        },
+        {
+          "span": "call_p3",
+          "ref": "codex:0199c3a1-0000-7000-8000-000000000002_0199c3a1-0000-7000-8000-000000000008#call_p3",
+          "at": "2026-10-08T08:10:13.000Z",
+          "type": "tool_call",
+          "tool": "exec_command",
+          "args_digest": "5db0389b3ace",
+          "status": "error",
+          "error_class": "tool_error",
+          "excerpt": "spawn failed"
+        },
+        {
+          "span": "call_p5",
+          "ref": "codex:0199c3a1-0000-7000-8000-000000000002_0199c3a1-0000-7000-8000-000000000008#call_p5",
+          "at": "2026-10-08T08:10:18.000Z",
+          "type": "tool_call",
+          "tool": "exec_command",
+          "args_digest": "637cbdb3daf0",
+          "status": "interrupted",
+          "error_class": "interrupted",
+          "excerpt": "Wall time: 1.2 seconds\naborted by user"
+        }
+      ],
+      "retries": [],
+      "denials": [
+        "call_p2"
+      ],
+      "flagged": [
+        {
+          "span": "item-u1",
+          "phrase": "broken"
+        }
+      ],
+      "final_excerpt": "Two tests fail; the push was declined."
+    }
+  ],
+  "errors": [],
+  "deferred": []
+}

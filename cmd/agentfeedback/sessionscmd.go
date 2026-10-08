@@ -32,20 +32,39 @@ const (
 var sessionsSubcommands = []string{"list", "digest", "mark", "status"}
 
 // sessionsEnvFrom is the internal/sessions environment: the home directory,
-// Claude Code's configuration directory (an absolute $CLAUDE_CONFIG_DIR,
-// else ~/.claude, as install resolves it) and the config file's [collect]
-// table.
+// the harnesses' store directories (each an absolute environment variable,
+// else its default under the home directory; Claude Code's as install
+// resolves it), $OPENCODE_DB as set and the config file's [collect] table.
 func sessionsEnvFrom(getenv func(string) string, file fileConfig) (sessions.Env, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return sessions.Env{}, errNoHome(err)
 	}
-	cfg := filepath.Join(home, ".claude")
-	if d := getenv("CLAUDE_CONFIG_DIR"); d != "" && filepath.IsAbs(d) {
-		cfg = d
+
+	return sessionsEnvOf(getenv, home, file), nil
+}
+
+// sessionsEnvOf resolves the sessions environment for home; a relative
+// directory variable is ignored.
+func sessionsEnvOf(getenv func(string) string, home string, file fileConfig) sessions.Env {
+	dir := func(name string, fallback ...string) string {
+		if d := getenv(name); d != "" && filepath.IsAbs(d) {
+			return d
+		}
+
+		return filepath.Join(append([]string{home}, fallback...)...)
+	}
+	gemini := filepath.Join(home, ".gemini")
+	if d := getenv("GEMINI_CLI_HOME"); d != "" && filepath.IsAbs(d) {
+		gemini = filepath.Join(d, ".gemini")
 	}
 
-	return sessions.Env{Home: home, ClaudeConfigDir: cfg, Policy: file.Collect, Now: nowFunc}, nil
+	return sessions.Env{
+		Home: home, ClaudeConfigDir: dir("CLAUDE_CONFIG_DIR", ".claude"),
+		CodexHome: dir("CODEX_HOME", ".codex"), CopilotHome: dir("COPILOT_HOME", ".copilot"), GeminiDir: gemini,
+		DataHome: dir("XDG_DATA_HOME", ".local", "share"), OpenCodeDB: getenv("OPENCODE_DB"),
+		Policy: file.Collect, Now: nowFunc,
+	}
 }
 
 // sessionsEnv loads the config file and builds the sessions environment.
@@ -239,7 +258,7 @@ func runSessions(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 
 func runSessionsList(args []string, stdout, stderr io.Writer) error {
 	fs := newFlagSet("sessions list")
-	harness := fs.String("harness", "", "only this harness (claude-code)")
+	harness := fs.String("harness", "", "only this harness ("+strings.Join(sessions.Harnesses(), ", ")+")")
 	since := fs.String("since", "", "sessions whose last entry is on or after this RFC 3339 time or <n>m, <n>h, <n>d, <n>w ago")
 	unprocessed := fs.Bool("unprocessed", false, "only new and changed sessions")
 	asJSON := fs.Bool("json", false, "print the listing as JSON")
@@ -269,7 +288,7 @@ func runSessionsList(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return errSessions(err)
 	}
-	storeNotes(l.Stores, stderr)
+	storeNotes(l.Stores, *harness != "", stderr)
 	if *asJSON {
 		return writeJSON(stdout, l)
 	}
@@ -290,11 +309,12 @@ func runSessionsList(args []string, stdout, stderr io.Writer) error {
 	return tw.Flush()
 }
 
-// storeNotes names on stderr a store that is not there or not fully
-// readable.
-func storeNotes(stores []sessions.Store, stderr io.Writer) {
+// storeNotes names on stderr a store that is not fully readable, and one
+// that is absent only when its harness was asked for by name: most
+// machines run few of the harnesses with a reader.
+func storeNotes(stores []sessions.Store, named bool, stderr io.Writer) {
 	for _, st := range stores {
-		if st.State != sessions.StorePresent {
+		if st.State != sessions.StorePresent && (named || st.State != sessions.StateAbsent) {
 			fmt.Fprintf(stderr, "agentfeedback sessions: %s session store %s is %s\n", st.Harness, st.Location, st.State)
 		}
 		for _, p := range st.Problems {
@@ -407,6 +427,9 @@ func printDigest(w io.Writer, out sessions.DigestOutput) error {
 			}
 			if e.ErrorClass != "" {
 				fmt.Fprintf(&b, "  %s", e.ErrorClass)
+			}
+			if e.Self {
+				b.WriteString("  (agentfeedback's own command)")
 			}
 			fmt.Fprintf(&b, "  #%s\n", e.Span)
 			if e.Summary != "" {

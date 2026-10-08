@@ -1,0 +1,33 @@
+{
+  "stores": [
+    {
+      "harness": "claude-code",
+      "location": "<HOME>/.claude/projects",
+      "state": "present"
+    }
+  ],
+  "sessions": [
+    {
+      "ref": "claude-code:golden-1",
+      "harness": "claude-code",
+      "session_id": "golden-1",
+      "path": "<HOME>/.claude/projects/<CWD_ENC>/golden-1.jsonl",
+      "project": "<CWD>",
+      "cwds": [
+        "<CWD>"
+      ],
+      "start": "2026-10-08T07:39:40Z",
+      "end": "2026-10-08T07:40:40Z",
+      "counts": {
+        "entries": 13,
+        "prompts": 2,
+        "tool_calls": 4,
+        "tool_errors": 1,
+        "interrupts": 1,
+        "denials": 1,
+        "unparsed": 1
+      },
+      "state": "new"
+    }
+  ]
+}

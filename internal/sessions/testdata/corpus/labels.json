@@ -1,0 +1,184 @@
+[
+  {
+    "session": "claude-code-1.jsonl",
+    "span": "c1-a02",
+    "class": "expected-failure",
+    "note": "a test -f probe for a file that is not built yet; failing is its answer"
+  },
+  {
+    "session": "claude-code-1.jsonl",
+    "span": "c1-a04",
+    "class": "genuine-friction",
+    "note": "docs/release.md names a make target the Makefile does not have: a wrong doc"
+  },
+  {
+    "session": "claude-code-1.jsonl",
+    "span": "c1-a06",
+    "class": "expected-failure",
+    "note": "grep with no match exits 1; nothing is wrong"
+  },
+  {
+    "session": "claude-code-1.jsonl",
+    "span": "c1-a08",
+    "class": "denial",
+    "note": "the user rejected a force push"
+  },
+  {
+    "session": "claude-code-1.jsonl",
+    "span": "c1-a10",
+    "class": "self-noise",
+    "note": "agentfeedback's own submit failing; not friction about the project"
+  },
+  {
+    "session": "claude-code-2.jsonl",
+    "span": "c2-a02",
+    "class": "genuine-friction",
+    "note": "the integration tests need a variable no setup doc mentions: a stale doc"
+  },
+  {
+    "session": "claude-code-2.jsonl",
+    "span": "c2-a04",
+    "class": "repeat",
+    "note": "the same failing command retried unchanged"
+  },
+  {
+    "session": "claude-code-2.jsonl",
+    "span": "c2-a04",
+    "class": "genuine-friction",
+    "note": "the retry fails for the same missing variable"
+  },
+  {
+    "session": "claude-code-2.jsonl",
+    "span": "c2-a06",
+    "class": "cancellation",
+    "note": "the user interrupted a long run"
+  },
+  {
+    "session": "claude-code-2.jsonl",
+    "span": "c2-a08",
+    "class": "expected-failure",
+    "note": "git diff --exit-code reports a difference by failing; that is the check"
+  },
+  {
+    "session": "claude-code-2.jsonl",
+    "span": "c2-a10",
+    "class": "genuine-friction",
+    "note": "a generator the contributing guide never says to install"
+  },
+  {
+    "session": "claude-code-3.jsonl",
+    "span": "c3-a02",
+    "class": "denial",
+    "note": "the user rejected the edit"
+  },
+  {
+    "session": "claude-code-3.jsonl",
+    "span": "c3-a04",
+    "class": "genuine-friction",
+    "note": "the binary on PATH is older than the docs: a missing flag"
+  },
+  {
+    "session": "claude-code-3.jsonl",
+    "span": "c3-a06",
+    "class": "repeat",
+    "note": "the same call retried with the same arguments"
+  },
+  {
+    "session": "claude-code-3.jsonl",
+    "span": "c3-a06",
+    "class": "genuine-friction",
+    "note": "the retry fails the same way"
+  },
+  {
+    "session": "claude-code-3.jsonl",
+    "span": "c3-a08",
+    "class": "cancellation",
+    "note": "the user interrupted the build"
+  },
+  {
+    "session": "claude-code-3.jsonl",
+    "span": "c3-a10",
+    "class": "self-noise",
+    "note": "agentfeedback flushing its own queue; behind an assignment it is still agentfeedback"
+  },
+  {
+    "session": "claude-code-3.jsonl",
+    "span": "c3-a12",
+    "class": "expected-failure",
+    "note": "checks that no rebase is in progress; failing means none is"
+  },
+  {
+    "session": "codex-1.jsonl",
+    "span": "call_x01",
+    "class": "genuine-friction",
+    "note": "the checked-in lint config names a linter the installed version removed: stale config"
+  },
+  {
+    "session": "codex-1.jsonl",
+    "span": "call_x02",
+    "class": "expected-failure",
+    "note": "grep finds no mention; exit 1 is the answer"
+  },
+  {
+    "session": "codex-1.jsonl",
+    "span": "call_x03",
+    "class": "repeat",
+    "note": "the same failing lint run retried unchanged"
+  },
+  {
+    "session": "codex-1.jsonl",
+    "span": "call_x03",
+    "class": "genuine-friction",
+    "note": "the retry fails on the same stale config"
+  },
+  {
+    "session": "codex-1.jsonl",
+    "span": "call_x04",
+    "class": "denial",
+    "note": "the user rejected deleting the cache"
+  },
+  {
+    "session": "codex-1.jsonl",
+    "span": "call_x05",
+    "class": "self-noise",
+    "note": "agentfeedback's own command failing"
+  },
+  {
+    "session": "codex-1.jsonl",
+    "span": "call_x06",
+    "class": "cancellation",
+    "note": "the user interrupted the long lint run"
+  },
+  {
+    "session": "gemini-cli-1.jsonl",
+    "span": "g1-m02",
+    "tool": "read_file",
+    "class": "expected-failure",
+    "note": "an optional local overrides file is absent; the read is a probe"
+  },
+  {
+    "session": "gemini-cli-1.jsonl",
+    "span": "g1-m02",
+    "tool": "run_shell_command",
+    "class": "genuine-friction",
+    "note": "the README names a make target the Makefile does not have: a wrong doc"
+  },
+  {
+    "session": "copilot-1.jsonl",
+    "span": "p1-e02",
+    "class": "expected-failure",
+    "note": "a test -f probe for an optional file; failing is its answer"
+  },
+  {
+    "session": "copilot-1.jsonl",
+    "span": "p1-e04",
+    "class": "genuine-friction",
+    "note": "the migrate target needs a variable no setup doc mentions"
+  },
+  {
+    "session": "copilot-1.jsonl",
+    "span": "p1-e06",
+    "class": "denial",
+    "note": "the user refused dropping the schema"
+  }
+]

@@ -60,6 +60,8 @@ func newWorld(t *testing.T) *world {
 func (w *world) env() Env {
 	return Env{
 		Home: w.home, ClaudeConfigDir: w.cfg, Policy: w.pol,
+		CodexHome: filepath.Join(w.home, ".codex"), CopilotHome: filepath.Join(w.home, ".copilot"),
+		GeminiDir: filepath.Join(w.home, ".gemini"), DataHome: filepath.Join(w.home, ".local", "share"),
 		Now: func() time.Time { return time.Date(2026, 10, 8, 9, 0, 0, 0, time.UTC) },
 		Open: func(p string) (io.ReadCloser, error) {
 			w.mu.Lock()
@@ -317,7 +319,7 @@ func TestStates(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
-		l := w.list(ListOptions{})
+		l := w.list(ListOptions{Harness: HarnessClaudeCode})
 		if len(l.Stores) != 1 || l.Stores[0].State != StorePresent || len(l.Stores[0].Problems) != 1 ||
 			!strings.HasPrefix(l.Stores[0].Problems[0], dir+": ") {
 			t.Fatalf("%+v", l.Stores)
@@ -329,7 +331,7 @@ func TestStates(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(st.Harnesses) != 1 || !slices.Equal(st.Harnesses[0].Problems, l.Stores[0].Problems) {
+		if hs := claudeStatus(t, st); !slices.Equal(hs.Problems, l.Stores[0].Problems) {
 			t.Fatalf("status %+v, want the listing's problems", st.Harnesses)
 		}
 	})
@@ -488,7 +490,7 @@ func TestStates(t *testing.T) {
 		if err := os.RemoveAll(filepath.Join(w.cfg, "projects")); err != nil {
 			t.Fatal(err)
 		}
-		l := w.list(ListOptions{})
+		l := w.list(ListOptions{Harness: HarnessClaudeCode})
 		if len(l.Stores) != 1 || l.Stores[0].State != StateAbsent || len(l.Sessions) != 0 {
 			t.Fatalf("%+v", l)
 		}
@@ -526,7 +528,7 @@ func TestListFilters(t *testing.T) {
 	if got := refs(w.list(ListOptions{Since: time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC)})); got != "late=new" {
 		t.Fatalf("since: %s", got)
 	}
-	if _, err := List(w.ctx, w.db, w.env(), ListOptions{Harness: "codex"}); err == nil {
+	if _, err := List(w.ctx, w.db, w.env(), ListOptions{Harness: "amp"}); err == nil {
 		t.Fatal("a harness without a reader must be refused")
 	}
 }
@@ -892,12 +894,25 @@ func TestMark(t *testing.T) {
 	if want := w.env().Now().UnixMicro(); row.ProcessedAt == nil || *row.ProcessedAt != want {
 		t.Fatalf("processed_at %v, want the env clock %d", row.ProcessedAt, want)
 	}
-	if _, _, err := ParseRef("codex:x"); err == nil {
+	if _, _, err := ParseRef("amp:x"); err == nil {
 		t.Fatal("harness without a reader accepted")
 	}
 	if _, _, err := ParseRef("claude-code:../x"); err == nil {
 		t.Fatal("path in a session id accepted")
 	}
+}
+
+// claudeStatus is the Claude Code entry of st.
+func claudeStatus(t *testing.T, st StatusOutput) HarnessStatus {
+	t.Helper()
+	for _, hs := range st.Harnesses {
+		if hs.Harness == HarnessClaudeCode {
+			return hs
+		}
+	}
+	t.Fatalf("no %s in %+v", HarnessClaudeCode, st)
+
+	return HarnessStatus{}
 }
 
 func TestStatusAndSelection(t *testing.T) {
@@ -909,10 +924,10 @@ func TestStatusAndSelection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(st.Harnesses) != 1 || st.Harnesses[0].States[StateNew] != 1 || st.Harnesses[0].States[StateUnsupportedFormat] != 1 || st.Selection != nil {
+	if hs := claudeStatus(t, st); hs.States[StateNew] != 1 || hs.States[StateUnsupportedFormat] != 1 || st.Selection != nil {
 		t.Fatalf("%+v", st)
 	}
-	if err := SetSelection(w.ctx, w.db, Selection{Harnesses: []string{"codex"}}); err == nil {
+	if err := SetSelection(w.ctx, w.db, Selection{Harnesses: []string{"amp"}}); err == nil {
 		t.Fatal("harness without a reader accepted")
 	}
 	sel := Selection{Harnesses: []string{HarnessClaudeCode}, Since: "7d", Limit: 5}
@@ -990,8 +1005,30 @@ func TestReaderMatchesRegistry(t *testing.T) {
 			t.Fatalf("%s: not in the harness registry", r.harness())
 		}
 	}
-	if !strings.HasPrefix(Detector, claudeReader{}.name()+"/") {
-		t.Fatalf("Detector %q does not name the reader", Detector)
+	for _, r := range readers {
+		if got, want := DetectorFor(r.harness()), r.name()+"/"+DetectorVersion; got != want {
+			t.Fatalf("DetectorFor(%s) = %q, want %q", r.harness(), got, want)
+		}
+	}
+	if DetectorFor(HarnessClaudeCode) != "claude-code-jsonl/1" || DetectorFor("no-such-harness") != "" {
+		t.Fatalf("DetectorFor: %q, %q", DetectorFor(HarnessClaudeCode), DetectorFor("no-such-harness"))
+	}
+}
+
+// TestDigestMarksSelf: a failed tool call that runs agentfeedback is marked
+// self, another failure is not.
+func TestDigestMarksSelf(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	line := func(s string) string { return strings.ReplaceAll(s, "{{CWD}}", defaultCwd) + "\n" }
+	content := line(`{"type":"assistant","uuid":"a-1","timestamp":"2026-10-08T07:00:00.000Z","cwd":"{{CWD}}","message":{"model":"m","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"agentfeedback submit friction --stdin"}}]}}`) +
+		line(`{"type":"user","uuid":"u-2","timestamp":"2026-10-08T07:00:01.000Z","cwd":"{{CWD}}","message":{"content":[{"type":"tool_result","tool_use_id":"t1","is_error":true,"content":"Exit code 1\nno server"}]}}`) +
+		line(`{"type":"assistant","uuid":"a-3","timestamp":"2026-10-08T07:00:02.000Z","cwd":"{{CWD}}","message":{"model":"m","content":[{"type":"tool_use","id":"t2","name":"Bash","input":{"command":"make test"}}]}}`) +
+		line(`{"type":"user","uuid":"u-4","timestamp":"2026-10-08T07:00:03.000Z","cwd":"{{CWD}}","message":{"content":[{"type":"tool_result","tool_use_id":"t2","is_error":true,"content":"Exit code 2\nfail"}]}}`)
+	w.put(defaultCwd, "s1", content)
+	d := w.digestOne("s1")
+	if len(d.Events) != 2 || d.Events[0].Span != "a-1" || !d.Events[0].Self || d.Events[1].Span != "a-3" || d.Events[1].Self {
+		t.Fatalf("events %+v", d.Events)
 	}
 }
 
@@ -1073,5 +1110,17 @@ func TestListKeepsSummariesOnly(t *testing.T) {
 	}
 	if len(evs) != 1 || evs[0].tr == nil || evs[0].tr.entries != nil || evs[0].tr.badLines != nil || evs[0].tr.total.Entries != 13 {
 		t.Fatalf("%+v", evs)
+	}
+}
+
+func TestUnlistedWording(t *testing.T) {
+	t.Parallel()
+	dir := filepath.Join(t.TempDir(), "chats")
+	problems := []problem{{path: dir, dir: true, reason: ".project_root: permission denied"}}
+	if st, reason := unlisted(problems, filepath.Join(dir, "s.json")); st != StateUnreadable || reason != "sessions in "+dir+" could not be listed: .project_root: permission denied" {
+		t.Fatalf("%s %s", st, reason)
+	}
+	if st, _ := unlisted(problems, filepath.Join(t.TempDir(), "s.json")); st != StateAbsent {
+		t.Fatalf("%s", st)
 	}
 }

@@ -52,9 +52,10 @@ is not multi-tenant and is not safe to expose directly to the internet.
 
 - What the client touches on disk: it owns the data directory
   (`${XDG_DATA_HOME:-~/.local/share}/agentfeedback/`: the database, the spool,
-  the inbox; `0700`, files `0600`). The harness session stores (Claude Code's `${CLAUDE_CONFIG_DIR:-~/.claude}/projects/`)
-  are read only by `agentfeedback sessions`, `submit --context-from` and the
-  stdio `sessions_*` tools, on demand and never written; the `[collect]`
+  the inbox; `0700`, files `0600`). The harness session stores ([sessions.md](sessions.md#harnesses) lists
+  them) are read only by `agentfeedback sessions`, `submit --context-from` and the
+  stdio `sessions_*` tools, on demand and never written; the OpenCode
+  database is opened read-only, without creating any file beside it. The `[collect]`
   rules are applied per session before a log is opened, and a digest is
   bounded and scrubbed before it is shown. Only the watermark rows and what
   you file are stored, in the data-directory database, in both modes; nothing

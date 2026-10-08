@@ -57,9 +57,6 @@ const (
 const (
 	// DetectorVersion is the version of the digest rules; it enters Key.
 	DetectorVersion = "1"
-	// Detector names the Claude Code reader and its version, for
-	// context.detector of a submission built from a digest.
-	Detector = "claude-code-jsonl/1"
 	// MaxSessionBytes caps one session's digest JSON: events are kept from
 	// the earliest until the cap, then Truncated is set.
 	MaxSessionBytes = 64 << 10
@@ -80,6 +77,17 @@ type Env struct {
 	Home string
 	// ClaudeConfigDir is $CLAUDE_CONFIG_DIR when set, else Home/.claude.
 	ClaudeConfigDir string
+	// CodexHome is an absolute $CODEX_HOME, else Home/.codex.
+	CodexHome string
+	// CopilotHome is an absolute $COPILOT_HOME, else Home/.copilot.
+	CopilotHome string
+	// GeminiDir is an absolute $GEMINI_CLI_HOME joined with ".gemini", else
+	// Home/.gemini.
+	GeminiDir string
+	// DataHome is an absolute $XDG_DATA_HOME, else Home/.local/share.
+	DataHome string
+	// OpenCodeDB is $OPENCODE_DB as set, "" when unset.
+	OpenCodeDB string
 	// Policy is the user config's [collect] table.
 	Policy collect.Policy
 	// Now is the clock; nil means time.Now.
@@ -115,11 +123,68 @@ type reader interface {
 	candidates(env Env) ([]candidate, []problem, error)
 	// gate applies the user policy before a file is opened; "" allows it.
 	gate(env Env, c candidate) (state, reason string)
-	parse(r io.Reader) (*transcript, error)
+	// load reads the session c names; an error wrapping errUnsupported
+	// means the store is not in a format the reader understands.
+	load(env Env, c candidate) (*transcript, error)
 }
 
-// readers are the implemented readers, in listing order.
-var readers = []reader{claudeReader{}}
+// errUnsupported: the session store is not in a format the reader
+// understands.
+var errUnsupported = errors.New("unsupported session store format")
+
+// readerOrder is the listing order of the readers, by harness; a harness
+// whose reader is not registered is skipped.
+var readerOrder = []string{"claude-code", "codex", "copilot", "gemini-cli", "opencode"}
+
+// registered are the readers register added, by harness.
+var registered = map[string]reader{}
+
+// readers are the registered readers, in listing order.
+var readers []reader
+
+// register adds a reader; each reader calls it from an init function in
+// its own file. A harness absent from readerOrder, or registered twice,
+// panics.
+func register(r reader) {
+	h := r.harness()
+	if !slices.Contains(readerOrder, h) {
+		panic("sessions: reader for harness " + h + " is not in readerOrder")
+	}
+	if _, ok := registered[h]; ok {
+		panic("sessions: reader for harness " + h + " registered twice")
+	}
+	registered[h] = r
+	var out []reader
+	for _, name := range readerOrder {
+		if r, ok := registered[name]; ok {
+			out = append(out, r)
+		}
+	}
+	readers = out
+}
+
+// DetectorFor names the reader of harness and the digest rules' version,
+// for context.detector of a submission built from a digest: "<reader
+// name>/<DetectorVersion>", "" for a harness without a reader.
+func DetectorFor(harness string) string {
+	r, ok := readerFor(harness)
+	if !ok {
+		return ""
+	}
+
+	return r.name() + "/" + DetectorVersion
+}
+
+// loadFile opens c.path through env.open and parses it with parse.
+func loadFile(env Env, c candidate, parse func(r io.Reader) (*transcript, error)) (*transcript, error) {
+	f, err := env.open(c.path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+
+	return parse(f)
+}
 
 func readerFor(harness string) (reader, bool) {
 	for _, r := range readers {
@@ -144,7 +209,7 @@ func Harnesses() []string {
 // problem is a part of a present store that could not be read.
 type problem struct {
 	path   string
-	dir    bool // a project directory that could not be listed
+	dir    bool // a store directory that could not be listed
 	reason string
 }
 
@@ -175,7 +240,7 @@ func hiddenBy(problems []problem, path string) (problem, bool) {
 func unlisted(problems []problem, path string) (state, reason string) {
 	if p, ok := hiddenBy(problems, path); ok {
 		if p.dir {
-			return StateUnreadable, "project directory " + p.path + " could not be listed: " + p.reason
+			return StateUnreadable, "sessions in " + p.path + " could not be listed: " + p.reason
 		}
 
 		return StateUnreadable, p.reason
@@ -188,7 +253,26 @@ type candidate struct {
 	sessionID string
 	path      string
 	project   string // the store's per-project directory name
-	mtime     time.Time
+	// cwd is the working directory the store's metadata records for the
+	// session before it is opened, "" when it records none.
+	cwd   string
+	mtime time.Time
+	// gated is the store metadata the gate read from the session file, for
+	// load to check it is unchanged; nil for readers without one.
+	gated *gatedMeta
+}
+
+// gateCwd applies the user policy to the working directory the store's
+// metadata records, before the session is opened; "" allows it.
+func gateCwd(env Env, c candidate) (state, reason string) {
+	if env.Policy.Disabled {
+		return StateDisabled, collect.ReasonDisabled
+	}
+	if c.cwd == "" {
+		return "", ""
+	}
+
+	return cwdPolicy(env, []string{c.cwd})
 }
 
 // Counts are a session's tallies.
@@ -301,15 +385,13 @@ func read(env Env, r reader, c candidate, row *store.SessionSeen, full bool) *ev
 	if ev.state, ev.reason = r.gate(env, c); ev.state != "" {
 		return ev
 	}
-	f, err := env.open(c.path)
-	if err != nil {
-		ev.state, ev.reason = StateUnreadable, ioReason(err)
+	tr, err := r.load(env, c)
+	switch {
+	case errors.Is(err, errUnsupported):
+		ev.state, ev.reason = StateUnsupportedFormat, err.Error()
 
 		return ev
-	}
-	tr, err := r.parse(f)
-	_ = f.Close()
-	if err != nil {
+	case err != nil:
 		ev.state, ev.reason = StateUnreadable, ioReason(err)
 
 		return ev
@@ -449,6 +531,8 @@ func storeState(env Env, r reader) (Store, []candidate, []problem) {
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		st.State = StateAbsent
+	case errors.Is(err, errUnsupported):
+		st.State = StateUnsupportedFormat
 	case err != nil:
 		st.State = StateUnreadable
 	}

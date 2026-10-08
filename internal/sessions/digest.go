@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"regexp"
 	"slices"
@@ -68,6 +69,10 @@ type Event struct {
 	ExitCode   *int   `json:"exit_code,omitempty"`
 	ErrorClass string `json:"error_class,omitempty"`
 	Excerpt    string `json:"excerpt,omitempty"`
+	// Self marks a tool call that ran agentfeedback itself, by the rule
+	// detect applies to hook events: its command runs agentfeedback, or
+	// the tool's name contains it.
+	Self bool `json:"self,omitempty"`
 }
 
 // Retry is a tool call repeating an earlier failed one (same tool and
@@ -157,10 +162,26 @@ func find(cands []candidate, sessionID string) (candidate, bool) {
 	return candidate{}, false
 }
 
-// listing is one reader's candidates and problems, listed once per run.
+// listing is one reader's candidates, problems and error, listed once per
+// run.
 type listing struct {
 	cands    []candidate
 	problems []problem
+	err      error
+}
+
+// refusedStore is the state of every session of a store whose candidates
+// could not be listed: unsupported-format or unreadable, "" when the store
+// is absent or was listed.
+func refusedStore(err error) string {
+	switch {
+	case err == nil || errors.Is(err, fs.ErrNotExist):
+		return ""
+	case errors.Is(err, errUnsupported):
+		return StateUnsupportedFormat
+	default:
+		return StateUnreadable
+	}
 }
 
 // Digest builds the digest of the sessions req selects and records the
@@ -226,8 +247,13 @@ func Digest(ctx context.Context, db *store.DB, env Env, req DigestRequest) (Dige
 			}
 			l, ok := listed[h]
 			if !ok {
-				l.cands, l.problems, _ = r.candidates(env)
+				l.cands, l.problems, l.err = r.candidates(env)
 				listed[h] = l
+			}
+			if state := refusedStore(l.err); state != "" {
+				out.Errors = append(out.Errors, DigestError{Ref: ref, State: state, Message: (&RefusedError{Ref: ref, State: state, Reason: l.err.Error()}).Error()})
+
+				continue
 			}
 			c, ok := find(l.cands, id)
 			if !ok {
@@ -399,6 +425,7 @@ func buildDigest(ev *evaluated) (SessionDigest, int, int64, error) {
 			ev := Event{
 				Span: e.span, Ref: ref + "#" + e.span, At: at, Type: "tool_call", Tool: c.tool, ArgsDigest: digest,
 				Status: c.status, Excerpt: excerpt(c.content),
+				Self: (c.hasCommand && detect.IsSelf(c.command)) || strings.Contains(strings.ToLower(c.tool), "agentfeedback"),
 			}
 			switch c.status {
 			case statusDenied:
@@ -407,7 +434,19 @@ func buildDigest(ev *evaluated) (SessionDigest, int, int64, error) {
 			case statusInterrupted:
 				ev.ErrorClass = "interrupted"
 			default:
+				// A native exit code goes before the "Exit code N" first
+				// line of the result; a native 0 on a failed call is no
+				// exit class.
 				ev.ErrorClass = "tool_error"
+				if c.exitCode != nil {
+					if *c.exitCode == 0 {
+						break
+					}
+					n := *c.exitCode
+					ev.ExitCode, ev.ErrorClass = &n, "exit"
+
+					break
+				}
 				first, _, _ := strings.Cut(c.content, "\n")
 				if m := exitLine.FindStringSubmatch(first); m != nil {
 					if n, err := strconv.Atoi(m[1]); err == nil {
@@ -658,6 +697,8 @@ type SpanFacts struct {
 	Model     string    `json:"model,omitempty"`
 	Cwd       string    `json:"cwd,omitempty"`
 	CwdExists bool      `json:"cwd_exists"`
+	// Detector is DetectorFor the harness.
+	Detector string `json:"detector,omitempty"`
 	// State is StateUnknownProject when the session records no cwd, else
 	// "".
 	State string `json:"state,omitempty"`
@@ -681,7 +722,10 @@ func Locate(ctx context.Context, env Env, ref, span string) (SpanFacts, error) {
 		return SpanFacts{}, fmt.Errorf("%s: %w: empty span", ref, ErrSpanNotFound)
 	}
 	r, _ := readerFor(h)
-	cands, _, _ := r.candidates(env)
+	cands, _, err := r.candidates(env)
+	if state := refusedStore(err); state != "" {
+		return SpanFacts{}, &RefusedError{Ref: ref, State: state, Reason: err.Error()}
+	}
 	c, ok := find(cands, id)
 	if !ok {
 		return SpanFacts{}, fmt.Errorf("%s: %w", ref, ErrSessionNotFound)
@@ -692,7 +736,7 @@ func Locate(ctx context.Context, env Env, ref, span string) (SpanFacts, error) {
 	default:
 		return SpanFacts{}, &RefusedError{Ref: ref, State: ev.state, Reason: ev.reason}
 	}
-	facts := SpanFacts{Harness: h, SessionID: id, Span: span}
+	facts := SpanFacts{Harness: h, SessionID: id, Span: span, Detector: DetectorFor(h)}
 	if ev.state == StateUnknownProject {
 		facts.State = StateUnknownProject
 	}
