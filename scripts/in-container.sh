@@ -68,6 +68,10 @@ for f in "$top"/.env "$top"/.env.* "$top"/infra/agentfeedback/.env; do
   [ -f "$f" ] && [ "${f##*/}" != .env.example ] && args+=(-v "/dev/null:$f:ro")
 done
 
+# The justfile's GOFLAGS (-mod=readonly) reaches commands that bypass just,
+# such as the go build in live-harness.sh, so a stray vendor/ stays ignored.
+[ -n "${GOFLAGS:-}" ] && args+=(-e "GOFLAGS=$GOFLAGS")
+
 [ -t 0 ] && [ -t 1 ] && args+=(-t)
 
 exec docker run "${args[@]}" "$tag" bash -c 'mkdir -p "$HOME" && exec "$@"' bash "$@"
