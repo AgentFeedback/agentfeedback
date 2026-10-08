@@ -10,8 +10,12 @@ outcome, with `"status": "skipped"` and the reason.
 This file describes the client of release 4.0.0 and later; until that release
 is out, step 2.1 works only with a pre-release tag the human names.
 
-Placeholders: `<URL>` is the server base URL the human gives you in step 1,
-`<binary>` is the binary's absolute path from step 2.1, `<harness>` is a name
+The client works locally by default: reports go to a database on this
+machine, with no server and no key. A server is used only when the human
+names one in step 1.
+
+Placeholders: `<URL>` is the server base URL the human gives you in step 1
+(none in local mode), `<binary>` is the binary's absolute path from step 2.1, `<harness>` is a name
 from step 2.3's list. Replace them before you run a command. Without `curl`,
 fetch the same URL with your own fetch tool and read the status code from it.
 The repository's playbook gate (`just playbooks`) answers for the human from
@@ -82,17 +86,24 @@ Route: every agent except a chat app goes to step 1 next. After step 1,
 `binary_possible` true goes to step 2.1; false with `mcp_config` true goes to
 step 2.6; false with neither goes to step 2.7.
 
-## Step 1: Ask the human for the server
+## Step 1: Local, or a server the human names
 
-Ask exactly this, and wait for the answer. Never guess a URL.
+Ask exactly this, and wait for the answer:
 
-> Which AgentFeedback server should this client report to: the Cloud
+> Where should this client's reports go? By default to a local database on
+> this machine: no server, no key. Or name a server: the Cloud
 > (`https://api.agentfeedback.io`, key from agentfeedback.io) or a
-> self-hosted server (its base URL)? Have the API key ready; you will type it
-> yourself in a later step, I will not ask you to paste it here.
+> self-hosted server (its base URL). For a server, have the API key ready;
+> you will type it yourself in a later step, I will not ask you to paste it
+> here.
 
-The Cloud answer means `<URL>` is `https://api.agentfeedback.io`. Check that
-an AgentFeedback server answers there (no key is sent, so it must refuse):
+Local is the default: an answer that names no server means local. Never
+pick a server, or guess a URL, the human did not name. Local mode needs the
+binary: with `binary_possible` false, tell the human that only a server
+works here and ask for one, or stop. For local, skip the command below and
+record `"server": "local"`. The Cloud answer means `<URL>` is
+`https://api.agentfeedback.io`. For a server, check that an AgentFeedback
+server answers there (no key is sent, so it must refuse):
 
 ```sh
 curl -sS -w '\n%{http_code}\n' '<URL>/api/v1/meta'
@@ -103,10 +114,10 @@ curl -sS -w '\n%{http_code}\n' '<URL>/api/v1/meta'
 connection error, another status, an HTML login page) means the URL is not an
 AgentFeedback server's base URL: show the human what you got and ask again.
 
-**Outcome:**
+**Outcome:** for a server, `"server": "<URL>"` and `"reachable": true`.
 
 ```json
-{"step": "1", "status": "ok", "server": "<URL>", "reachable": true}
+{"step": "1", "status": "ok", "server": "local"}
 ```
 
 ## Step 2: Install the client by capability
@@ -146,6 +157,9 @@ step 4.
 
 ### Step 2.2: The configuration (the human types the key)
 
+Only for a server. In local mode there is no configuration to write: record
+`"status": "skipped"` and go to step 2.3.
+
 Ask the human to run this command in a terminal of their own. A harness's
 shell passthrough (such as `!` in Claude Code) usually has no terminal for
 the hidden prompt: the command then exits 1 without output. On Windows the
@@ -173,46 +187,57 @@ after `--key-from-stdin`). Never add `--force` on your own.
 {"step": "2.2", "status": "ok", "config": "/home/user/.config/agentfeedback/config.toml", "server": "<URL>"}
 ```
 
-### Step 2.3: Wire the harness
+### Step 2.3: Set up and wire the harness
 
-`agentfeedback install` adds the skill and hooks running `agentfeedback
-hook`: they count the session's failed tool calls, show the agent a short
-note suggesting a friction report when failures pile up, and at the end of a
-turn send anything the client spooled while the server was unreachable. It
-also adds a session-start hook running `agentfeedback prime` (Claude Code,
-Codex, Cursor) and a short marked section with one rule in the harness's
-global instruction file (every harness here but `cursor` and `vscode`). Run
-it again after an upgrade: it replaces the `flush --hook` entries earlier
-releases wired. It backs up every file
-it touches, and `agentfeedback uninstall <harness>` reverts it. It reads the
-server from the configuration of step 2.2. The harnesses it knows:
-`claude-code`, `codex`, `cursor`, `opencode`, `omp`, `pi`, `copilot`,
-`antigravity`, `devin`, `kiro`, `cline`, `amp`, `vscode`, `gemini-cli`; `all` wires every
-detected one, only when the human agrees. It does not run on Windows (it
-refuses and lists the steps to wire each harness by hand under `manual`):
-there, and for a harness not in that list, go to step 2.5 instead. `vscode`
-takes only the MCP entry (`install vscode --mcp --json`): a stdio entry
-running `agentfeedback mcp` on the local database, or with the server URL of
-step 2.2 an entry pointing at it. For Claude
-Code or Codex, ask the human whether they prefer a plugin; if so, go to step
-2.4 instead.
+`agentfeedback init` sets the client up in one pass. It reports to the
+server of step 2.2's configuration; without one it sets up local mode (the
+database in the data directory; no server, and no configuration file is
+written). It then wires the harness: the skill, and hooks running
+`agentfeedback hook`, which count the session's failed tool calls, show the
+agent a short note suggesting a friction report when failures pile up, and
+with a server at the end of a turn send anything the client spooled while
+the server was unreachable. It also adds a session-start hook running
+`agentfeedback prime` (Claude Code, Codex, Cursor) and a short marked
+section with one rule in the harness's global instruction file (every
+harness here but `cursor` and `vscode`). Last, it submits, lists and marks
+one `install-check` report, the check of step 3.2, and prints what each hook
+does and the next commands. Run it again after an upgrade: it replaces the
+`flush --hook` entries earlier releases wired. It backs up every file it
+touches, and `agentfeedback uninstall <harness>` reverts it. The harnesses
+it knows: `claude-code`, `codex`, `cursor`, `opencode`, `omp`, `pi`,
+`copilot`, `antigravity`, `devin`, `kiro`, `cline`, `amp`, `vscode`,
+`gemini-cli`; `--harnesses all` wires every detected one, only when the
+human agrees. It does not run on Windows (it refuses and lists the steps to
+wire each harness by hand under `manual`): there, and for a harness not in
+that list, go to step 2.5 instead. `vscode` takes only the MCP entry (add
+`--mcp`): a stdio entry running `agentfeedback mcp` on the local database,
+or with the server URL of step 2.2 an entry pointing at it. With `"server":
+"local"` from step 1, add `--local` at the end: `init` then refuses, rather
+than reporting to it, a server already configured on this machine (in
+`config.toml` or `AGENT_FEEDBACK_URL`); show the human the refusal and ask
+which to keep. For Claude Code or Codex, ask the human whether they prefer a
+plugin; if so, go to step 2.4 instead.
 
 ```sh
-"<binary>" install <harness> --json
+"<binary>" init --yes --harnesses <harness> --json
 ```
 
-**Verify:** the last line is JSON with `"status": "installed"` (or
-`"unchanged"` when it was already wired) and your harness with `"skill":
-"wired"`, `"hook": "wired"` where the harness has a hook (`"-"` for
-`kiro`, `cline`, `amp` and `gemini-cli`), and `"rule": "wired"` where it has
-a global instruction file (`"-"` for `cursor`). A refusal names the path in the
-way (a foreign entry, a symlinked skill): report it to the human and stop;
-never delete it yourself.
+**Verify:** the last line is JSON with `"status": "ok"`, `"mode": "local"`
+(or `"remote"` with `"server": "<URL>"` after step 2.2), your harness with
+`"skill": "wired"`, `"hook": "wired"` where the harness has a hook (`"-"`
+for `kiro`, `cline`, `amp` and `gemini-cli`), and `"rule": "wired"` where
+it has a global instruction file (`"-"` for `cursor`), and under `"e2e"`
+three entries, `"step": "submit"`, `"list"` and `"mark"`, each with
+`"outcome": "ok"` and the same `id`. A single `"outcome": "skipped"` entry
+means the client found no API key for the server: go back to step 2.2. A
+refusal names the path in the way (a foreign entry, a symlinked skill) or
+the configuration in the way: report it to the human and stop; never delete
+or edit it yourself.
 
 **Outcome:**
 
 ```json
-{"step": "2.3", "status": "ok", "harness": "claude-code", "mode": "cli", "changed": ["/home/user/.claude/skills/agentfeedback/SKILL.md", "/home/user/.claude/settings.json", "/home/user/.claude/CLAUDE.md"]}
+{"step": "2.3", "status": "ok", "mode": "local", "harness": "claude-code", "install_check_id": 1, "changed": ["/home/user/.claude/skills/agentfeedback/SKILL.md", "/home/user/.claude/settings.json", "/home/user/.claude/CLAUDE.md"]}
 ```
 
 Then step 3.
@@ -246,8 +271,8 @@ Then step 3.
 This runs the third-party `skills` CLI from the npm registry, so ask the
 human first. It installs the skill from this repository for your harness
 only: `<agent>` is your harness's name in that CLI's agent list (for example
-`gemini-cli`). Never pass an agent that step 2.3 wires; `install` refuses a
-skill directory it did not create. `DISABLE_TELEMETRY=1` stops the CLI from
+`gemini-cli`). Never pass an agent that step 2.3 wires; `init` and
+`install` refuse a skill directory they did not create. `DISABLE_TELEMETRY=1` stops the CLI from
 sending the repository and skill names to its vendor.
 
 ```sh
@@ -268,7 +293,7 @@ Then step 3.
 
 ### Step 2.6: No binary, MCP configuration possible
 
-The server speaks MCP at `<URL>/mcp` (Streamable HTTP) and authenticates
+This needs the server of step 1: local mode needs the binary. The server speaks MCP at `<URL>/mcp` (Streamable HTTP) and authenticates
 with the same key header as its API. Check that it is there (no key is sent,
 so it must refuse with 401):
 
@@ -295,7 +320,7 @@ Skip step 3; go to step 4.
 
 ### Step 2.7: No binary, no MCP: the prompt block
 
-The server renders its submission guidance as a plain prompt block with the
+This needs the server of step 1, as step 2.6 does. The server renders its submission guidance as a plain prompt block with the
 HTTP instructions inline:
 
 ```sh
@@ -356,7 +381,11 @@ Only after steps 2.1, 2.2 and one of 2.3 to 2.5.
 "<binary>" doctor --json
 ```
 
-**Verify:** `"status": "ok"`, `"problems": []`, `"meta": {… "ok": true …}`,
+**Verify:** `"status": "ok"`, `"problems": []` and `"meta": {… "ok": true
+…}`. In local mode also `"mode": "local"`, `"database": {… "exists": true}`
+and `"url": {"value": "", …}`; after step 2.4 or 2.5 the database does not
+exist yet (`"exists": false`, and `meta` is not checked) until step 3.2
+creates it, so check `"exists"` and `meta` after step 3.2 there. With a server also `"mode": "remote"`,
 `"url": {"value": "<URL>", "source": "config"}` and `"api_key": {"set":
 true, "source": "config"}`. A `"source": "env"` means an exported
 `AGENT_FEEDBACK_URL` or `AGENT_FEEDBACK_API_KEY` overrides the new
@@ -368,14 +397,16 @@ no credential, and ask the human for the rest.
 **Outcome:**
 
 ```json
-{"step": "3.1", "status": "ok", "server": "<URL>", "client": "4.0.0", "service": "4.0.0", "api": "1.0"}
+{"step": "3.1", "status": "ok", "server": "local", "client": "4.0.0", "service": "4.0.0", "api": "1.0"}
 ```
 
 ### Step 3.2: End to end
 
 Submits one report of kind `install-check`, lists it, and marks it
 processed with verdict `install-check`. These rows are left out of digests,
-stats and migrations by default and stay as a record of the install.
+stats and migrations by default and stay as a record of the install. Step
+2.3's `init` ran it once; run it here after every route, so steps 2.4 and
+2.5 get the same check.
 
 ```sh
 "<binary>" doctor --e2e --json
@@ -408,8 +439,13 @@ step's outcome. On Windows the command refuses: report from the outcomes.
 **Outcome:** quote this to the human, with every earlier outcome above it.
 
 ```json
-{"step": "4", "status": "ok", "client": "4.0.0", "binary": "/home/user/.local/bin/agentfeedback", "config": "/home/user/.config/agentfeedback/config.toml", "server": "<URL>", "harnesses": ["claude-code"], "install_check_id": 1, "human_todo": ["restart the harness so it loads the skill"]}
+{"step": "4", "status": "ok", "client": "4.0.0", "binary": "/home/user/.local/bin/agentfeedback", "server": "local", "database": "/home/user/.local/share/agentfeedback/agentfeedback.db", "harnesses": ["claude-code"], "install_check_id": 1, "human_todo": ["restart the harness so it loads the skill"]}
 ```
+
+With a server, `"server"` is `<URL>` and `"config"` the configuration file
+of step 2.2 takes the place of `"database"`. Tell the human what step 2.3
+printed under `next`: `agentfeedback ui` shows the reports in a local page,
+and `agentfeedback list --open` lists them.
 
 `human_todo` holds what is left for the human, for example: restart the
 harness; in Codex, trust the new hook in `/hooks`; add `~/.local/bin` to

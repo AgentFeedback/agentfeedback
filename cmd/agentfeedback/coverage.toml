@@ -234,8 +234,13 @@ args = []
 
 [local.install]
 command = "install"
-flags = ["--server", "--mcp", "--docs", "--with-reminder", "--dry-run", "--list", "--json", "--check", "--project", "--yes", "--uninstall"]
+flags = ["--server", "--mcp", "--docs", "--with-reminder", "--no-hooks", "--dry-run", "--list", "--json", "--check", "--project", "--yes", "--uninstall"]
 args = ["<harness>..."]
+
+[local.init]
+command = "init"
+flags = ["--local", "--server", "--key-from-stdin", "--harnesses", "--yes", "--no-hooks", "--mcp", "--json"]
+args = []
 
 [local.prime]
 command = "prime"

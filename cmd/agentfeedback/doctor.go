@@ -365,7 +365,7 @@ func checkHarnessBinaries(clientVer string, problem func(error)) []harnessBinary
 		if h.Binary == "" {
 			continue
 		}
-		hb := harnessBinary{Name: h.Name, Binary: h.Binary, Version: h.BinaryVersion, cli: h.Mode == harness.ModeCLI && hooked[h.Name]}
+		hb := harnessBinary{Name: h.Name, Binary: h.Binary, Version: h.BinaryVersion, cli: h.Mode == harness.ModeCLI && hooked[h.Name] && h.Hook != "-"}
 		if hb.cli && cacheErr == nil {
 			hb.HookLastRun = checkHookRun(cache, h.Name, problem)
 		}

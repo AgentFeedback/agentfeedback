@@ -677,6 +677,38 @@ func errInstallNoneDetected() error {
 		"name the harnesses to wire, such as agentfeedback install claude-code")
 }
 
+func errInitConfiguredServer(configured, source string) error {
+	return failErr(fmt.Sprintf("a server is configured (%s, %s), and init never switches a configured server to local", configured, source),
+		"drop --local to wire this server, or remove the url from the configuration (or unset the variable) first")
+}
+
+func errInitConfigNoURL(path, server string) error {
+	return failErr(fmt.Sprintf("%s exists and names no server, and init never edits an existing configuration", path),
+		fmt.Sprintf("add url = %q to it and run agentfeedback init again, or run agentfeedback init --local", server))
+}
+
+func errInitAnswer(err error) error {
+	return failErr(fmt.Sprintf("cannot read the answer from the terminal: %v", err), "pass --yes with --local or --server and --harnesses")
+}
+
+func errInitKeyConfigured(configured, source string) error {
+	return failErr(fmt.Sprintf("a server is already configured (%s, %s), and init never edits the configuration, so it does not write the key", configured, source),
+		"give the key with agentfeedback doctor --init --url URL --key-from-stdin (--force replaces the file), or with "+envAPIKey)
+}
+
+func errInitRecordedServer(recorded, manifest string) error {
+	return failErr(fmt.Sprintf("the harnesses are wired to %s (the install manifest %s) and no server is configured", recorded, manifest),
+		"pass --server "+recorded+" to keep reporting there, or --local to switch to the local database")
+}
+
+func errInitKeyPrompt(err error) error {
+	return failErr(fmt.Sprintf("cannot read the API key from the terminal: %v", err), "pass the key on stdin with --key-from-stdin")
+}
+
+func errInitKeyPromptInvalid() error {
+	return failErr("the API key typed contains whitespace or control characters", "type exactly one key, or pass it on stdin with --key-from-stdin")
+}
+
 func errInstallNoServer() error {
 	return failErr("no server was named", "answer local, cloud or a URL, or pass --server")
 }

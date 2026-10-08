@@ -46,7 +46,7 @@ const ruleNote = "paste the output of the rule command into the harness's instru
 // detected ones when none (or all) is named, and prints it on stderr. The
 // server is resolved without a prompt; nothing is written. warnings are
 // those of the binary a stdio entry runs, when a step carries one.
-func manualSteps(pos []string, serverFlag string, stderr io.Writer) (steps []manualStep, warnings []string) {
+func manualSteps(command string, pos []string, serverFlag string, stderr io.Writer) (steps []manualStep, warnings []string) {
 	env, err := harnessEnv()
 	if err != nil {
 		return nil, nil
@@ -113,12 +113,12 @@ func manualSteps(pos []string, serverFlag string, stderr io.Writer) (steps []man
 		s.Notes = append(s.Notes, ruleNote)
 		out = append(out, s)
 	}
-	printManualSteps(stderr, out)
+	printManualSteps(stderr, command, out)
 	if stdio {
 		warnings = pathWarnings(bin)
 	}
 	for _, w := range warnings {
-		fmt.Fprintf(stderr, "agentfeedback install: warning: %s\n", w)
+		fmt.Fprintf(stderr, "agentfeedback %s: warning: %s\n", command, w)
 	}
 
 	return out, warnings
@@ -146,8 +146,8 @@ func psQuote(s string) string {
 }
 
 // printManualSteps prints the steps for a person on stderr.
-func printManualSteps(w io.Writer, steps []manualStep) {
-	const prefix = "agentfeedback install: "
+func printManualSteps(w io.Writer, command string, steps []manualStep) {
+	prefix := "agentfeedback " + command + ": "
 	if len(steps) == 0 {
 		fmt.Fprintln(w, prefix+"no harness detected; name one to see how to wire it by hand")
 	}

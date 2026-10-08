@@ -32,24 +32,34 @@ type e2eStep struct {
 // it processed. The submission goes straight to the server, not through the
 // spool, so a failed check leaves nothing behind on this machine.
 func runDoctorE2E(getenv func(string) string, mf modeFlags, asJSON bool, stdout, stderr io.Writer) error {
-	emit := func(s e2eStep) error {
+	return doctorE2E(getenv, mf, stderr, func(s e2eStep) error {
 		if asJSON {
 			return writeJSON(stdout, s)
 		}
-		label := s.Step + ":"
-		switch {
-		case s.Outcome != "ok":
-			fmt.Fprintf(stdout, "%-9s error: %s\n", label, s.Message)
-		case s.Key != "":
-			fmt.Fprintf(stdout, "%-9s ok (id %d, key %s)\n", label, s.ID, s.Key)
-		case s.Verdict != "":
-			fmt.Fprintf(stdout, "%-9s ok (id %d, verdict %s)\n", label, s.ID, s.Verdict)
-		default:
-			fmt.Fprintf(stdout, "%-9s ok (id %d)\n", label, s.ID)
-		}
+		printE2EStep(stdout, s)
 
 		return nil
+	})
+}
+
+// printE2EStep prints one step of the check as a line of text.
+func printE2EStep(w io.Writer, s e2eStep) {
+	label := s.Step + ":"
+	switch {
+	case s.Outcome != "ok":
+		fmt.Fprintf(w, "%-9s %s: %s\n", label, s.Outcome, s.Message)
+	case s.Key != "":
+		fmt.Fprintf(w, "%-9s ok (id %d, key %s)\n", label, s.ID, s.Key)
+	case s.Verdict != "":
+		fmt.Fprintf(w, "%-9s ok (id %d, verdict %s)\n", label, s.ID, s.Verdict)
+	default:
+		fmt.Fprintf(w, "%-9s ok (id %d)\n", label, s.ID)
 	}
+}
+
+// doctorE2E runs the check, handing each step to emit; the error of a
+// failed step is returned marked as reported.
+func doctorE2E(getenv func(string) string, mf modeFlags, stderr io.Writer, emit func(e2eStep) error) error {
 	fail := func(step string, err error) error {
 		s := e2eStep{Step: step, Outcome: "error", Message: describeErr(err)}
 		var ae *client.APIError

@@ -65,6 +65,7 @@ var commands = []command{
 	{"version", "print the client version", runVersion},
 	{"schema", "schema [<kind> [<version>]]: list the schemas or print one", runSchema},
 	{"skill", "skill render <form> [--server URL]: print the submission guidance in one form | skill render docs --out DIR: write the agentfeedback-docs skill | skill render agent-plugin|marketplace --out DIR: write the plugin bundle or a marketplace root | skill reminder: print the one-line reminder older installs run at a session start (install now wires prime)", runSkill},
+	{"init", initSynopsis + ": set up this machine in one pass: local reporting unless a server is named (config.toml is written only then), wire the detected harnesses as install does, run the doctor --e2e check, and print the next steps", runInit},
 	{"install", installSynopsis + ": wire the agentfeedback skill, hooks and the rule in each global instruction file (or with --mcp an MCP entry) into the coding-agent harnesses; no harness named lists them; --check reports the rule sections and changes nothing; --project writes the pointer section into the repository's instruction file", runInstall},
 	{"prime", primeSynopsis + ": print the submission guidance a session starts with (what the session-start hooks run)", runPrime},
 	{"uninstall", uninstallSynopsis + ": remove exactly what install added, restoring untouched files from their backups", runUninstall},
@@ -76,7 +77,7 @@ var commands = []command{
 
 const helpFooter = `
 Add --json to help, doctor, version, schema, list, get or stats for JSON output.
-First-time setup: printf '%%s' "$KEY" | agentfeedback doctor --init --url URL --key-from-stdin
+First-time setup: agentfeedback init (local by default; agentfeedback init --server URL for a server)
 
 Local mode: with no server URL configured, every client command works against the data directory
   ${XDG_DATA_HOME:-~/.local/share}/agentfeedback/agentfeedback.db with no server; --local forces it, --server URL targets a server once.

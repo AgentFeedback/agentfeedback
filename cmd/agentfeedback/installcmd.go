@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	installSynopsis   = "install [all|<harness>...] [--server local|cloud|URL] [--mcp] [--with-reminder=false] [--docs] [--dry-run] [--list] [--json] | install --check [all|<harness>...] [--project] [--json] | install --project [--yes] [--uninstall] [--dry-run]"
+	installSynopsis   = "install [all|<harness>...] [--server local|cloud|URL] [--mcp] [--with-reminder=false] [--no-hooks] [--docs] [--dry-run] [--list] [--json] | install --check [all|<harness>...] [--project] [--json] | install --project [--yes] [--uninstall] [--dry-run]"
 	uninstallSynopsis = "uninstall all|<harness>... [--dry-run] [--json]"
 )
 
@@ -123,6 +123,7 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 	mcp := fs.Bool("mcp", false, "add an MCP entry instead of the skill and the hooks: for local, a stdio entry that runs this binary's mcp command; for a server, a URL entry")
 	docs := fs.Bool("docs", false, "also install the agentfeedback-docs skill (reference docs for integrators and operators)")
 	reminder := fs.Bool("with-reminder", true, "add a session-start hook that runs agentfeedback prime, where the harness supports one; --with-reminder=false leaves it out")
+	noHooks := fs.Bool("no-hooks", false, "wire no hooks (neither the failure note and end-of-turn flush nor the session-start reminder); the skill and the rule only")
 	dryRun := fs.Bool("dry-run", false, "print what would change and change nothing")
 	list := fs.Bool("list", false, "list the harnesses and how they are wired, and change nothing")
 	asJSON := fs.Bool("json", false, "with the list or --check: print one JSON object instead of the table")
@@ -158,7 +159,7 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 		return runInstallProject(*uninstallProject, *yes, *dryRun, stdin, stdout, stderr)
 	}
 	if err := checkInstallSupported("install"); err != nil {
-		steps, warnings := manualSteps(pos, *server, stderr)
+		steps, warnings := manualSteps("install", pos, *server, stderr)
 
 		return printInstallOutcome(stdout, installOutcome{Manual: steps, Warnings: warnings}, err)
 	}
@@ -173,11 +174,27 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 		return listHarnesses(env, *asJSON, stdout)
 	}
 
+	out, err := wireHarnesses(env, pos, wireOptions{mcp: *mcp, docs: *docs, reminder: *reminder, reminderAsked: reminderAsked, noHooks: *noHooks, dryRun: *dryRun},
+		func() (string, bool, error) { return resolveInstallServer(os.Getenv, env, *server, stdin, stderr) }, "install", stderr)
+
+	return printInstallOutcome(stdout, out, err)
+}
+
+// wireOptions are the choices of one install run.
+type wireOptions struct {
+	mcp, docs, reminder, reminderAsked, noHooks, dryRun bool
+}
+
+// wireHarnesses wires the harnesses pos names (all: every detected one, plus
+// the ones named beside it) and reports on stderr under command. resolve
+// picks the server; it runs under the lock, after the harnesses are known.
+// The outcome holds what the run did even when err is set.
+func wireHarnesses(env harness.Env, pos []string, o wireOptions, resolve func() (string, bool, error), command string, stderr io.Writer) (installOutcome, error) {
 	// The lock is held from before the manifest is first read to the end
 	// of the run.
-	unlock, err := harness.Lock(env, stderr, "install")
+	unlock, err := harness.Lock(env, stderr, command)
 	if err != nil {
-		return printInstallOutcome(stdout, installOutcome{}, installErr(err))
+		return installOutcome{}, installErr(err)
 	}
 	defer unlock()
 	names := pos
@@ -190,12 +207,12 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 			}
 		}
 		if len(names) == 0 {
-			return printInstallOutcome(stdout, installOutcome{}, errInstallNoneDetected())
+			return installOutcome{}, errInstallNoneDetected()
 		}
 	}
 	names = dedupe(names)
 	mode := harness.ModeCLI
-	if *mcp {
+	if o.mcp {
 		mode = harness.ModeMCP
 	}
 	// Under all, a detected harness that cannot be wired in this mode is
@@ -206,7 +223,7 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 		for _, n := range names {
 			if ok, reason := harness.Supports(n, mode); !ok && !slices.Contains(pos, n) {
 				skipped = append(skipped, harness.HarnessStatus{Name: n, Mode: "-", Skill: "-", MCP: "-", Hook: "-", Reminder: "-", Docs: "-", Rule: "-",
-					Notes: []string{reason + "; it was left out of install all"}})
+					Notes: []string{reason + "; it was left out of " + command + " all"}})
 
 				continue
 			}
@@ -214,7 +231,7 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 		}
 		names = kept
 		if len(names) == 0 {
-			return printInstallOutcome(stdout, installOutcome{}, errInstallNoneSupported(skipped, mode))
+			return installOutcome{}, errInstallNoneSupported(skipped, mode)
 		}
 	}
 	// Detection is read before the run, which may create a harness's
@@ -226,19 +243,19 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 
 	bin, err := binaryPath()
 	if err != nil {
-		return printInstallOutcome(stdout, installOutcome{}, err)
+		return installOutcome{}, err
 	}
 	warnings := pathWarnings(bin)
 	for _, w := range warnings {
-		fmt.Fprintf(stderr, "agentfeedback install: warning: %s\n", w)
+		fmt.Fprintf(stderr, "agentfeedback %s: warning: %s\n", command, w)
 	}
-	srv, configExists, err := resolveInstallServer(os.Getenv, env, *server, stdin, stderr)
+	srv, configExists, err := resolve()
 	if err != nil {
-		return printInstallOutcome(stdout, installOutcome{}, err)
+		return installOutcome{}, err
 	}
-	if *mcp && srv != serverLocal {
+	if o.mcp && srv != serverLocal {
 		if os.Getenv(envAPIKey) == "" {
-			fmt.Fprintf(stderr, "agentfeedback install: warning: %s is not set here; the harnesses read the key from it, so set it in the environment they start from\n", envAPIKey)
+			fmt.Fprintf(stderr, "agentfeedback %s: warning: %s is not set here; the harnesses read the key from it, so set it in the environment they start from\n", command, envAPIKey)
 		}
 	}
 
@@ -247,18 +264,18 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 	}
 	res, err := env.Run(harness.Request{
 		Harnesses: names,
-		Options:   harness.Options{Mode: mode, Reminder: *reminder, ReminderAsked: reminderAsked, Docs: *docs, Server: srv, Binary: bin},
-		DryRun:    *dryRun,
+		Options:   harness.Options{Mode: mode, Reminder: o.reminder, ReminderAsked: o.reminderAsked, NoHooks: o.noHooks, Docs: o.docs, Server: srv, Binary: bin},
+		DryRun:    o.dryRun,
 	})
 	out := installOutcome{Status: res.Status, Harnesses: res.Harnesses, Changed: res.Changed, Backups: res.Backups, Warnings: warnings}
 	if err != nil {
-		return printInstallOutcome(stdout, out, installErr(err))
+		return out, installErr(err)
 	}
 	for i := range out.Harnesses {
 		if undetected[out.Harnesses[i].Name] {
 			out.Harnesses[i].Notes = append(out.Harnesses[i].Notes, out.Harnesses[i].Name+" was not detected on this machine; it was wired anyway")
 		}
-		if *dryRun {
+		if o.dryRun {
 			for _, c := range res.Commands {
 				if out.Harnesses[i].Name == "claude-code" {
 					out.Harnesses[i].Notes = append(out.Harnesses[i].Notes, "would run: "+c)
@@ -270,9 +287,9 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 	if !configExists && srv != serverLocal {
 		out.Next = append(out.Next, `printf '%s' "$KEY" | agentfeedback doctor --init --url `+srv+` --key-from-stdin`)
 	}
-	report(stderr, "install", out, res.Commands, *dryRun)
+	report(stderr, command, out, res.Commands, o.dryRun)
 
-	return printInstallOutcome(stdout, out, nil)
+	return out, nil
 }
 
 // runUninstall removes what the manifest records for the named harnesses.

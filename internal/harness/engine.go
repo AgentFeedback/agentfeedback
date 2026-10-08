@@ -995,7 +995,7 @@ func (p *plan) install(name string, o Options) error {
 		}
 		final[i] = it
 	}
-	s.record = &HarnessRecord{Mode: o.Mode, Reminder: o.Reminder && o.Mode == ModeCLI, Docs: o.Docs, Items: final}
+	s.record = &HarnessRecord{Mode: o.Mode, Reminder: o.Reminder && o.Mode == ModeCLI && !o.NoHooks, Docs: o.Docs, Items: final}
 	if o.Mode == ModeCLI || o.stdio() {
 		s.record.Binary = o.Binary
 	}

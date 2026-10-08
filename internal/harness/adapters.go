@@ -339,6 +339,8 @@ type Options struct {
 	// ReminderAsked is whether Reminder was given on the command line; the
 	// notes about a reminder that does not apply appear only then.
 	ReminderAsked bool
+	// NoHooks leaves out every hook, the session-start reminder included.
+	NoHooks bool
 	// Docs adds the agentfeedback-docs skill, in either mode.
 	Docs   bool
 	Server string
@@ -408,12 +410,14 @@ func (p *plan) wiring(name string, o Options) (desire, error) {
 	for _, dir := range a.SkillDirs(p.env) {
 		d.items = append(d.items, fileItem(KindSkillFile, RoleSkill, filepath.Join(dir, "agentfeedback", "SKILL.md"), skill))
 	}
-	if a.hook != nil {
+	if a.hook != nil && !o.NoHooks {
 		items, notes := a.hook(p, o)
 		d.items = append(d.items, items...)
 		d.notes = append(d.notes, notes...)
 	}
-	if o.Reminder && o.ReminderAsked && !a.Hook.Reminder {
+	if o.Reminder && o.ReminderAsked && o.NoHooks {
+		d.notes = append(d.notes, "--with-reminder does not apply with --no-hooks: the reminder is a hook")
+	} else if o.Reminder && o.ReminderAsked && !a.Hook.Reminder {
 		d.notes = append(d.notes, "the session-start reminder is not supported for "+name+"; nothing was added for it")
 	}
 	if f := a.ruleFile(p.env); f != "" {

@@ -225,6 +225,31 @@ class Commands(unittest.TestCase):
         self.assertEqual(self.skipped(pb.STACK_ROUTE, {}), {(pb.STACK, "S4")})
         self.assertEqual(self.skipped(pb.STACK_ROUTE, {"AF_PLAYBOOK_ADDRESS": "0.0.0.0"}), set())
         self.assertEqual(self.skipped(pb.CLIENT_ROUTE, {}), set())
+        self.assertEqual(self.skipped(pb.LOCAL_ROUTE, {}), set())
+
+    def test_local_route_has_no_server(self):
+        steps = [e.step for e in pb.LOCAL_ROUTE]
+        self.assertNotIn("1", steps)
+        self.assertNotIn("2.2", steps)
+        self.assertEqual({e.user for e in pb.LOCAL_ROUTE}, {"local"})
+        self.assertEqual(next(iter(pb.ROUTES)), "client-local")
+        ctx = pb.answers({})
+        ctx.values["binary"] = "/b"
+        pb.begin("client-local", ctx)
+        self.assertEqual(ctx.values["target"], "local")
+        self.assertNotIn("binary", ctx.values)
+        pb.begin("client", ctx)
+        self.assertEqual(ctx.values["target"], "server")
+
+    def test_local_init_adds_local(self):
+        docs = pb.read_docs()
+        for playbook, want in (("client-local", True), ("client", False)):
+            ctx = pb.answers({})
+            pb.begin(playbook, ctx)
+            cmd = next(c for e, c, _ in pb.commands(docs, pb.ROUTES[playbook], ctx, "v4.0.0", None) if e.step == "2.3")
+            self.assertEqual(cmd.endswith(" --local"), want, cmd)
+        with self.assertRaises(pb.GateError):
+            pb.local_init("agentfeedback install claude-code --json")
 
     def test_answers_are_validated(self):
         self.assertEqual(pb.answers({"AF_PLAYBOOK_HARNESS": ""}).values["harness"], "claude-code")
@@ -267,26 +292,39 @@ class Verify(unittest.TestCase):
             with self.assertRaises(pb.GateError):
                 pb.x_binary(out, c)
 
-    def test_install_and_list(self):
-        c = self.ctx(harness="claude-code")
-        h = '{"name":"claude-code","mode":"cli","skill":"wired","hook":"wired"}'
-        pb.x_install('{"status":"installed","harnesses":[' + h + ']}', c)
-        pb.x_list('{"harnesses":[' + h + ']}', c)
+    def test_init_and_list(self):
+        h = {"name": "claude-code", "mode": "cli", "skill": "wired", "hook": "wired"}
+        e2e = [{"step": "submit", "outcome": "ok", "id": 1}, {"step": "list", "outcome": "ok", "id": 1}, {"step": "mark", "outcome": "ok", "id": 1}]
+        local = {"status": "ok", "mode": "local", "harnesses": [h], "e2e": e2e}
+        remote = {**local, "mode": "remote", "server": "http://127.0.0.1:8090", "config": "/c.toml"}
+        c = self.ctx(harness="claude-code", target="local")
+        pb.x_init(pb.json.dumps(local), c)
+        pb.x_list(pb.json.dumps({"harnesses": [h]}), c)
+        s = self.ctx(harness="claude-code", target="server", URL="http://127.0.0.1:8090")
+        pb.x_init(pb.json.dumps(remote), s)
+        for ctx, change in ((c, {"mode": "remote"}), (c, {"config": "/c.toml"}), (s, {"server": "http://other:1"}), (s, {"mode": "local"}),
+                            (c, {"harnesses": [{**h, "hook": "missing"}]}), (c, {"status": "error"}), (c, {"e2e": e2e[:2]}),
+                            (c, {"e2e": e2e[:2] + [{**e2e[2], "id": 2}]}), (c, {"e2e": e2e[:2] + [{**e2e[2], "outcome": "error"}]})):
+            base = local if ctx is c else remote
+            with self.assertRaises(pb.GateError, msg=change):
+                pb.x_init(pb.json.dumps({**base, **change}), ctx)
         with self.assertRaises(pb.GateError):
-            pb.x_install('{"status":"installed","harnesses":[' + h.replace('"hook":"wired"', '"hook":"missing"') + ']}', c)
-        with self.assertRaises(pb.GateError):
-            pb.x_list('{"harnesses":[' + h.replace('"cli"', '"-"') + ']}', c)
-        with self.assertRaises(pb.GateError):
-            pb.x_install('{"status":"refused","harnesses":[]}', c)
+            pb.x_list(pb.json.dumps({"harnesses": [{**h, "mode": "-"}]}), c)
 
     def test_doctor(self):
-        c = self.ctx(URL="http://127.0.0.1:8090")
-        ok = {"status": "ok", "problems": [], "meta": {"ok": True}, "url": {"value": "http://127.0.0.1:8090", "source": "config"}, "api_key": {"set": True, "source": "config"}}
+        c = self.ctx(URL="http://127.0.0.1:8090", target="server")
+        ok = {"status": "ok", "problems": [], "mode": "remote", "meta": {"ok": True}, "url": {"value": "http://127.0.0.1:8090", "source": "config"}, "api_key": {"set": True, "source": "config"}}
         pb.x_doctor(pb.json.dumps(ok), c)
         for change in ({"status": "error"}, {"problems": ["too old"]}, {"url": {"value": "http://127.0.0.1:8090", "source": "env"}},
-                       {"api_key": {"set": True, "source": "env"}}, {"meta": None}):
-            with self.assertRaises(Exception, msg=change):
+                       {"api_key": {"set": True, "source": "env"}}, {"meta": None}, {"mode": "local"}):
+            with self.assertRaises(pb.GateError, msg=change):
                 pb.x_doctor(pb.json.dumps({**ok, **change}), c)
+        local = self.ctx(target="local")
+        lok = {"status": "ok", "problems": [], "mode": "local", "meta": {"ok": True}, "database": {"path": "/d.db", "exists": True}, "url": {"value": "", "source": ""}}
+        pb.x_doctor(pb.json.dumps(lok), local)
+        for change in ({"mode": "remote"}, {"database": {"path": "/d.db", "exists": False}}, {"url": {"value": "http://x", "source": "env"}}, {"meta": {"ok": False}}):
+            with self.assertRaises(pb.GateError, msg=change):
+                pb.x_doctor(pb.json.dumps({**lok, **change}), local)
 
     def test_service_and_exposure(self):
         c = self.ctx(port="8090", address="0.0.0.0")

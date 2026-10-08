@@ -13,16 +13,19 @@ and is not excluded with a reason, or when an `sh` block sits outside every
 step. `list` prints the commands in run order with the human's answers filled
 in; values that earlier steps print stay placeholders. `run` does the same
 checks, then starts the container of tests/playbooks/Dockerfile (systemd as
-PID 1, so it runs privileged), runs the stack playbook as the user `stack` and
-then the client playbook as the user `client` against the server the stack
-playbook started, checks each step's exit code and Verify condition, and
-prints one JSON line per step it reaches; the run stops at the first failure.
+PID 1, so it runs privileged), runs the client playbook in local mode as the
+user `local` (no server anywhere), the stack playbook as the user `stack`,
+and the client playbook again as the user `client` against the server the
+stack playbook started, checks each step's exit code and Verify condition,
+and prints one JSON line per step it reaches; the run stops at the first
+failure.
 
 The release under test comes from `github` (the published tag, downloaded as
 an agent would), a release directory such as GoReleaser's dist/release
 (read through file://), or `tree` (a linux archive of the working tree,
 built under the tag). Only step 2.1's command is rewritten for the last two:
-its release root becomes the file:// copy.
+its release root becomes the file:// copy. In local mode step 2.3's command
+gets the --local its prose adds.
 
 The human's answers come from AF_PLAYBOOK_* variables, named after the
 playbooks' placeholders and decisions (HUMAN_INPUTS below). Unset means no,
@@ -233,19 +236,31 @@ def x_written(out: str, c: Ctx) -> None:
     need(v.get("status") == "written" and v.get("path"), f"not written: {v}")
 
 
-def x_install(out: str, c: Ctx) -> None:
+def x_init(out: str, c: Ctx) -> None:
     v = last_json(out)
-    need(v.get("status") in ("installed", "unchanged"), f"install status {v.get('status')!r}")
+    need(v.get("status") == "ok", f"init status {v.get('status')!r}: {v.get('message')}")
+    if c.values["target"] == "local":
+        need(v.get("mode") == "local" and not v.get("server") and not v.get("config"), f"init is not local: {v}")
+    else:
+        need(v.get("mode") == "remote" and v.get("server") == c.values["URL"], f"init does not report to {c.values['URL']}: {v}")
     h = c.values["harness"]
     entry = next((e for e in v.get("harnesses", []) if e.get("name") == h), None)
     need(entry is not None, f"{h} is not in the outcome: {v}")
     need(entry.get("skill") == "wired" and entry.get("hook") == ("-" if h in NO_HOOK else "wired"), f"{h} is not wired: {entry}")
+    steps = v.get("e2e") or []
+    need([s.get("step") for s in steps] == ["submit", "list", "mark"] and all(s.get("outcome") == "ok" for s in steps), f"init e2e: {steps}")
+    need(len({s.get("id") for s in steps}) == 1 and steps[0].get("id") is not None, f"init e2e ids differ: {steps}")
 
 
 def x_doctor(out: str, c: Ctx) -> None:
     v = last_json(out)
     need(v.get("status") == "ok" and v.get("problems") == [], f"doctor: {v.get('status')!r} {v.get('problems')!r}")
-    need(v.get("meta", {}).get("ok") is True, f"doctor meta: {v.get('meta')}")
+    need((v.get("meta") or {}).get("ok") is True, f"doctor meta: {v.get('meta')}")
+    if c.values["target"] == "local":
+        need(v.get("mode") == "local" and (v.get("database") or {}).get("exists") is True, f"doctor is not local: {v.get('mode')!r} {v.get('database')}")
+        need((v.get("url") or {}).get("value") == "", f"doctor url: {v.get('url')}")
+        return
+    need(v.get("mode") == "remote", f"doctor mode: {v.get('mode')!r}")
     need(v.get("url") == {"value": c.values["URL"], "source": "config"}, f"doctor url: {v.get('url')}")
     key = v.get("api_key", {})
     need(key.get("set") is True and key.get("source") == "config", f"doctor api_key: {key}")
@@ -320,7 +335,7 @@ def unless(name: str) -> Callable[[Ctx], str | None]:
 def client_route(user: str) -> list[Entry]:
     """Client steps 2.3 to 3.2, as both playbooks run them."""
     return [
-        Entry(CLIENT, "2.3", user, expect=x_install),
+        Entry(CLIENT, "2.3", user, expect=x_init),
         Entry(CLIENT, "3.1", user, expect=x_doctor),
         Entry(CLIENT, "3.2", user, expect=x_e2e),
     ]
@@ -351,7 +366,23 @@ CLIENT_ROUTE = [
     Entry(CLIENT, "4", "client", expect=x_list),
 ]
 
-ROUTES = {"stack": STACK_ROUTE, "client": CLIENT_ROUTE}
+# The client playbook as an agent runs it when the human names no server:
+# step 1 asks and runs nothing, step 2.2 is skipped, and there is no server.
+LOCAL_ROUTE = [
+    Entry(CLIENT, "0", "local", expect=x_platform),
+    Entry(CLIENT, "2.1", "local", expect=x_binary),
+    *client_route("local"),
+    Entry(CLIENT, "4", "local", expect=x_list),
+]
+
+ROUTES = {"client-local": LOCAL_ROUTE, "stack": STACK_ROUTE, "client": CLIENT_ROUTE}
+
+
+def begin(playbook: str, ctx: Ctx) -> None:
+    """Reset what one playbook's run knows: each installs its own binary, and
+    only the local one reports to no server."""
+    ctx.values.pop("binary", None)
+    ctx.values["target"] = "local" if playbook == "client-local" else "server"
 
 # Steps no route runs, and why. `check` still reads their structure; the
 # release's paste check into real harnesses covers what they do.
@@ -455,6 +486,13 @@ def pin_release(cmd: str, tag: str, file_root: str | None) -> str:
     return cmd
 
 
+def local_init(cmd: str) -> str:
+    """Client step 2.3 as its prose says for "server": "local": --local at
+    the end."""
+    need(re.fullmatch(r'"<binary>" init .*--json', cmd) is not None, "step 2.3's command no longer has the shape the gate extends")
+    return cmd + " --local"
+
+
 def commands(docs: dict[str, str], route: list[Entry], ctx: Ctx, tag: str, file_root: str | None):
     """(entry, command or None, skip reason) in run order, resolving what is known."""
     parsed = {n: parse(t) for n, t in docs.items()}
@@ -463,6 +501,8 @@ def commands(docs: dict[str, str], route: list[Entry], ctx: Ctx, tag: str, file_
         cmd = parsed[e.doc][e.step].sh()[0]
         if e.doc == CLIENT and e.step == "2.1":
             cmd = pin_release(cmd, tag, file_root)
+        if e.doc == CLIENT and e.step == "2.3" and ctx.values.get("target") == "local":
+            cmd = local_init(cmd)
         yield e, (None if reason else cmd), reason
 
 
@@ -658,9 +698,9 @@ def run(tag: str, source: str, keep: bool) -> int:
             box.wait()
             exec_env = {"AGENT_FEEDBACK_RELEASE_URL": file_root} if file_root else {}
             for playbook, route in ROUTES.items():
-                # Each playbook installs its own binary; the client joins the
-                # stack's server at the URL step S5 set, as another machine would.
-                ctx.values.pop("binary", None)
+                # The client joins the stack's server at the URL step S5 set,
+                # as another machine would.
+                begin(playbook, ctx)
                 for e, cmd, reason in commands(docs, route, ctx, tag, file_root):
                     if e.doc == STACK and e.step == "S5":
                         ctx.values["URL"] = f"http://{loopback(ctx.values.get('address', '127.0.0.1'))}:{ctx.values['port']}"
@@ -706,6 +746,7 @@ def list_commands() -> int:
         raise GateError("the playbooks fail the structure check:\n  " + "\n  ".join(problems))
     ctx = answers(dict(os.environ))
     for playbook, route in ROUTES.items():
+        begin(playbook, ctx)
         for e, cmd, reason in commands(docs, route, ctx, "<tag>", None):
             print(f"# {playbook} {label(e)} as {e.user}" + (f": skipped, {reason}" if reason else ""))
             if cmd:

@@ -12,21 +12,44 @@ Install the AgentFeedback client from https://github.com/AgentFeedback/agentfeed
 Install the AgentFeedback stack from https://github.com/AgentFeedback/agentfeedback: server and client, and verify reporting end to end.
 ```
 
-An inbox for feedback from AI coding agents. Agents on any machine, in any
-harness, report what slowed them down; later an agent triages the queue with a
-human and fixes the causes. Go, SQLite, one container, one API key.
+An inbox for feedback from AI coding agents. Agents report what slowed them
+down (a missing or wrong doc, a tool that misbehaved, stale config); later an
+agent triages the reports with a human and fixes the causes. Local first: one
+binary keeps the reports in a SQLite database on your machine, with no server
+and no key. A server is optional, for collecting reports from several
+machines.
+
+## Start on this machine
+
+Install the `agentfeedback` binary with the checksum-verified command of
+[`AGENT-INSTALL.md` step 2.1](AGENT-INSTALL.md#step-21-the-binary), then:
+
+```bash
+agentfeedback init
+```
+
+`init` asks two questions: where reports go (Enter for local) and which of
+the detected coding-agent harnesses to wire (Enter for all). It installs the
+`agentfeedback` skill, a one-line rule in each harness's global instruction
+file and hooks that suggest a report when tool calls keep failing, files and
+marks one test report, and prints what it did. `agentfeedback init --yes`
+asks nothing and takes those defaults. Then:
+
+```bash
+agentfeedback ui                   # browse the reports in a read-only page on this machine
+agentfeedback list --open          # the reports not yet processed
+agentfeedback uninstall all        # remove what init wired
+```
+
+Triage the reports with the `agentfeedback-triage` skill (`init` prints the
+command that installs it): invoke `/agentfeedback-triage` in the harness. To
+report to a server instead, run `agentfeedback init --server <URL>`; to run
+one, follow [`AGENT-INSTALL-STACK.md`](AGENT-INSTALL-STACK.md) or
+[`docs/operate.md`](docs/operate.md).
 
 This is the open-source, self-hostable AgentFeedback
 ([agentfeedback.dev](https://agentfeedback.dev)). A hosted version runs at
-[agentfeedback.io](https://agentfeedback.io); it speaks the same API, so the
-skills below work against either.
-
-Two parts:
-
-| Part | What it is | Where |
-|---|---|---|
-| **The service** | HTTP API that stores write-once submissions (frictions, review runs, events) and a processed mark | this repository, one binary |
-| **Three skills** | `agentfeedback`: submit and read, installed for every harness on every machine. `agentfeedback-triage`: process the queue, only when the user invokes it (`/agentfeedback-triage`). `agentfeedback-docs`: the reference docs, schemas and OpenAPI document, generated, for agents that integrate with or operate the service | [`skills/`](skills/) |
+[agentfeedback.io](https://agentfeedback.io); it speaks the same API.
 
 ## Start here
 
@@ -34,36 +57,16 @@ Two parts:
 |---|---|
 | Have an agent install the client, or the server and the client | [`AGENT-INSTALL.md`](AGENT-INSTALL.md), [`AGENT-INSTALL-STACK.md`](AGENT-INSTALL-STACK.md) (from release 4.0.0) |
 | Point an agent at every machine-readable document (`llms.txt`) | [`llms.txt`](llms.txt) |
-| Install the skill and file feedback from an agent | [`skills/agentfeedback` at v3.0.0](https://github.com/AgentFeedback/agentfeedback/tree/v3.0.0/skills/agentfeedback) (the bash client of the running v3.0.0 release) |
-| Triage the queue | [`skills/agentfeedback-triage/SKILL.md`](skills/agentfeedback-triage/SKILL.md) |
+| See what an agent is taught to file and how | [`skills/agentfeedback/SKILL.md`](skills/agentfeedback/SKILL.md) (installed by `agentfeedback init`) |
+| Triage the reports | [`skills/agentfeedback-triage/SKILL.md`](skills/agentfeedback-triage/SKILL.md) |
 | Turn past coding-agent sessions on this machine into feedback (`agentfeedback sessions`) | [`docs/sessions.md`](docs/sessions.md) |
 | Call the API directly | [`docs/api.md`](docs/api.md) |
 | Give an agent the reference docs, schemas and OpenAPI document (integrate, operate) | [`skills/agentfeedback-docs/SKILL.md`](skills/agentfeedback-docs/SKILL.md) (installed by `agentfeedback install --docs`) |
-| Run, deploy, back up, migrate | [`docs/operate.md`](docs/operate.md) |
+| Wire harnesses, run a server, back up, migrate | [`docs/operate.md`](docs/operate.md) |
 | Uninstall the skills or the service | [`docs/operate.md#uninstall`](docs/operate.md#uninstall) |
 | Change the code | [`AGENTS.md`](AGENTS.md) then [`docs/develop.md`](docs/develop.md) |
 | Trust boundary and credentials | [`docs/security.md`](docs/security.md) |
 | Versions and upgrade notes | [`docs/releases.md`](docs/releases.md) |
-
-## Five-minute local run
-
-```bash
-git clone https://github.com/AgentFeedback/agentfeedback.git && cd agentfeedback
-git checkout v3.0.0   # the running release; its bash client is skills/agentfeedback/scripts/
-cd infra/agentfeedback && test ! -e .env && umask 077 && printf 'API_KEY=%s\n' "$(openssl rand -hex 32)" > .env
-docker compose up -d --build --wait
-export AGENT_FEEDBACK_URL=http://127.0.0.1:8090 AGENT_FEEDBACK_API_KEY=$(sed -n 's/^API_KEY=//p' .env)
-bash ../../skills/agentfeedback/scripts/submit-friction.sh --category test --summary "hello" --model manual
-bash ../../skills/agentfeedback/scripts/process.sh list
-```
-
-Needs Docker with Compose, `curl`, `jq`, `openssl`. The service binds
-`127.0.0.1:8090`; the database lives in a named volume.
-
-## Uninstall
-
-The skills and the service are removed independently;
-back up first. Commands in [`docs/operate.md#uninstall`](docs/operate.md#uninstall).
 
 ## What it is not
 
@@ -71,4 +74,4 @@ Not a review runner, benchmark, dashboard or automated fixer. It stores what
 agents report and lets a processor work through it. Records are never
 overwritten: a correction is a new submission.
 
-MIT licensed. Current stable release: [v3.0.0](https://github.com/AgentFeedback/agentfeedback/releases/tag/v3.0.0).
+MIT licensed.

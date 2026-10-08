@@ -235,12 +235,37 @@ verdict `install-check`.
 ## Wire the harnesses
 
 On every machine whose coding agents should file feedback, with the
-`agentfeedback` binary installed and the client configured (`doctor --init`):
+`agentfeedback` binary installed, `agentfeedback init` does the whole setup
+in one pass: where reports go (local unless a server is named; `config.toml`
+is written only for a server), the harnesses (all detected by default), the
+`doctor --e2e` check, and the next steps:
+
+```bash
+agentfeedback init                               # on a terminal: asks local or a server URL, then which harnesses
+agentfeedback init --yes                         # no questions: local, every detected harness
+agentfeedback init --server URL --key-from-stdin --harnesses claude-code,codex   # a server, its key on stdin
+agentfeedback init --yes --no-hooks              # the skill and the rule, no hooks; --mcp an MCP entry instead, as install --mcp
+```
+
+On a terminal, a server's key is asked without echo (Enter skips it, and the
+check then waits for it). A configured server is kept: `init --local`, a
+different `--server` and `--key-from-stdin` are refused, and an existing
+`config.toml` is never edited. With no server configured but one recorded by
+an earlier `install --server`, Enter at the prompt keeps it, and without a
+terminal `init` needs `--server` or `--local`. The configuration is written
+after the wiring, so a refused run leaves none behind. `--json` prints one object (`status`, `mode`, `server`, `config`,
+`data_dir`, `database`, `harnesses`, `hooks`, `e2e`, `restart`, `next`).
+`init` never writes a repository's instruction file (`install --project`
+does).
+
+`install` wires the harnesses alone, against the configured server or local
+mode:
 
 ```bash
 agentfeedback install                            # list the harnesses: detected, mode, skill, mcp, hook, reminder, docs, rule; changes nothing (also --list, --json)
 agentfeedback install all                        # every detected harness: the skill, hooks running agentfeedback hook, a session-start hook running agentfeedback prime, and the rule in the global instruction file
 agentfeedback install claude-code --with-reminder=false   # without the session-start hook
+agentfeedback install claude-code --no-hooks     # no hooks at all, the session-start one included: the skill and the rule
 agentfeedback install --check                    # is the rule section current in each detected or recorded harness? changes nothing; exit 3 when one is missing or stale
 agentfeedback install --project --yes            # the pointer section in this repository's AGENTS.md (or CLAUDE.md); --uninstall removes it
 agentfeedback prime                              # the guidance the session-start hook prints (--format cursor: Cursor's JSON)
@@ -258,7 +283,7 @@ Unknown names exit 2. The last stdout line is a JSON outcome (`status`
 `installed`, `unchanged`, `uninstalled`, `dry_run` or `error`, `harnesses`,
 `changed`, `backups`, `next`); progress goes to stderr. Running install twice
 changes nothing the second time (`unchanged`); a changed mode, binary path,
-server, `--with-reminder` or `--docs` replaces what the previous run added.
+server, `--with-reminder`, `--no-hooks` or `--docs` replaces what the previous run added.
 
 - **The rule.** In CLI mode install writes one section into each harness's
   global instruction file (the Rule column): a begin marker
