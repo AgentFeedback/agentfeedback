@@ -83,8 +83,11 @@ func TestMcp_StdioOnLocalDatabase(t *testing.T) {
 		t.Errorf("server info %+v", init.ServerInfo)
 	}
 	tools, err := cs.ListTools(context.Background(), nil)
-	if err != nil || len(tools.Tools) != 6 {
+	if err != nil || len(tools.Tools) != 9 {
 		t.Fatalf("tools/list: %v, %+v", err, tools)
+	}
+	if st := toolText(t, cs, "sessions_list", map[string]any{}); st["stores"] == nil {
+		t.Errorf("sessions_list: %+v", st)
 	}
 	sub := toolText(t, cs, "submit_feedback", map[string]any{"kind": "friction", "summary": "stdio mcp row", "project": "p1",
 		"payload": map[string]any{"category": "tooling", "details": "d", "suggested_fix": "f"}})

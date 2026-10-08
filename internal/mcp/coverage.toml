@@ -15,11 +15,48 @@
 #     <name> = { reason = "..." }           not set by the tool, and why
 # Operations listed with a reason still list their parameters and body.
 
-# The transports that serve the tools; coverage_test.go checks that every one
-# registers the same tools.
+# The transports that serve the tools. stdio serves the http tools plus the
+# [local] tools; coverage_test.go checks that stdio registers exactly the
+# http tools and the [local] tools, the shared tools identically, and that
+# http registers no [local] tool.
 [transports]
 http = "POST /mcp and POST /mcp/{project}, mounted by internal/api"
-stdio = "agentfeedback mcp, on the local database (internal/localmode)"
+stdio = "agentfeedback mcp, on the local database (internal/localmode), plus the [local] tools"
+
+# Tools with no OpenAPI operation, served on stdio only: they read the
+# machine the server runs on. Each names the CLI command it mirrors, and
+# every argument of the tool maps to a flag or a positional argument of it
+# (cmd/agentfeedback/coverage_test.go checks those exist).
+#   [local.<tool>]             command = "<cli command and subcommand>"
+#   [local.<tool>.arguments]   <name> = { flag = "--name" } or { arg = "<name>" }
+#   [local.<tool>.cli_only]    "--flag" = "<why no tool argument sets it>"
+[local.sessions_list]
+command = "sessions list"
+
+[local.sessions_list.arguments]
+harness = { flag = "--harness" }
+since = { flag = "--since" }
+unprocessed = { flag = "--unprocessed" }
+
+[local.sessions_digest]
+command = "sessions digest"
+
+[local.sessions_digest.arguments]
+refs = { arg = "<harness:id>..." }
+unprocessed = { flag = "--unprocessed" }
+harness = { flag = "--harness" }
+limit = { flag = "--limit" }
+
+[local.sessions_digest.cli_only]
+"--allow-unknown-project" = "a human decision: a session that records no working directory escapes every project rule, so the model that calls the tool cannot admit it"
+
+[local.sessions_mark]
+command = "sessions mark"
+
+[local.sessions_mark.arguments]
+refs = { arg = "<harness:id>..." }
+outcome = { flag = "--outcome" }
+uids = { flag = "--ref" }
 
 [operations.createSubmission]
 tool = "submit_feedback"

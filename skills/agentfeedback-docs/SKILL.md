@@ -25,6 +25,7 @@ The reference docs, JSON Schemas, OpenAPI document and install playbooks of Agen
 - [references/docs/recipes/http-powershell.md](references/docs/recipes/http-powershell.md): AgentFeedback
 - [references/docs/releases.md](references/docs/releases.md): Releases
 - [references/docs/security.md](references/docs/security.md): Security
+- [references/docs/sessions.md](references/docs/sessions.md): Session logs
 - [references/schemas/envelope.v1.json](references/schemas/envelope.v1.json): JSON Schema: AgentFeedback submission envelope
 - [references/schemas/kinds/friction.v1.json](references/schemas/kinds/friction.v1.json): JSON Schema: Friction: what slowed an agent down
 - [references/schemas/kinds/review.v1.json](references/schemas/kinds/review.v1.json): JSON Schema: Review: one completed multi-reviewer run

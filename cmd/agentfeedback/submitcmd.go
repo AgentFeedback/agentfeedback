@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	submitSynopsis = "submit friction --summary S [flags] | submit <kind> [--stdin] [--scrub] [flags] | submit review <run_dir> [--include-outputs] | submit review --sweep [<base>...] [--local | --server URL]"
+	submitSynopsis = "submit friction --summary S [flags] | submit <kind> [--stdin] [--scrub] [--context-from <harness>:<id>#<span> [--ordinal N] [--allow-unknown-project]] [flags] | submit review <run_dir> [--include-outputs] | submit review --sweep [<base>...] [--local | --server URL]"
 	flushSynopsis  = "flush [--hook] [--local | --server URL]"
 	// occurredLayout is occurred_at: UTC with microseconds.
 	occurredLayout = "2006-01-02T15:04:05.000000Z"
@@ -209,12 +209,8 @@ type submitter struct {
 // newSubmitter loads the config file and applies the narrowing rules to the
 // working directory; their warnings go to stderr.
 func newSubmitter(name string, dryRun bool, mf modeFlags, stdout, stderr io.Writer) (*submitter, error) {
-	s := &submitter{name: name, stdout: stdout, stderr: stderr, dryRun: dryRun, mode: mf}
-	path, err := configPath(os.Getenv)
+	s, err := loadSubmitter(name, dryRun, mf, stdout, stderr)
 	if err != nil {
-		return nil, err
-	}
-	if s.file, _, err = loadFileConfig(path); err != nil {
 		return nil, err
 	}
 	if s.dir, err = os.Getwd(); err != nil {
@@ -223,6 +219,21 @@ func newSubmitter(name string, dryRun bool, mf modeFlags, stdout, stderr io.Writ
 	s.decision = collect.Check(s.dir, "", s.file.Collect)
 	for _, w := range s.decision.Warnings {
 		s.warn(w)
+	}
+
+	return s, nil
+}
+
+// loadSubmitter loads the config file and applies no narrowing rule: the
+// caller decides which directory they apply to.
+func loadSubmitter(name string, dryRun bool, mf modeFlags, stdout, stderr io.Writer) (*submitter, error) {
+	s := &submitter{name: name, stdout: stdout, stderr: stderr, dryRun: dryRun, mode: mf}
+	path, err := configPath(os.Getenv)
+	if err != nil {
+		return nil, err
+	}
+	if s.file, _, err = loadFileConfig(path); err != nil {
+		return nil, err
 	}
 
 	return s, nil
@@ -399,6 +410,9 @@ func runEnvelope(kind string, args []string, stdin io.Reader, stdout, stderr io.
 	useStdin := fs.Bool("stdin", false, "read one JSON object from stdin and merge the flags into it")
 	dryRun := fs.Bool("dry-run", false, "print the body and check it locally; send nothing")
 	scrubFlag := fs.Bool("scrub", false, "replace known secret formats in every string value of the body with [REDACTED:<class>] before checking or sending")
+	contextFrom := fs.String("context-from", "", "<harness>:<session id>#<span>: take key, occurred_at, harness, model, project and context from that entry of a session log instead of this process; with flags or --stdin")
+	ordinal := fs.Int("ordinal", 1, "with --context-from: the number of this finding at that span, from 1; enters the key")
+	allowUnknown := fs.Bool("allow-unknown-project", false, "with --context-from: accept a session that records no working directory")
 	pos, err := parseInterleaved(fs, args, stderr)
 	if err != nil {
 		return errFlags("submit", err)
@@ -406,16 +420,36 @@ func runEnvelope(kind string, args []string, stdin io.Reader, stdout, stderr io.
 	if len(pos) != 0 {
 		return errArgs("submit", submitSynopsis)
 	}
+	given := visited(fs)
+	var from *sessionContext
+	if given["context-from"] {
+		if from, err = locateContext(*contextFrom, *ordinal, *allowUnknown, given); err != nil {
+			return err
+		}
+	} else if given["ordinal"] || given["allow-unknown-project"] {
+		return usageErr("--ordinal and --allow-unknown-project apply only with --context-from", "add --context-from <harness>:<session id>#<span>, or drop them")
+	}
 	// The narrowing gate comes before anything reads or checks the input: a
-	// switched-off directory is disabled whatever stdin holds.
-	s, err := newSubmitter("submit", *dryRun, *mf, stdout, stderr)
+	// switched-off directory is disabled whatever stdin holds. With
+	// --context-from the gate is the session's working directory, not this
+	// process's.
+	var s *submitter
+	if from == nil {
+		s, err = newSubmitter("submit", *dryRun, *mf, stdout, stderr)
+	} else {
+		s, err = loadSubmitter("submit", *dryRun, *mf, stdout, stderr)
+	}
 	if err != nil {
 		return err
+	}
+	if from != nil {
+		if err := from.resolve(s); err != nil {
+			return err
+		}
 	}
 	if o, off := s.disabled(); off {
 		return finish("submit", o, stdout)
 	}
-	given := visited(fs)
 
 	var version json.RawMessage
 	if given["schema-version"] {
@@ -481,10 +515,16 @@ func runEnvelope(kind string, args []string, stdin io.Reader, stdout, stderr io.
 		"app": s.file.Context.App, "workspace": s.file.Context.Workspace, "url": s.file.Context.URL,
 		"channel": s.file.Context.Channel, "task_id": s.file.Context.TaskID, "workflow": s.file.Context.Workflow,
 	}
-	collected := collect.Collect(collect.Options{
-		Dir: s.dir, Getenv: os.Getenv, ClientVersion: clientVersion().Version, WithCwd: s.file.Context.Cwd,
-		Context: nonCode, Drop: append(slices.Clone(s.file.Context.Drop), s.decision.Drop...),
-	})
+	var collected collect.Result
+	if from == nil {
+		collected = collect.Collect(collect.Options{
+			Dir: s.dir, Getenv: os.Getenv, ClientVersion: clientVersion().Version, WithCwd: s.file.Context.Cwd,
+			Context: nonCode, Drop: append(slices.Clone(s.file.Context.Drop), s.decision.Drop...),
+		})
+	} else {
+		collected = from.collect(s, nonCode)
+		obj = from.apply(obj)
+	}
 	settings := resolveClient(flagConfig{}, os.Getenv, s.file)
 
 	obj = obj.setString("kind", kind)
@@ -513,7 +553,9 @@ func runEnvelope(kind string, args []string, stdin io.Reader, stdout, stderr io.
 	flagOr("project", "project", collected.Project)
 	flagOr("machine", "machine", settings.Machine.Value, collected.Machine)
 	flagOr("harness", "harness", settings.Harness.Value, collected.Harness)
-	flagOr("model", "model", settings.Model.Value, collected.Model)
+	if from == nil {
+		flagOr("model", "model", settings.Model.Value, collected.Model)
+	}
 	if !obj.has("occurred_at") {
 		obj = obj.setString("occurred_at", nowFunc().UTC().Format(occurredLayout))
 	}
@@ -532,7 +574,23 @@ func runEnvelope(kind string, args []string, stdin io.Reader, stdout, stderr io.
 	} else if len(collected.Context) > 0 {
 		obj = obj.set("context", stringMap(collected.Context).encode())
 	}
-	// --context goes over both.
+	// --context-from's keys go over both.
+	if from != nil {
+		var ctx rawObject
+		if raw, ok := obj.get("context"); ok {
+			if !isObject(raw) {
+				return errContextNotObject()
+			}
+			if ctx, err = parseObject(raw); err != nil {
+				return errContextNotObject()
+			}
+		}
+		for _, m := range stringMap(from.context()) {
+			ctx = ctx.set(m.name, m.raw)
+		}
+		obj = obj.set("context", ctx.encode())
+	}
+	// --context goes over all of them.
 	if len(ctxFlags) > 0 {
 		var ctx rawObject
 		if raw, ok := obj.get("context"); ok {
@@ -556,7 +614,7 @@ func runEnvelope(kind string, args []string, stdin io.Reader, stdout, stderr io.
 	}
 
 	var warnings []client.Warning
-	if *scrubFlag || originSessionScan(obj) {
+	if *scrubFlag || from != nil || originSessionScan(obj) {
 		obj, warnings = scrubBody(obj)
 		for _, w := range warnings {
 			s.warn(w.Code + " " + w.Pointer + ": " + w.Message)

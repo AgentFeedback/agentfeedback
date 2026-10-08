@@ -5,7 +5,8 @@
 // Streamable HTTP (POST /mcp and POST /mcp/{project} in docs/openapi.yaml),
 // where authentication, the body limit and the error shape of transport
 // failures belong to the HTTP layer that mounts the handler. The CLI's
-// agentfeedback mcp serves it over stdio on the local database.
+// agentfeedback mcp serves it over stdio on the local database, with the
+// session tools added (Config.Sessions).
 package mcp
 
 import (
@@ -40,6 +41,10 @@ type Config struct {
 	// CallContext, when set, derives the context of every tools/call; a
 	// transport without the HTTP middleware uses it to attach a request id.
 	CallContext func(ctx context.Context) context.Context
+	// Sessions, when set, adds the session tools (sessions_list,
+	// sessions_digest, sessions_mark). Only the stdio transport sets it:
+	// they read the session logs of the machine the server runs on.
+	Sessions Sessions
 }
 
 // Handler serves MCP for any base URL and project preset.
@@ -160,7 +165,7 @@ func NewServer(cfg Config, base, preset, version string) (*sdk.Server, error) {
 			}
 		})
 	}
-	t := &tools{svc: cfg.Service, preset: preset, errorBody: cfg.ErrorBody, observeCreate: cfg.ObserveCreate}
+	t := &tools{svc: cfg.Service, preset: preset, errorBody: cfg.ErrorBody, observeCreate: cfg.ObserveCreate, sessions: cfg.Sessions}
 	t.register(s)
 	return s, nil
 }

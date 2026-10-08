@@ -74,6 +74,9 @@ var envelopeMembers = []string{"kind", "schema_version", "key", "summary", "mach
 // fourth group's first digit.
 var uuidForm = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
 
+// ValidUID reports whether s has the form of a submission uid.
+func ValidUID(s string) bool { return uuidForm.MatchString(s) }
+
 // Import reads export format 2 and stores its records. The whole body is
 // verified before the write transaction opens (header export_format 2; the
 // trailer last, its count and sha256 matching the raw record lines; each

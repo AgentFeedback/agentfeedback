@@ -14,9 +14,11 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-// coverageFile is coverage.toml: one entry per OpenAPI operation.
+// coverageFile is coverage.toml: one entry per OpenAPI operation, and the
+// [local] commands that have none.
 type coverageFile struct {
 	Operations map[string]*opCoverage `toml:"operations"`
+	Local      map[string]*localEntry `toml:"local"`
 }
 
 // opCoverage is one operation: the command that calls it or the reason none
@@ -253,6 +255,167 @@ func cliProblems(cov *coverageFile) []string {
 	sort.Strings(probs)
 
 	return probs
+}
+
+// localEntry is one [local] command: every flag and positional argument of
+// a subcommand without an OpenAPI operation.
+type localEntry struct {
+	Command string   `toml:"command"`
+	Flags   []string `toml:"flags"`
+	Args    []string `toml:"args"`
+}
+
+// mcpLocal is the [local] table of internal/mcp/coverage.toml.
+type mcpLocal struct {
+	Local map[string]*struct {
+		Command   string `toml:"command"`
+		Arguments map[string]*struct {
+			Flag string `toml:"flag"`
+			Arg  string `toml:"arg"`
+		} `toml:"arguments"`
+		CLIOnly map[string]string `toml:"cli_only"`
+	} `toml:"local"`
+}
+
+func loadMCPLocal(t *testing.T) *mcpLocal {
+	t.Helper()
+	data, err := os.ReadFile("../../internal/mcp/coverage.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m mcpLocal
+	if err := toml.Unmarshal(data, &m); err != nil {
+		t.Fatalf("decode internal/mcp/coverage.toml: %v", err)
+	}
+
+	return &m
+}
+
+var helpFlagLine = regexp.MustCompile(`(?m)^\s+-([A-Za-z0-9][A-Za-z0-9-]*)(\s|$)`)
+
+// localCLIProblems returns every disagreement between the [local] entries,
+// the CLI and the [local] tools of the MCP coverage file, sorted. It runs
+// each entry's command with -h.
+func localCLIProblems(cov *coverageFile, tools *mcpLocal) []string {
+	var probs []string
+	add := func(format string, args ...any) { probs = append(probs, fmt.Sprintf(format, args...)) }
+	byCommand := map[string]*localEntry{}
+	for name, le := range cov.Local {
+		if le == nil || strings.TrimSpace(le.Command) == "" {
+			add("local %s: no command", name)
+
+			continue
+		}
+		byCommand[le.Command] = le
+		args := append(strings.Fields(le.Command), "-h")
+		var buf bytes.Buffer
+		if rc := run(args, strings.NewReader(""), &buf, &buf); rc != 0 || buf.Len() == 0 {
+			add("local %s: %s exited %d with %d bytes of output", name, strings.Join(args, " "), rc, buf.Len())
+
+			continue
+		}
+		out := buf.String()
+		have := map[string]bool{}
+		for _, m := range helpFlagLine.FindAllStringSubmatch(out, -1) {
+			have["--"+m[1]] = true
+		}
+		for _, f := range le.Flags {
+			if !have[f] {
+				add("local %s: flag %s, which %s -h does not list", name, f, le.Command)
+			}
+		}
+		for f := range have {
+			if !slices.Contains(le.Flags, f) {
+				add("local %s: %s -h lists %s, which coverage.toml does not", name, le.Command, f)
+			}
+		}
+		for _, a := range le.Args {
+			if !strings.Contains(out, a) {
+				add("local %s: argument %s, which the %s usage does not name", name, a, le.Command)
+			}
+		}
+	}
+	for _, sub := range sessionsSubcommands {
+		if _, ok := byCommand["sessions "+sub]; !ok {
+			add("sessions %s: missing from [local]", sub)
+		}
+	}
+	for tool, lt := range tools.Local {
+		if lt == nil {
+			continue
+		}
+		le, ok := byCommand[lt.Command]
+		if !ok {
+			add("mcp local tool %s: command %q is not in [local]", tool, lt.Command)
+
+			continue
+		}
+		for arg, la := range lt.Arguments {
+			switch {
+			case la == nil:
+			case la.Flag != "" && !slices.Contains(le.Flags, la.Flag):
+				add("mcp local tool %s: argument %s maps to %s, which %s does not take", tool, arg, la.Flag, lt.Command)
+			case la.Arg != "" && !slices.Contains(le.Args, la.Arg):
+				add("mcp local tool %s: argument %s maps to %s, which %s does not take", tool, arg, la.Arg, lt.Command)
+			}
+		}
+		for flag := range lt.CLIOnly {
+			if !slices.Contains(le.Flags, flag) {
+				add("mcp local tool %s: cli-only flag %s, which %s does not take", tool, flag, lt.Command)
+			}
+		}
+	}
+	sort.Strings(probs)
+
+	return probs
+}
+
+func TestCoverage_LocalCommands(t *testing.T) {
+	isolateCLI(t)
+	if probs := localCLIProblems(loadCoverage(t), loadMCPLocal(t)); len(probs) > 0 {
+		t.Fatalf("coverage.toml [local] disagrees with the CLI:\n%s", strings.Join(probs, "\n"))
+	}
+}
+
+func TestCoverage_DetectsLocalDrift(t *testing.T) {
+	tests := []struct {
+		name   string
+		want   string
+		mutate func(cov *coverageFile, tools *mcpLocal)
+	}{
+		{"flag the command lacks", "flag --bogus, which sessions list -h does not list", func(cov *coverageFile, _ *mcpLocal) {
+			cov.Local["sessions_list"].Flags = append(cov.Local["sessions_list"].Flags, "--bogus")
+		}},
+		{"flag not listed", "sessions mark -h lists --ref, which coverage.toml does not", func(cov *coverageFile, _ *mcpLocal) {
+			cov.Local["sessions_mark"].Flags = []string{"--outcome", "--json"}
+		}},
+		{"argument not in usage", "argument <nope>, which the sessions digest usage does not name", func(cov *coverageFile, _ *mcpLocal) {
+			cov.Local["sessions_digest"].Args = []string{"<nope>"}
+		}},
+		{"subcommand missing", "sessions status: missing from [local]", func(cov *coverageFile, _ *mcpLocal) {
+			delete(cov.Local, "sessions_status")
+		}},
+		{"tool command missing", `mcp local tool sessions_list: command "sessions lst" is not in [local]`, func(_ *coverageFile, tools *mcpLocal) {
+			tools.Local["sessions_list"].Command = "sessions lst"
+		}},
+		{"cli-only flag missing", "cli-only flag --nope, which sessions digest does not take", func(_ *coverageFile, tools *mcpLocal) {
+			tools.Local["sessions_digest"].CLIOnly["--nope"] = "gone"
+		}},
+		{"tool flag missing", "argument uids maps to --uid, which sessions mark does not take", func(_ *coverageFile, tools *mcpLocal) {
+			tools.Local["sessions_mark"].Arguments["uids"].Flag = "--uid"
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			isolateCLI(t)
+			cov, tools := loadCoverage(t), loadMCPLocal(t)
+			tt.mutate(cov, tools)
+			probs := localCLIProblems(cov, tools)
+			if !slices.ContainsFunc(probs, func(p string) bool { return strings.Contains(p, tt.want) }) {
+				t.Fatalf("want a problem containing %q, got %q", tt.want, probs)
+			}
+		})
+	}
 }
 
 func TestCoverage_EveryOperationMapped(t *testing.T) {

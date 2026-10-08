@@ -43,7 +43,11 @@ func runMcp(args []string, _ io.Reader, _, stderr io.Writer) error {
 	if _, err := openLocalClient(m, os.Getenv, stderr); err != nil {
 		return err
 	}
-	srv, err := localTarget.MCPServer()
+	env, err := sessionsEnv(os.Getenv)
+	if err != nil {
+		return err
+	}
+	srv, err := localTarget.MCPServer(&sessionsService{db: localTarget.DB(), env: env})
 	if err != nil {
 		return failErr("the MCP server cannot be built: "+oneLine(err.Error()), "report this as a bug")
 	}

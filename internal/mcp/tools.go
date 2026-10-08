@@ -28,6 +28,7 @@ type tools struct {
 	preset        string
 	errorBody     func(context.Context, error) []byte
 	observeCreate func(created bool, err error)
+	sessions      Sessions
 }
 
 func ptr(b bool) *bool { return &b }
@@ -149,7 +150,8 @@ const submitDescription = "File feedback at the end of a task when something slo
 
 // register adds every tool to s. It is the one registration point of both
 // transports: a tool added here is served over Streamable HTTP and stdio
-// alike.
+// alike, except the session tools, which only a server with a Sessions
+// provider (the stdio one) registers.
 func (t *tools) register(s *sdk.Server) {
 	preset := t.preset != ""
 	s.AddTool(&sdk.Tool{Name: ToolSubmit, Description: submitDescription,
@@ -168,6 +170,9 @@ func (t *tools) register(s *sdk.Server) {
 	s.AddTool(&sdk.Tool{Name: ToolGetSchema,
 		Description: "With kind and version: that JSON Schema. With neither: the list of schemas the server ships.",
 		InputSchema: schemaInput, Annotations: annotations(true, false)}, t.schema)
+	if t.sessions != nil {
+		t.registerSessions(s)
+	}
 }
 
 // result answers with body as structured content and as one text block.

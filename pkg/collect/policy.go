@@ -83,6 +83,42 @@ var repoFileKeys = []string{"collect.disabled", "collect.deny_paths", "context.d
 // the hook command before it gives a note;
 // doctor reports the same setting problems through Lint.
 func Check(dir, home string, p Policy) Decision {
+	d := CheckUser(dir, home, p)
+	if d.Disabled {
+		return d
+	}
+	if abs, err := filepath.Abs(dir); err == nil {
+		dir = abs
+	}
+	disable := func(reason string) Decision {
+		d.Disabled, d.Reason = true, reason
+
+		return d
+	}
+
+	r, ok := findRepo(dir)
+	if !ok {
+		return d
+	}
+	rf := readRepoFile(filepath.Join(r.root, RepoFile), r.root)
+	d.Warnings = append(d.Warnings, rf.warnings...)
+	d.Drop = rf.drop
+	d.NudgeOff = rf.nudgeOff
+	if rf.disabled {
+		return disable(ReasonRepoDisabled)
+	}
+	if matchesAny(dir, rf.denyPaths) {
+		return disable(ReasonRepoDenyPaths)
+	}
+
+	return d
+}
+
+// CheckUser applies only the user rules of Check (p.Disabled, p.DenyPaths,
+// p.OptInOnly with p.OptInPaths) and reads no repository file: the decision
+// for a directory that no longer exists, whose repository file cannot be
+// read. An empty home means os.UserHomeDir().
+func CheckUser(dir, home string, p Policy) Decision {
 	var d Decision
 	if home == "" {
 		home, _ = os.UserHomeDir()
@@ -111,22 +147,20 @@ func Check(dir, home string, p Policy) Decision {
 		return disable(ReasonOptInOnly)
 	}
 
-	r, ok := findRepo(dir)
-	if !ok {
-		return d
-	}
-	rf := readRepoFile(filepath.Join(r.root, RepoFile), r.root)
-	d.Warnings = append(d.Warnings, rf.warnings...)
-	d.Drop = rf.drop
-	d.NudgeOff = rf.nudgeOff
-	if rf.disabled {
-		return disable(ReasonRepoDisabled)
-	}
-	if matchesAny(dir, rf.denyPaths) {
-		return disable(ReasonRepoDenyPaths)
-	}
-
 	return d
+}
+
+// UserPaths returns the user policy's deny_paths and opt_in_paths entries
+// expanded the way Check expands them: ~/ against home, entries that are
+// neither absolute nor ~/ skipped. An empty home means os.UserHomeDir().
+func UserPaths(p Policy, home string) (deny, optIn []string) {
+	if home == "" {
+		home, _ = os.UserHomeDir()
+	}
+	deny, _ = userPathEntries("deny_paths", p.DenyPaths, home)
+	optIn, _ = userPathEntries("opt_in_paths", p.OptInPaths, home)
+
+	return deny, optIn
 }
 
 // Lint returns every problem in the settings Check would skip over for dir,

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"slices"
 	"sort"
@@ -11,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
+	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/pelletier/go-toml/v2"
 
 	"github.com/agentfeedback/agentfeedback/v4/internal/api"
@@ -22,6 +24,21 @@ import (
 type coverageFile struct {
 	Transports map[string]string      `toml:"transports"`
 	Operations map[string]*opCoverage `toml:"operations"`
+	Local      map[string]*localTool  `toml:"local"`
+}
+
+// localTool is one [local] tool: served on stdio only, mirroring a CLI
+// command, with every argument mapped to a flag or a positional argument,
+// and the flags of the command no argument sets, each with its reason.
+type localTool struct {
+	Command   string               `toml:"command"`
+	Arguments map[string]*localArg `toml:"arguments"`
+	CLIOnly   map[string]string    `toml:"cli_only"`
+}
+
+type localArg struct {
+	Flag string `toml:"flag"`
+	Arg  string `toml:"arg"`
 }
 
 // transports are the keys of coverage.toml's [transports] table.
@@ -228,9 +245,91 @@ func TestCoverage_ToolsAndArgumentsExist(t *testing.T) {
 	}
 }
 
+// localProblems returns every disagreement between the [local] table and
+// the tools the two transports register (stdio and http, by name), sorted:
+// stdio must register exactly the http tools plus the [local] tools, the
+// shared ones identically, each [local] tool with exactly its listed
+// arguments, and http none of them.
+func localProblems(cov *coverageFile, stdio, http map[string]string, stdioProps registered) []string {
+	var probs []string
+	add := func(format string, args ...any) { probs = append(probs, fmt.Sprintf(format, args...)) }
+	for name, lt := range cov.Local {
+		if lt == nil || strings.TrimSpace(lt.Command) == "" {
+			add("local tool %s: no command", name)
+		}
+		if _, ok := http[name]; ok {
+			add("local tool %s: registered on http", name)
+		}
+		props, ok := stdioProps[name]
+		if !ok {
+			add("local tool %s: not registered on stdio", name)
+			continue
+		}
+		if lt == nil {
+			continue
+		}
+		for arg, la := range lt.Arguments {
+			if la == nil || (la.Flag == "") == (la.Arg == "") {
+				add("local tool %s: argument %s needs exactly one of flag or arg", name, arg)
+			}
+			if _, ok := props[arg]; !ok {
+				add("local tool %s: argument %s is not in its input schema", name, arg)
+			}
+		}
+		for arg := range props {
+			if _, ok := lt.Arguments[arg]; !ok {
+				add("local tool %s: argument %s is missing from coverage.toml", name, arg)
+			}
+		}
+		for flag, reason := range lt.CLIOnly {
+			if strings.TrimSpace(reason) == "" {
+				add("local tool %s: cli-only flag %s has no reason", name, flag)
+			}
+			for arg, la := range lt.Arguments {
+				if la != nil && la.Flag == flag {
+					add("local tool %s: cli-only flag %s is set by argument %s", name, flag, arg)
+				}
+			}
+		}
+	}
+	for name, body := range stdio {
+		if _, local := cov.Local[name]; local {
+			continue
+		}
+		hb, ok := http[name]
+		switch {
+		case !ok:
+			add("tool %s: registered on stdio only and not listed in [local]", name)
+		case hb != body:
+			add("tool %s: differs between stdio and http", name)
+		}
+	}
+	for name := range http {
+		if _, ok := stdio[name]; !ok {
+			add("tool %s: registered on http only", name)
+		}
+	}
+	sort.Strings(probs)
+	return probs
+}
+
+// stdioProps is the input-schema properties of every tool stdio lists.
+func stdioProps(t *testing.T, cs *sdk.ClientSession) registered {
+	t.Helper()
+	res, err := cs.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := registered{}
+	for _, tool := range res.Tools {
+		out[tool.Name] = properties(t, tool)
+	}
+	return out
+}
+
 // TestCoverage_TransportsServeTheSameTools: coverage.toml lists exactly the
-// transports, and tools/list over the stdio construction equals tools/list
-// over /mcp.
+// transports; stdio serves the /mcp tools, identically, plus exactly the
+// [local] tools with their listed arguments; /mcp serves no [local] tool.
 func TestCoverage_TransportsServeTheSameTools(t *testing.T) {
 	cov := loadCoverage(t)
 	var keys []string
@@ -245,9 +344,80 @@ func TestCoverage_TransportsServeTheSameTools(t *testing.T) {
 		t.Fatalf("coverage.toml transports %v, want %v", keys, transports)
 	}
 	e := newEnv(t, api.Config{})
-	httpTools := toolsJSON(t, e.connect(t, "/mcp", ""))
-	if stdio := toolsJSON(t, connectStdio(t)); stdio != httpTools {
-		t.Fatalf("tools/list over stdio differs from /mcp:\nstdio: %s\nhttp:  %s", stdio, httpTools)
+	cs := connectStdio(t)
+	if len(cov.Local) == 0 {
+		t.Fatal("coverage.toml lists no [local] tool")
+	}
+	var local []string
+	for name := range cov.Local {
+		local = append(local, name)
+	}
+	if sort.Strings(local); !slices.Equal(local, slices.Sorted(slices.Values(mcp.SessionTools))) {
+		t.Errorf("[local] tools %v, want the session tools %v", local, mcp.SessionTools)
+	}
+	if probs := localProblems(cov, toolsByName(t, cs), toolsByName(t, e.connect(t, "/mcp", "")), stdioProps(t, cs)); len(probs) > 0 {
+		t.Fatalf("the transports disagree with coverage.toml:\n%s", strings.Join(probs, "\n"))
+	}
+	if preset := toolsByName(t, e.connect(t, "/mcp/p", "")); len(preset) == 0 {
+		t.Fatal("/mcp/p lists no tool")
+	} else {
+		for name := range cov.Local {
+			if _, ok := preset[name]; ok {
+				t.Errorf("local tool %s registered on /mcp/{project}", name)
+			}
+		}
+	}
+}
+
+func TestCoverage_DetectsLocalDrift(t *testing.T) {
+	e := newEnv(t, api.Config{})
+	cs := connectStdio(t)
+	stdio, http, props := toolsByName(t, cs), toolsByName(t, e.connect(t, "/mcp", "")), stdioProps(t, cs)
+	for _, tt := range []struct {
+		name   string
+		want   string
+		mutate func(cov *coverageFile, stdio, http map[string]string)
+	}{
+		{"local tool not registered", "local tool sessions_gone: not registered on stdio", func(cov *coverageFile, _, _ map[string]string) {
+			cov.Local["sessions_gone"] = &localTool{Command: "sessions gone"}
+		}},
+		{"local tool entry deleted", "tool sessions_mark: registered on stdio only", func(cov *coverageFile, _, _ map[string]string) {
+			delete(cov.Local, "sessions_mark")
+		}},
+		{"argument entry deleted", "argument limit is missing from coverage.toml", func(cov *coverageFile, _, _ map[string]string) {
+			delete(cov.Local["sessions_digest"].Arguments, "limit")
+		}},
+		{"stale argument entry", "argument gone is not in its input schema", func(cov *coverageFile, _, _ map[string]string) {
+			cov.Local["sessions_list"].Arguments["gone"] = &localArg{Flag: "--gone"}
+		}},
+		{"argument with flag and arg", "argument harness needs exactly one of flag or arg", func(cov *coverageFile, _, _ map[string]string) {
+			cov.Local["sessions_list"].Arguments["harness"].Arg = "<h>"
+		}},
+		{"cli-only flag without reason", "cli-only flag --allow-unknown-project has no reason", func(cov *coverageFile, _, _ map[string]string) {
+			cov.Local["sessions_digest"].CLIOnly["--allow-unknown-project"] = " "
+		}},
+		{"cli-only flag set by an argument", "cli-only flag --limit is set by argument limit", func(cov *coverageFile, _, _ map[string]string) {
+			cov.Local["sessions_digest"].CLIOnly["--limit"] = "stale"
+		}},
+		{"local tool on http", "local tool sessions_list: registered on http", func(_ *coverageFile, _, http map[string]string) {
+			http["sessions_list"] = "{}"
+		}},
+		{"shared tool differs", "tool stats: differs between stdio and http", func(_ *coverageFile, _, http map[string]string) {
+			http["stats"] = "{}"
+		}},
+		{"http-only tool", "tool brand_new: registered on http only", func(_ *coverageFile, _, http map[string]string) {
+			http["brand_new"] = "{}"
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cov := loadCoverage(t)
+			s, h := maps.Clone(stdio), maps.Clone(http)
+			tt.mutate(cov, s, h)
+			probs := localProblems(cov, s, h, props)
+			if !slices.ContainsFunc(probs, func(p string) bool { return strings.Contains(p, tt.want) }) {
+				t.Fatalf("want a problem containing %q, got %q", tt.want, probs)
+			}
+		})
 	}
 }
 

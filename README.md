@@ -36,6 +36,7 @@ Two parts:
 | Point an agent at every machine-readable document (`llms.txt`) | [`llms.txt`](llms.txt) |
 | Install the skill and file feedback from an agent | [`skills/agentfeedback` at v3.0.0](https://github.com/AgentFeedback/agentfeedback/tree/v3.0.0/skills/agentfeedback) (the bash client of the running v3.0.0 release) |
 | Triage the queue | [`skills/agentfeedback-triage/SKILL.md`](skills/agentfeedback-triage/SKILL.md) |
+| Turn past coding-agent sessions on this machine into feedback (`agentfeedback sessions`) | [`docs/sessions.md`](docs/sessions.md) |
 | Call the API directly | [`docs/api.md`](docs/api.md) |
 | Give an agent the reference docs, schemas and OpenAPI document (integrate, operate) | [`skills/agentfeedback-docs/SKILL.md`](skills/agentfeedback-docs/SKILL.md) (installed by `agentfeedback install --docs`) |
 | Run, deploy, back up, migrate | [`docs/operate.md`](docs/operate.md) |

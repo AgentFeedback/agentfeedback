@@ -188,3 +188,30 @@ func TestQueryPlans(t *testing.T) {
 		})
 	}
 }
+
+// TestSessionQueryPlans pins the session-state statements: every lookup and
+// update goes through a primary key, never a scan.
+func TestSessionQueryPlans(t *testing.T) {
+	t.Parallel()
+
+	db := openTest(t)
+	q := db.reader
+	cases := []struct {
+		name, sql, want string
+		args            []any
+	}{
+		{"get session", sqlGetSession, "USING INDEX sqlite_autoindex_sessions_seen_1 (harness=? AND session_id=?)", []any{"h", "s"}},
+		{"list sessions", sqlListSessions, "USING INDEX sqlite_autoindex_sessions_seen_1 (harness=?)", []any{"h"}},
+		{"mark session", sqlMarkSession, "USING INDEX sqlite_autoindex_sessions_seen_1 (harness=? AND session_id=?)", []any{1, "o", "[]", "h", "s"}},
+		{"get triage state", sqlGetTriageState, "USING INDEX sqlite_autoindex_triage_state_1 (key=?)", []any{"k"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			joined := strings.Join(explain(t, q, c.sql, c.args...), " | ")
+			t.Logf("%s", joined)
+			if !strings.Contains(joined, c.want) || strings.Contains(joined, "TEMP B-TREE") {
+				t.Fatalf("expected %q without a sort, got %q", c.want, joined)
+			}
+		})
+	}
+}

@@ -202,3 +202,32 @@ reason = "readiness probe for the deployment; doctor checks the server through m
 
 [operations.getMetrics]
 reason = "scraped by monitoring, not a client read"
+
+# Commands with no OpenAPI operation that work on the local machine alone
+# (the session logs and the data-directory database), one entry per
+# subcommand. coverage_test.go runs each with -h and fails on a listed flag
+# or argument it lacks and on a flag it has that is not listed; every
+# sessions subcommand needs an entry, and every [local] tool of
+# internal/mcp/coverage.toml must map to a command, flag and argument here.
+#   [local.<name>]   command = "<command> <subcommand>"
+#                    flags = ["--flag", ...]   every flag of the subcommand
+#                    args = ["<arg>", ...]     positional arguments its usage names
+[local.sessions_list]
+command = "sessions list"
+flags = ["--harness", "--since", "--unprocessed", "--json"]
+args = []
+
+[local.sessions_digest]
+command = "sessions digest"
+flags = ["--unprocessed", "--harness", "--limit", "--allow-unknown-project", "--json"]
+args = ["<harness:id>..."]
+
+[local.sessions_mark]
+command = "sessions mark"
+flags = ["--outcome", "--ref", "--json"]
+args = ["<harness:id>..."]
+
+[local.sessions_status]
+command = "sessions status"
+flags = ["--set-selection", "--harness", "--since", "--limit", "--json"]
+args = []

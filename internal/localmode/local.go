@@ -104,11 +104,16 @@ func Open(ctx context.Context, path, version string, stderr io.Writer) (*Target,
 // transport: the tools of /mcp with no project preset, the generated
 // instructions with the placeholder base and no operator text, and the
 // version Open was given. Every tool call gets its own request id, which a
-// tool error's body carries as over HTTP.
-func (t *Target) MCPServer() (*sdk.Server, error) {
-	return mcp.NewServer(mcp.Config{Service: t.svc, ErrorBody: api.ToolErrorBody, CallContext: api.WithNewRequestID},
+// tool error's body carries as over HTTP. sessions, when not nil, adds the
+// session tools, which the HTTP transport never serves.
+func (t *Target) MCPServer(sessions mcp.Sessions) (*sdk.Server, error) {
+	return mcp.NewServer(mcp.Config{Service: t.svc, ErrorBody: api.ToolErrorBody, CallContext: api.WithNewRequestID, Sessions: sessions},
 		"", "", t.version)
 }
+
+// DB is the target's database, for the local state that is not a
+// submission (the session watermarks).
+func (t *Target) DB() *store.DB { return t.db }
 
 // Path is the database file.
 func (t *Target) Path() string { return t.path }

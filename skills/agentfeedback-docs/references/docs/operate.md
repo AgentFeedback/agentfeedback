@@ -76,7 +76,7 @@ the only copy of a report:
 
 | Path | What |
 |---|---|
-| `agentfeedback.db` (+ `-wal`, `-shm`) | the local-mode database, also the default of `serve`, `backup` and `import` |
+| `agentfeedback.db` (+ `-wal`, `-shm`) | the local-mode database, also the default of `serve`, `backup` and `import`; in both modes it also holds the session watermarks of `agentfeedback sessions` (tables `sessions_seen` and `triage_state`, see [sessions.md](sessions.md)) |
 | `spool/` | submissions waiting to be delivered, one `af1-*.json` file each with its destination |
 | `rejected/` | submissions the destination refused for good (kept 30 days) |
 | `inbox/` | envelope files written by an agent that cannot run the binary, one `*.json` each (see below) |
@@ -649,6 +649,11 @@ The export is format 2: a header line, one line per record (tombstones
 included), and a trailer with the record count and the SHA-256 over the record
 lines. A file without the trailer is incomplete. Store backups off-host and
 restrict them: they contain everything agents reported.
+
+The export carries records only; the session watermarks of
+`agentfeedback sessions` (`sessions_seen`, `triage_state`) are not in it, and
+a database restored from an export offers every session as `new` again.
+`agentfeedback backup` copies the whole database, those tables included.
 
 ## Restore and migration
 

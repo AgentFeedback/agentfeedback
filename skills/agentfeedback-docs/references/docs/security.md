@@ -50,6 +50,17 @@ is not multi-tenant and is not safe to expose directly to the internet.
   no external asset. With `--server` it reads that server with the
   configured key, which stays in the process.
 
+- What the client touches on disk: it owns the data directory
+  (`${XDG_DATA_HOME:-~/.local/share}/agentfeedback/`: the database, the spool,
+  the inbox; `0700`, files `0600`). The harness session stores (Claude Code's `${CLAUDE_CONFIG_DIR:-~/.claude}/projects/`)
+  are read only by `agentfeedback sessions`, `submit --context-from` and the
+  stdio `sessions_*` tools, on demand and never written; the `[collect]`
+  rules are applied per session before a log is opened, and a digest is
+  bounded and scrubbed before it is shown. Only the watermark rows and what
+  you file are stored, in the data-directory database, in both modes; nothing
+  of a session is sent to a server unless filed. A digest reaches the
+  provider of the model that reads it ([sessions.md](sessions.md#provider-boundary)).
+
 ## What gets stored
 
 Friction context collected by the client (event time, working directory,

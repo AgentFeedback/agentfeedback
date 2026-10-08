@@ -9,6 +9,10 @@ import (
 // foldCase is true where the usual filesystems compare names without case.
 var foldCase = runtime.GOOS == "darwin" || runtime.GOOS == "windows"
 
+// FoldCase reports whether paths are compared without case on this
+// platform, as the deny and opt-in tests do.
+func FoldCase() bool { return foldCase }
+
 // within reports whether p is base or lies beneath it, comparing whole path
 // components: /a/work contains /a/work/x but not /a/workshop. fold compares
 // without case.
