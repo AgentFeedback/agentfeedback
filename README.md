@@ -69,6 +69,27 @@ This is the open-source, self-hostable AgentFeedback
 | Trust boundary and credentials | [`docs/security.md`](docs/security.md) |
 | Versions and upgrade notes | [`docs/releases.md`](docs/releases.md) |
 
+## Where to get it
+
+Besides this repository, these are the only official sources of
+AgentFeedback. A package of that name anywhere else, including the unrelated
+`agent-feedback` on npm and PyPI, does not come from this project.
+
+| Channel | Name | Status |
+|---|---|---|
+| GitHub Releases | [`AgentFeedback/agentfeedback` releases](https://github.com/AgentFeedback/agentfeedback/releases), assets in [`docs/releases.md`](docs/releases.md#assets) | from release 4.0.0 |
+| Container image | `ghcr.io/agentfeedback/agentfeedback`, see [`docs/operate.md`](docs/operate.md#deploy-to-a-host) | from release 4.0.0 |
+| Go module | `github.com/agentfeedback/agentfeedback/v4`, built with `go install` ([`docs/operate.md`](docs/operate.md#build-from-source)) | from release 4.0.0 |
+| Homebrew | tap `agentfeedback/tap` (repository `AgentFeedback/homebrew-tap`) | planned |
+| npm | [`@agentfeedback/cli`](https://www.npmjs.com/package/@agentfeedback/cli), the `@agentfeedback` scope | launcher `0.0.x`; the binary is planned |
+| PyPI | [`agentfeedback-cli`](https://pypi.org/project/agentfeedback-cli/) | launcher `0.0.x`; the binary is planned |
+| RubyGems | [`agentfeedback`](https://rubygems.org/gems/agentfeedback) | launcher `0.0.x`; the binary is planned |
+
+Until they ship the binary, the npm, PyPI and RubyGems packages at `0.0.x`
+are only a launcher: their `agentfeedback` command runs an `agentfeedback`
+binary already on `PATH` and otherwise prints the link to
+[`AGENT-INSTALL.md` step 2.1](AGENT-INSTALL.md#step-21-the-binary).
+
 ## What it is not
 
 Not a review runner, benchmark, dashboard or automated fixer. It stores what

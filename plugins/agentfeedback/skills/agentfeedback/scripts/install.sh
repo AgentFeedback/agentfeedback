@@ -3,8 +3,10 @@
 #
 # Usage: install.sh [--version vX.Y.Z | --version vX.Y.Z-rc.N]
 #
-# An agentfeedback already on PATH or in ~/.local/bin is kept: the script
-# prints its path and exits 0. Otherwise it downloads the archive for this OS
+# A working agentfeedback (its `version` exits 0 within 10 seconds) already on
+# PATH or in ~/.local/bin is kept: the script prints its path and exits 0. One
+# on PATH that does not run is passed over; a file in ~/.local/bin that does not
+# run stops the script, which never overwrites it. Otherwise it downloads the archive for this OS
 # and architecture from a tagged GitHub release of AgentFeedback/agentfeedback,
 # verifies it against that release's SHA256SUMS, installs the binary to
 # ~/.local/bin and prints its path.
@@ -90,8 +92,32 @@ kept() { # kept <path> [note]: report an existing binary and stop
   fi
   echo "$1"; exit 0
 }
-if existing=$(command -v agentfeedback 2>/dev/null); then kept "$existing"; fi
-if [ -f "$dest/$bin" ] && [ -x "$dest/$bin" ]; then kept "$dest/$bin" " (not on PATH: add $dest to PATH)"; fi
+# runs <path>: its `version` exits 0 within 10 seconds, run without the API key
+# in its environment. Used only to decide whether to keep an existing binary.
+runs() {
+  ( unset AGENT_FEEDBACK_API_KEY; exec "$1" version ) >/dev/null 2>&1 </dev/null &
+  local pid=$! ticks=0
+  while kill -0 "$pid" 2>/dev/null; do
+    if [ "$ticks" -ge 100 ]; then kill -9 "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; return 1; fi
+    sleep 0.1; ticks=$((ticks + 1))
+  done
+  wait "$pid"
+}
+on_path() { case ":$PATH:" in *":$dest:"*) return 0 ;; esac; return 1; }
+shadow=""   # an agentfeedback on PATH whose version fails, left in place
+if existing=$(command -v agentfeedback 2>/dev/null); then
+  if runs "$existing"; then kept "$existing"; fi
+  if [ "${existing%.exe}" != "$dest/agentfeedback" ]; then
+    shadow="$existing"
+    say "$existing is on PATH but '$existing version' fails (a launcher without the binary, or a pre-4 build); installing to $dest"
+  fi
+fi
+if [ -f "$dest/$bin" ]; then
+  runs "$dest/$bin" || die "$dest/$bin exists but '$dest/$bin version' fails; move it away and rerun"
+  if [ -n "$shadow" ]; then kept "$dest/$bin" " (but $shadow comes first on PATH: remove it)"
+  elif on_path; then kept "$dest/$bin"
+  else kept "$dest/$bin" " (not on PATH: add $dest to PATH)"; fi
+fi
 if [ -e "$dest/$bin" ] || [ -L "$dest/$bin" ]; then
   [ -f "$dest/$bin" ] || die "$dest/$bin exists and is not a regular file; move it away and rerun"
 fi
@@ -166,8 +192,9 @@ chmod 0755 "$stage"
 mv -f "$stage" "$dest/$bin"
 
 say "installed $version to $dest/$bin"
-case ":$PATH:" in
-  *":$dest:"*) ;;
-  *) say "$dest is not on PATH; add it, e.g. export PATH=\"$dest:\$PATH\"" ;;
-esac
+if ! on_path; then
+  say "$dest is not on PATH; add it, e.g. export PATH=\"$dest:\$PATH\""
+elif [ -n "$shadow" ] && [ "$(command -v agentfeedback 2>/dev/null)" = "$shadow" ]; then
+  say "$shadow comes before $dest on PATH and still answers to agentfeedback; remove it"
+fi
 echo "$dest/$bin"

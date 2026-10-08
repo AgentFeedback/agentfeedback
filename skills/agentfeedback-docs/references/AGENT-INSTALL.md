@@ -127,7 +127,9 @@ AgentFeedback server's base URL: show the human what you got and ask again.
 The command downloads `install.sh` and the release's `SHA256SUMS`, checks the
 script against its line there, and runs it only when the check passes.
 `install.sh` keeps an `agentfeedback` already on `PATH` or in
-`~/.local/bin`; otherwise it downloads the archive for this OS and
+`~/.local/bin` when its `version` runs. One on `PATH` that does not run is
+passed over and named on stderr; a file in `~/.local/bin` that does not run
+stops the script with exit 1. Otherwise it downloads the archive for this OS and
 architecture from the latest stable release, verifies it against the
 release's `SHA256SUMS`, and installs it to `~/.local/bin`. When the human
 names a pre-release tag (`vX.Y.Z-rc.N`), replace `latest/download` with

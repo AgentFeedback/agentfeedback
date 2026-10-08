@@ -69,7 +69,9 @@ agent starts it, and exits when the command is done:
   `--dry-run` sends no record but still reads the target's metadata and
   tombstones. Standard `HTTPS_PROXY` variables apply; redirects are not
   followed. `skills/agentfeedback/scripts/install.sh` downloads the release
-  and its `SHA256SUMS` from GitHub Releases over HTTPS only. The triage
+  and its `SHA256SUMS` from GitHub Releases over HTTPS only, and runs
+  `version` on an `agentfeedback` it finds already installed to decide
+  whether to keep it. The triage
   skill's optional clustering helper is a separate boundary (below).
 - No process enumeration, no keychain or credential store, no clipboard, no
   shell history. Commands it runs: `git` (read-only, for the context),

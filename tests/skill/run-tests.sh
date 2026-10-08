@@ -138,6 +138,63 @@ out=$(HOME="$home" PATH="$WORK/onpath:$PATH" bash "$INSTALL" 2>/dev/null); rc=$?
 chk "finds an agentfeedback on PATH, prints it and installs nothing" \
   "$([ "$rc" = 0 ] && [ "$out" = "$WORK/onpath/agentfeedback" ] && [ ! -e "$home/.local/bin" ] && echo 1 || echo 0)"
 
+# A launcher package without the binary, or a pre-4 build: `version` fails.
+mkdir -p "$WORK/broken"
+printf '#!/bin/sh\necho launcher >&2; exit 1\n' >"$WORK/broken/agentfeedback"; chmod 0755 "$WORK/broken/agentfeedback"
+home=$(mktemp -d "$WORK/home.XXXXXX")
+out=$(HOME="$home" PATH="$WORK/broken:$PATH" bash "$INSTALL" 2>"$WORK/err"); rc=$?
+chk "an agentfeedback on PATH whose version fails is passed over and the release is installed" \
+  "$([ "$rc" = 0 ] && [ "$out" = "$home/.local/bin/agentfeedback" ] && [ "$(installed)" = 1 ] && grep -q "$WORK/broken/agentfeedback is on PATH but" "$WORK/err" && echo 1 || echo 0)"
+
+home=$(mktemp -d "$WORK/home.XXXXXX")
+mkdir -p "$home/.local/bin"
+cp "$WORK/broken/agentfeedback" "$home/.local/bin/agentfeedback"
+out=$(HOME="$home" bash "$INSTALL" 2>"$WORK/err"); rc=$?
+chk "a ~/.local/bin/agentfeedback whose version fails stops with exit 1 and is left alone" \
+  "$([ "$rc" = 1 ] && [ -z "$out" ] && cmp -s "$WORK/broken/agentfeedback" "$home/.local/bin/agentfeedback" && grep -q 'move it away' "$WORK/err" && echo 1 || echo 0)"
+
+home=$(mktemp -d "$WORK/home.XXXXXX")
+mkdir -p "$home/.local/bin"
+cp "$WORK/broken/agentfeedback" "$home/.local/bin/agentfeedback"
+out=$(HOME="$home" PATH="$home/.local/bin:$PATH" bash "$INSTALL" 2>"$WORK/err"); rc=$?
+chk "a failing ~/.local/bin/agentfeedback that is also on PATH stops with exit 1 without claiming to install" \
+  "$([ "$rc" = 1 ] && [ -z "$out" ] && ! grep -q 'installing to' "$WORK/err" && grep -q 'move it away' "$WORK/err" && echo 1 || echo 0)"
+
+home=$(mktemp -d "$WORK/home.XXXXXX")
+mkdir -p "$home/.local/bin"
+printf 'not a binary\n' >"$home/.local/bin/agentfeedback"; chmod 0644 "$home/.local/bin/agentfeedback"
+out=$(HOME="$home" bash "$INSTALL" 2>/dev/null); rc=$?
+chk "a non-executable ~/.local/bin/agentfeedback stops with exit 1 and is left alone" \
+  "$([ "$rc" = 1 ] && [ -z "$out" ] && [ "$(cat "$home/.local/bin/agentfeedback")" = "not a binary" ] && echo 1 || echo 0)"
+
+home=$(mktemp -d "$WORK/home.XXXXXX")
+out=$(HOME="$home" PATH="$WORK/broken:$home/.local/bin:$PATH" bash "$INSTALL" 2>"$WORK/err"); rc=$?
+chk "a failing agentfeedback ahead of ~/.local/bin on PATH is named as still shadowing the install" \
+  "$([ "$rc" = 0 ] && [ "$out" = "$home/.local/bin/agentfeedback" ] && grep -q "$WORK/broken/agentfeedback comes before" "$WORK/err" && echo 1 || echo 0)"
+
+home=$(mktemp -d "$WORK/home.XXXXXX")
+mkdir -p "$home/.local/bin"
+printf '#!/bin/sh\necho mine\n' >"$home/.local/bin/agentfeedback"; chmod 0755 "$home/.local/bin/agentfeedback"
+out=$(HOME="$home" PATH="$WORK/broken:$home/.local/bin:$PATH" bash "$INSTALL" 2>"$WORK/err"); rc=$?
+chk "a working ~/.local/bin/agentfeedback behind a failing one on PATH is kept and the shadowing named, not 'not on PATH'" \
+  "$([ "$rc" = 0 ] && [ "$out" = "$home/.local/bin/agentfeedback" ] && grep -q "comes first on PATH" "$WORK/err" && ! grep -q 'not on PATH' "$WORK/err" && echo 1 || echo 0)"
+
+mkdir -p "$WORK/hangs"
+printf '#!/bin/sh\nexec sleep 60\n' >"$WORK/hangs/agentfeedback"; chmod 0755 "$WORK/hangs/agentfeedback"
+home=$(mktemp -d "$WORK/home.XXXXXX")
+t0=$(date +%s)
+out=$(HOME="$home" PATH="$WORK/hangs:$PATH" bash "$INSTALL" 2>/dev/null); rc=$?
+chk "an agentfeedback on PATH whose version hangs is given up on after 10 seconds and the release installed" \
+  "$([ "$rc" = 0 ] && [ "$out" = "$home/.local/bin/agentfeedback" ] && [ $(( $(date +%s) - t0 )) -lt 30 ] && echo 1 || echo 0)"
+
+mkdir -p "$WORK/keyed"
+# shellcheck disable=SC2016 # the stand-in expands the variable, not this script
+printf '#!/bin/sh\n[ -z "$AGENT_FEEDBACK_API_KEY" ]\n' >"$WORK/keyed/agentfeedback"; chmod 0755 "$WORK/keyed/agentfeedback"
+home=$(mktemp -d "$WORK/home.XXXXXX")
+out=$(HOME="$home" AGENT_FEEDBACK_API_KEY=probe-key PATH="$WORK/keyed:$PATH" bash "$INSTALL" 2>/dev/null); rc=$?
+chk "the version probe runs without AGENT_FEEDBACK_API_KEY in its environment" \
+  "$([ "$rc" = 0 ] && [ "$out" = "$WORK/keyed/agentfeedback" ] && echo 1 || echo 0)"
+
 # ── verification failures install nothing ─────────────────────────────────────
 run --version v1.2.4
 chk "a checksum mismatch fails with exit 1 and installs nothing" \
