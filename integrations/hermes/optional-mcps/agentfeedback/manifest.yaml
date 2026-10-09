@@ -1,0 +1,15 @@
+manifest_version: 1
+name: agentfeedback
+description: Report agent friction into a local AgentFeedback database over stdio.
+source: https://github.com/AgentFeedback/agentfeedback
+transport:
+  type: stdio
+  command: agentfeedback
+  args:
+    - mcp
+auth:
+  type: none
+post_install: |
+  Needs the agentfeedback binary on PATH: install it per step 2.1 of AGENT-INSTALL.md in the repository.
+  Reports go to the local database in the agentfeedback data directory.
+  `agentfeedback mcp` refuses to run when a server is configured; use the server's /mcp endpoint then.

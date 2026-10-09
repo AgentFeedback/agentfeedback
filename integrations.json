@@ -1,0 +1,182 @@
+{
+  "$schema": "./schemas/integrations.v1.json",
+  "integrations": [
+    {
+      "id": "claude-code",
+      "name": "Claude Code",
+      "kind": "adapter",
+      "install": "`agentfeedback install claude-code`",
+      "status": "live-checked",
+      "date": "2026-10-07",
+      "docs": "docs/operate.md"
+    },
+    {
+      "id": "codex",
+      "name": "Codex CLI",
+      "kind": "adapter",
+      "install": "`agentfeedback install codex`",
+      "status": "documented",
+      "date": "2026-10-07",
+      "docs": "docs/operate.md"
+    },
+    {
+      "id": "cursor",
+      "name": "Cursor",
+      "kind": "adapter",
+      "install": "`agentfeedback install cursor`",
+      "status": "documented",
+      "date": "2026-10-07",
+      "docs": "docs/operate.md"
+    },
+    {
+      "id": "opencode",
+      "name": "OpenCode",
+      "kind": "adapter",
+      "install": "`agentfeedback install opencode`",
+      "status": "live-checked",
+      "date": "2026-10-07",
+      "docs": "docs/operate.md"
+    },
+    {
+      "id": "omp",
+      "name": "Oh My Pi (omp)",
+      "kind": "adapter",
+      "install": "`agentfeedback install omp`",
+      "status": "documented",
+      "date": "2026-10-07",
+      "docs": "docs/operate.md"
+    },
+    {
+      "id": "pi",
+      "name": "Pi",
+      "kind": "adapter",
+      "install": "`agentfeedback install pi`",
+      "status": "documented",
+      "date": "2026-10-07",
+      "docs": "docs/operate.md"
+    },
+    {
+      "id": "copilot",
+      "name": "Copilot CLI",
+      "kind": "adapter",
+      "install": "`agentfeedback install copilot`",
+      "status": "documented",
+      "date": "2026-10-07",
+      "docs": "docs/operate.md"
+    },
+    {
+      "id": "antigravity",
+      "name": "Antigravity",
+      "kind": "adapter",
+      "install": "`agentfeedback install antigravity`",
+      "status": "documented",
+      "date": "2026-10-07",
+      "docs": "docs/operate.md"
+    },
+    {
+      "id": "devin",
+      "name": "Devin",
+      "kind": "adapter",
+      "install": "`agentfeedback install devin`",
+      "status": "documented",
+      "date": "2026-10-07",
+      "docs": "docs/operate.md"
+    },
+    {
+      "id": "kiro",
+      "name": "Kiro",
+      "kind": "adapter",
+      "install": "`agentfeedback install kiro`",
+      "status": "documented",
+      "date": "2026-10-07",
+      "docs": "docs/operate.md"
+    },
+    {
+      "id": "cline",
+      "name": "Cline",
+      "kind": "adapter",
+      "install": "`agentfeedback install cline`",
+      "status": "documented",
+      "date": "2026-10-07",
+      "docs": "docs/operate.md"
+    },
+    {
+      "id": "amp",
+      "name": "Amp",
+      "kind": "adapter",
+      "install": "`agentfeedback install amp`",
+      "status": "documented",
+      "date": "2026-10-07",
+      "docs": "docs/operate.md"
+    },
+    {
+      "id": "vscode",
+      "name": "VS Code",
+      "kind": "adapter",
+      "install": "`agentfeedback install vscode --mcp`",
+      "status": "documented",
+      "date": "2026-10-07",
+      "docs": "docs/operate.md"
+    },
+    {
+      "id": "gemini-cli",
+      "name": "Gemini CLI",
+      "kind": "adapter",
+      "install": "`agentfeedback install gemini-cli`",
+      "status": "documented",
+      "date": "2026-10-07",
+      "docs": "docs/operate.md"
+    },
+    {
+      "id": "openclaw",
+      "name": "OpenClaw",
+      "kind": "platform",
+      "install": "the `agentfeedback` skill from ClawHub, once listed",
+      "status": "documented",
+      "date": "2026-10-09",
+      "docs": "docs/integrations/clawhub.md"
+    },
+    {
+      "id": "hermes",
+      "name": "Hermes Agent",
+      "kind": "platform",
+      "install": "`hermes plugins install agentfeedback`, once listed",
+      "status": "documented",
+      "date": "2026-10-09",
+      "docs": "docs/integrations/hermes.md"
+    },
+    {
+      "id": "nanoclaw",
+      "name": "NanoClaw",
+      "kind": "platform",
+      "install": "`ncl groups create --template engineering/agentfeedback`, once listed",
+      "status": "documented",
+      "date": "2026-10-09",
+      "docs": "docs/integrations/nanoclaw.md"
+    },
+    {
+      "id": "skills-sh",
+      "name": "skills.sh (`npx skills`)",
+      "kind": "hub",
+      "install": "`npx --yes skills add AgentFeedback/agentfeedback --skill agentfeedback -g -a <agent> -y`",
+      "status": "documented",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "claude-code-marketplace",
+      "name": "Claude Code plugin marketplace",
+      "kind": "hub",
+      "install": "`claude plugin marketplace add AgentFeedback/agentfeedback && claude plugin install agentfeedback@agentfeedback`",
+      "status": "documented",
+      "date": "2026-10-09"
+    },
+    {
+      "id": "codex-marketplace",
+      "name": "Codex plugin marketplace",
+      "kind": "hub",
+      "install": "`codex plugin marketplace add AgentFeedback/agentfeedback && codex plugin add agentfeedback@agentfeedback`",
+      "status": "documented",
+      "date": "2026-10-09"
+    }
+  ]
+}

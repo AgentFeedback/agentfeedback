@@ -31,6 +31,7 @@ and later; the documents of an earlier release are at its tag.
 | Change the session readers | [`docs/sessions.md`](docs/sessions.md) |
 | Change the install playbooks or the agent index | [`AGENT-INSTALL.md`](AGENT-INSTALL.md), [`AGENT-INSTALL-STACK.md`](AGENT-INSTALL-STACK.md), [`llms.txt`](llms.txt); the artifact rule in develop.md |
 | Change what the client collects, reads or writes | [`docs/security.md`](docs/security.md) states it; keep it true |
+| Change the integrations list or a hub artifact | `integrations.json`, `schemas/integrations.v1.json`, `integrations/`, [`docs/integrations/clawhub.md`](docs/integrations/clawhub.md), [`docs/integrations/hermes.md`](docs/integrations/hermes.md), [`docs/integrations/nanoclaw.md`](docs/integrations/nanoclaw.md); regenerate the README table with `just box go test . -run TestIntegrationsTable -update` |
 | Change docs | Keep the [README](README.md) route table and this one true (`just docs-check`); one doc per task, no duplicated facts |
 | Run, deploy, back up, migrate | [`docs/operate.md`](docs/operate.md) |
 | Release | [`docs/releases.md`](docs/releases.md) |

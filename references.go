@@ -10,10 +10,11 @@ package agentfeedback
 import "embed"
 
 // References holds AGENT-INSTALL*.md, docs/*.md, the HTTP recipes under
-// docs/recipes/, docs/openapi.yaml and the
+// docs/recipes/, the integration docs under docs/integrations/,
+// docs/openapi.yaml and the
 // JSON schemas under schemas/, at their repository paths.
 //
-//go:embed AGENT-INSTALL*.md docs/*.md docs/recipes/*.md docs/openapi.yaml schemas/*.json schemas/kinds/*.json
+//go:embed AGENT-INSTALL*.md docs/*.md docs/recipes/*.md docs/integrations/*.md docs/openapi.yaml schemas/*.json schemas/kinds/*.json
 var References embed.FS
 
 // InstallScript is skills/agentfeedback/scripts/install.sh, which the plugin

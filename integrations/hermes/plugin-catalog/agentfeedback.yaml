@@ -1,0 +1,16 @@
+# The sha is replaced with the release commit at submission (docs/integrations/hermes.md).
+name: agentfeedback
+repo: https://github.com/AgentFeedback/agentfeedback
+sha: "0000000000000000000000000000000000000000"
+subdir: plugins/agentfeedback
+version: "4.0.0"
+description: "The agentfeedback skill teaches the agent to report friction (missing docs, misbehaving tools, stale config) with the agentfeedback binary; a portable Agent Plugins v1 package (the skill and its scripts/install.sh, which downloads the checksum-verified binary from the GitHub release; no Hermes plugin code, no hooks, no mcp.json); the binary keeps reports in a local SQLite database unless a server is configured, and reaches the network only then."
+maintainer: AgentFeedback
+tier: community
+category: tools
+docs_url: https://github.com/AgentFeedback/agentfeedback/blob/main/docs/integrations/hermes.md
+capabilities:
+  provides_tools: []
+  provides_hooks: []
+  provides_middleware: []
+  requires_env: []

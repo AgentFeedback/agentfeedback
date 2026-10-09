@@ -21,9 +21,10 @@
    against the envelope schema, and every fixture agrees with the reference
    implementation.
 4. The rendered Agent Plugins manifests (plugins/agentfeedback/plugin.json and
-   the golden mcp.json internal/skillgen renders for a server) validate
-   against the vendored Agent Plugins 1.0.0 schemas, and both name the same
-   spec version.
+   the golden mcp.json internal/skillgen renders for a server) and the NanoClaw
+   template's (integrations/nanoclaw/agentfeedback/) validate against the
+   vendored Agent Plugins 1.0.0 schemas, and each pair names the same spec
+   version.
 5. docs/api.md shows every docs/openapi.yaml operation: a marker comment on
    its own line, `<!-- example: <operationId> -->`, `... <operationId>
    request -->` or `... <operationId> response <status> -->`, applies to the
@@ -53,6 +54,8 @@ from referencing.jsonschema import DRAFT202012
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_FILES = sorted(str(p.relative_to(ROOT)) for p in (ROOT / "schemas").rglob("*.json"))
+# Describes repository data, not the API: exempt from the openapi.yaml reference check.
+REPOSITORY_DATA_SCHEMAS = {"schemas/integrations.v1.json"}
 OPENAPI = ROOT / "docs" / "openapi.yaml"
 OPENAPI_URI = "file:///docs/openapi.yaml"
 
@@ -416,17 +419,21 @@ AGENT_PLUGINS = ROOT / "internal" / "skillgen" / "testdata" / "agent-plugins" / 
 
 def check_agent_plugin() -> None:
     # Here, not in Go: the plugin schema's name pattern has a lookahead, which Go's regexp lacks.
-    pairs = (("plugins/agentfeedback/plugin.json", "plugin.schema.json"),
-             ("internal/skillgen/testdata/agent-plugin-mcp.json", "mcp.schema.json"))
-    versions = []
-    for rel, schema_name in pairs:
-        doc = load_json(ROOT / rel)
-        for err in Draft202012Validator(load_json(AGENT_PLUGINS / schema_name), format_checker=FormatChecker()).iter_errors(doc):
-            fail(f"{rel}: {err.message} at {err.json_path}")
-        m = re.search(r"/schemas/([^/]+)/", doc.get("$schema", ""))
-        versions.append(m.group(1) if m else None)
-    if versions[0] is None or versions[0] != versions[1]:
-        fail(f"the Agent Plugins spec versions of plugin.json and mcp.json differ: {versions}")
+    # The bundle with the golden mcp.json its server render adds, and the NanoClaw template.
+    bundles = ((("plugins/agentfeedback/plugin.json", "plugin.schema.json"),
+                ("internal/skillgen/testdata/agent-plugin-mcp.json", "mcp.schema.json")),
+               (("integrations/nanoclaw/agentfeedback/plugin.json", "plugin.schema.json"),
+                ("integrations/nanoclaw/agentfeedback/mcp.json", "mcp.schema.json")))
+    for pairs in bundles:
+        versions = []
+        for rel, schema_name in pairs:
+            doc = load_json(ROOT / rel)
+            for err in Draft202012Validator(load_json(AGENT_PLUGINS / schema_name), format_checker=FormatChecker()).iter_errors(doc):
+                fail(f"{rel}: {err.message} at {err.json_path}")
+            m = re.search(r"/schemas/([^/]+)/", doc.get("$schema", ""))
+            versions.append(m.group(1) if m else None)
+        if versions[0] is None or versions[0] != versions[1]:
+            fail(f"the Agent Plugins spec versions of {pairs[0][0]} and {pairs[1][0]} differ: {versions}")
 
 
 def main() -> int:
@@ -454,7 +461,7 @@ def main() -> int:
     examples += validate_openapi_examples(doc, registry)
     referenced = set(re.findall(r"\.\./schemas/([\w./-]+\.json)", OPENAPI.read_text(encoding="utf-8")))
     for rel in SCHEMA_FILES:
-        if rel.removeprefix("schemas/") not in referenced:
+        if rel not in REPOSITORY_DATA_SCHEMAS and rel.removeprefix("schemas/") not in referenced:
             fail(f"docs/openapi.yaml does not reference {rel}")
 
     warnings_doc = load_json(ROOT / "conformance" / "warnings.json")

@@ -44,8 +44,10 @@ tests/playbooks/                test_playbooks.py for scripts/playbooks.py (stub
 tests/docs/                     test_check_docs.py for scripts/check-docs.py (fixture trees, no git); test_api_examples.py for contract-check.py's api.md example check (inline OpenAPI document)
 tests/ci/                       Dockerfile of the gate toolchain image: the Go toolchain go.mod pins, Node, uv, just, shellcheck and the Claude Code CLI; base images pinned by digest, CLIs by version
 tests/live/                     claude-code.sh, the live harness check's assertions (run by scripts/live-harness.sh)
-docs/                           api.md (narrative of the v1 contract, one example per operation, JSON bodies checked), openapi.yaml (the v1 contract; embed.go makes it a Go package for internal/api), operate.md, develop.md, security.md, sessions.md (the session logs: harness stores, states, digest format), releases.md; recipes/ holds http-curl.md and http-powershell.md, the prompt forms rendered by `just skills`
-schemas/                        JSON Schema 2020-12: the submission envelope and the kind schemas (friction, review); embed.go makes them a Go package for pkg/schema
+docs/                           api.md (narrative of the v1 contract, one example per operation, JSON bodies checked), openapi.yaml (the v1 contract; embed.go makes it a Go package for internal/api), operate.md, develop.md, security.md, sessions.md (the session logs: harness stores, states, digest format), releases.md; recipes/ holds http-curl.md and http-powershell.md, the prompt forms rendered by `just skills`; integrations/ holds the hub submission guides (clawhub.md, hermes.md, nanoclaw.md)
+schemas/                        JSON Schema 2020-12: the submission envelope and the kind schemas (friction, review); embed.go makes them a Go package for pkg/schema; integrations.v1.json, the schema of integrations.json (repository data, not embedded by pkg/schema)
+integrations.json               the list of integrations (harness adapters, platforms, hubs) with their status, validated by schemas/integrations.v1.json; the README Integrations table is generated from it
+integrations/                   the files submitted to hub catalogs: the Hermes plugin-catalog entry and optional-mcps manifest, the NanoClaw template
 conformance/                    the executable contract: decode fixtures, hash vectors, the warning list, a Python reference implementation (README inside)
 ```
 
@@ -178,6 +180,14 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
   (`just skills` writes them and rebuilds before rendering it). Text outside a
   `<!-- only: … -->` block reaches every form; the prompt forms assume nothing
   but HTTP and a shell, and no checked-in render names a server URL.
+- **The integrations list is data.** `integrations.json` is the list of
+  integrations; the root test (`go test . -run 'TestIntegrations'`)
+  validates it against `schemas/integrations.v1.json`, generates the README
+  table from it (`-update` rewrites it), checks that the adapter entries
+  mirror the harness registry's verification record, and checks the hub
+  artifacts under `integrations/` against their catalogs' rules.
+  `schemas/integrations.v1.json` describes repository data, not the API,
+  and is exempt from the `docs/openapi.yaml` reference check.
 - **Skill directories are copied as-is into harnesses.** No tests or tooling inside
   `skills/*/`; tests live in `tests/skill/`. Script comments state rules, not
   history: no dates, incident numbers or machine names.
@@ -239,7 +249,8 @@ and published by the release step ([releases.md](releases.md)).
 6. `go test -race -count=1 ./...` green, which includes the CLI and MCP
    coverage checks (`cmd/agentfeedback/coverage.toml`,
    `internal/mcp/coverage.toml`): an API change that leaves either stale
-   fails here.
+   fails here; and the root integration tests (`integrations.json`, the
+   README table, the hub artifacts).
 7. `just fuzz`: the decoder on its seed corpus for 30 s. A crash it finds
    is committed under `pkg/envelope/testdata/fuzz/FuzzDecode/` as a
    regression seed beside the fix.

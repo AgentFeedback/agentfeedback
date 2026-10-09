@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentfeedback.dev/schemas/integrations.v1.json",
+  "title": "AgentFeedback integrations list",
+  "description": "integrations.json at the repository root: one entry per harness adapter, agent platform and hub through which AgentFeedback is installed, with how far each was checked. It describes repository data, not the HTTP API.",
+  "type": "object",
+  "properties": {
+    "$schema": {"type": "string"},
+    "integrations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/entry"}
+    }
+  },
+  "required": ["integrations"],
+  "additionalProperties": false,
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$", "description": "Stable identifier; for an adapter, the harness name install takes."},
+        "name": {"type": "string", "minLength": 1, "description": "Display name."},
+        "kind": {"enum": ["adapter", "hub", "platform", "sink"], "description": "adapter: a harness install wires; platform: an agent platform with its own catalog; hub: a catalog or marketplace serving several harnesses; sink: a destination reports are forwarded to."},
+        "install": {"type": "string", "minLength": 1, "description": "How a user installs through this integration, as Markdown."},
+        "status": {"enum": ["documented", "fixture-tested", "live-checked", "submitted", "listed"], "description": "How far the integration was checked or how far its submission went."},
+        "date": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "description": "When status was last established."},
+        "docs": {"type": "string", "minLength": 1, "description": "Repository-relative path of the document covering this integration."}
+      },
+      "required": ["id", "name", "kind", "install", "status", "date"],
+      "additionalProperties": false
+    }
+  },
+  "examples": [
+    {
+      "integrations": [
+        {"id": "claude-code", "name": "Claude Code", "kind": "adapter", "install": "`agentfeedback install claude-code`", "status": "live-checked", "date": "2026-10-07", "docs": "docs/operate.md"}
+      ]
+    }
+  ]
+}

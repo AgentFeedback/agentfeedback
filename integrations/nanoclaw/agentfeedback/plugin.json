@@ -1,0 +1,9 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "agentfeedback",
+  "version": "1.0.0",
+  "description": "Report friction (missing docs, misbehaving tools, stale config) to an AgentFeedback server over its /mcp endpoint.",
+  "homepage": "https://github.com/AgentFeedback/agentfeedback",
+  "repository": "https://github.com/AgentFeedback/agentfeedback",
+  "license": "MIT"
+}

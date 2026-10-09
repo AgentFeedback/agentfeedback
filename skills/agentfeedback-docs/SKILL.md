@@ -19,6 +19,9 @@ The reference docs, JSON Schemas, OpenAPI document and install playbooks of Agen
 - [references/AGENT-INSTALL.md](references/AGENT-INSTALL.md): Install the AgentFeedback client (for agents)
 - [references/docs/api.md](references/docs/api.md): AgentFeedback HTTP API
 - [references/docs/develop.md](references/docs/develop.md): Develop AgentFeedback
+- [references/docs/integrations/clawhub.md](references/docs/integrations/clawhub.md): Submit to ClawHub (OpenClaw)
+- [references/docs/integrations/hermes.md](references/docs/integrations/hermes.md): Submit to Hermes Agent
+- [references/docs/integrations/nanoclaw.md](references/docs/integrations/nanoclaw.md): Submit to NanoClaw
 - [references/docs/openapi.yaml](references/docs/openapi.yaml): AgentFeedback API (OpenAPI document)
 - [references/docs/operate.md](references/docs/operate.md): Operate AgentFeedback
 - [references/docs/recipes/http-curl.md](references/docs/recipes/http-curl.md): AgentFeedback
@@ -27,5 +30,6 @@ The reference docs, JSON Schemas, OpenAPI document and install playbooks of Agen
 - [references/docs/security.md](references/docs/security.md): Security
 - [references/docs/sessions.md](references/docs/sessions.md): Session logs
 - [references/schemas/envelope.v1.json](references/schemas/envelope.v1.json): JSON Schema: AgentFeedback submission envelope
+- [references/schemas/integrations.v1.json](references/schemas/integrations.v1.json): JSON Schema: AgentFeedback integrations list
 - [references/schemas/kinds/friction.v1.json](references/schemas/kinds/friction.v1.json): JSON Schema: Friction: what slowed an agent down
 - [references/schemas/kinds/review.v1.json](references/schemas/kinds/review.v1.json): JSON Schema: Review: one completed multi-reviewer run
