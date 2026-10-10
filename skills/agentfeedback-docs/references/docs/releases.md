@@ -126,7 +126,7 @@ Without `gh`, download from
 `https://github.com/AgentFeedback/agentfeedback/releases/download/vX.Y.Z/<asset>`.
 To check one asset only, feed its line to the same command:
 `grep ' install\.sh$' SHA256SUMS | sha256sum -c` (`shasum -a 256 -c` on
-macOS). Releases before 4.0.0 list only the archives.
+macOS). Releases before 4.0.0 carry no assets; only the source tag exists.
 
 ### Reproducing a release
 
