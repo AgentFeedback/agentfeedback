@@ -138,7 +138,7 @@ func TestMeta(t *testing.T) {
 	}
 	want := `{"service_version":"4.0.0","api_version":"1.0","export_format":2,"dedupe_window_s":86400,` +
 		`"limits":{"body_bytes":10485760,"import_bytes":33554432,"list_max":500,"list_max_with_payload":100,` +
-		`"processed_ids_max":500,"context_entries":32,"context_value_bytes":2000,"identifier_bytes":200,"summary_bytes":2000},` +
+		`"processed_ids_max":500,"context_entries":32,"context_value_bytes":2000,"identifier_bytes":200,"summary_bytes":2000,"warnings_max":100,"warnings_bytes":65536},` +
 		`"kinds":[{"kind":"friction","versions":[1]},{"kind":"review","versions":[1]}],` +
 		`"features":["q","stats","export.after_id","export.limit","import","mcp","redaction"],` +
 		`"client":{"min_version":"4.0.0-rc.0","latest_known":"4.0.0"}}`

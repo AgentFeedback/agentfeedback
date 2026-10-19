@@ -19,6 +19,8 @@ type MetaLimits struct {
 	ContextValueBytes  int `json:"context_value_bytes"`
 	IdentifierBytes    int `json:"identifier_bytes"`
 	SummaryBytes       int `json:"summary_bytes"`
+	WarningsMax        int `json:"warnings_max"`
+	WarningsBytes      int `json:"warnings_bytes"`
 }
 
 // ClientMinVersion is the oldest client release that speaks API 1.0, the
@@ -71,6 +73,8 @@ var limits = func() MetaLimits {
 		ContextValueBytes:  context.AdditionalProperties().MaxBytes(),
 		IdentifierBytes:    prop("machine").MaxBytes(),
 		SummaryBytes:       prop("summary").MaxBytes(),
+		WarningsMax:        envelope.WarningsMax,
+		WarningsBytes:      envelope.WarningsBytes,
 	}
 }()
 

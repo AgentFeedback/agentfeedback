@@ -138,7 +138,16 @@ kept.
 **Warnings.** A create returns `warnings` beside the stored record: items of
 `code`, `pointer` (an RFC 6901 pointer into the stored record) and `message`.
 Warnings are never stored and never reject. The closed list of codes, one
-example each, is `conformance/warnings.json` in the repository.
+example each, is `conformance/warnings.json` in the repository. The list is
+bounded: at most `limits.warnings_max` entries (100) whose `code` and
+`pointer` together stay within `limits.warnings_bytes` (65536); messages are
+advisory and outside the budget. A list that fits is returned as the decoder
+produced it; one that does not is cut to the first entries in pointer order
+(then code, then message) and closed by one `warnings_truncated` entry at the
+record pointer `""` whose message counts the withheld ones; the closing entry
+counts against both bounds. A pointer is never shortened. On import the same
+bound applies per record, and the response's `warnings` is bounded the same
+way in line order, with `line` naming the first withheld line.
 
 ## Routes
 
@@ -704,7 +713,9 @@ curl -sS -H "Authorization: Bearer $AGENT_FEEDBACK_API_KEY" \
     "context_entries": 32,
     "context_value_bytes": 2000,
     "identifier_bytes": 200,
-    "summary_bytes": 2000
+    "summary_bytes": 2000,
+    "warnings_max": 100,
+    "warnings_bytes": 65536
   },
   "kinds": [
     {"kind": "friction", "versions": [1]},

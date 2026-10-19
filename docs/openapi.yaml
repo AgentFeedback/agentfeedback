@@ -639,6 +639,8 @@ paths:
                   context_value_bytes: 2000
                   identifier_bytes: 200
                   summary_bytes: 2000
+                  warnings_max: 100
+                  warnings_bytes: 65536
                 kinds:
                   - {kind: friction, versions: [1]}
                   - {kind: review, versions: [1]}
@@ -1263,6 +1265,12 @@ components:
         submission: {$ref: '#/components/schemas/Submission'}
         warnings:
           type: array
+          description: >-
+            At most `limits.warnings_max` entries whose code and pointer stay
+            within `limits.warnings_bytes` (see `/meta`); a cut list keeps the
+            first entries in pointer order and ends with one `warnings_truncated`
+            entry at pointer `""`, counted in both bounds, whose message counts
+            the withheld ones.
           items: {$ref: '#/components/schemas/Warning'}
     ListResponse:
       type: object
@@ -1399,6 +1407,8 @@ components:
             context_value_bytes: {type: integer}
             identifier_bytes: {type: integer, description: 'Limit for `machine`, `model`, `harness`, `project`. `key`, `kind` and context keys have no byte limit.'}
             summary_bytes: {type: integer}
+            warnings_max: {type: integer, description: 'Most warnings one response lists, the closing `warnings_truncated` entry of a cut list included.'}
+            warnings_bytes: {type: integer, description: 'Most bytes of code and pointer the listed warnings take together; messages are outside the budget.'}
         kinds:
           type: array
           items: {$ref: '#/components/schemas/KindVersions'}
@@ -1428,7 +1438,7 @@ components:
               reason: {type: string, enum: [key_mismatch]}
         warnings:
           type: array
-          description: Normalisation warnings per imported record, the same codes as on create; a warning never rejects the import.
+          description: Normalisation warnings per imported record, the same codes and the same per-record bound as on create; a warning never rejects the import. The list is bounded like a create response's, in line order, and when cut ends with one `warnings_truncated` entry whose `line` is the first withheld line.
           items:
             type: object
             additionalProperties: false

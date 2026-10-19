@@ -167,8 +167,15 @@ func TestDecodeLinearOnWarningHeavyBodies(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
-		if len(warnings) < members {
-			t.Errorf("%s: %d warnings", name, len(warnings))
+		// Every member warns, and the list is bounded: WarningsMax entries and
+		// the closing warnings_truncated, whose count covers the rest.
+		if len(warnings) != WarningsMax || warnings[WarningsMax-1].Code != WarningsTruncated {
+			t.Errorf("%s: %d warnings, last %+v", name, len(warnings), warnings[len(warnings)-1])
+		} else {
+			var withheld int
+			if _, err := fmt.Sscanf(warnings[WarningsMax-1].Message, "%d more warnings withheld", &withheld); err != nil || withheld < members-WarningsMax+1 {
+				t.Errorf("%s: closing warning %q (withheld %d, want at least %d)", name, warnings[WarningsMax-1].Message, withheld, members-WarningsMax+1)
+			}
 		}
 		if elapsed := time.Since(start); elapsed > 20*time.Second {
 			t.Errorf("%s: %d members took %s", name, members, elapsed)

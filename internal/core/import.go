@@ -144,7 +144,7 @@ func (s *Service) Import(ctx context.Context, body []byte) (ImportResult, error)
 	if err != nil {
 		return ImportResult{}, err
 	}
-	return res, nil
+	return capImportWarnings(res), nil
 }
 
 // errDryRun rolls back a dry-run restore's transaction.
@@ -231,7 +231,7 @@ func (s *Service) Restore(ctx context.Context, body []byte, dryRun bool) (Import
 	if err != nil && !(dryRun && errors.Is(err, errDryRun)) {
 		return ImportResult{}, err
 	}
-	return res, nil
+	return capImportWarnings(res), nil
 }
 
 // VerifyExport verifies an export (format 2) exactly as Import and Restore
@@ -481,4 +481,33 @@ func verifyRecord(line int, raw []byte) (importRecord, error) {
 		}
 	}
 	return importRecord{line: line, sub: sub, warnings: warnings}, nil
+}
+
+// capImportWarnings bounds the warnings of an import or restore response the
+// way the decoder bounds one record's (envelope.WarningsMax, WarningsBytes
+// over code and pointer, the closing entry included): the first entries in
+// line order stay, and one closing warnings_truncated entry, carrying the
+// line of the first withheld warning, counts the rest. Each record's own
+// list is already bounded by the decoder.
+func capImportWarnings(res ImportResult) ImportResult {
+	total := 0
+	for _, w := range res.Warnings {
+		total += len(w.Code) + len(w.Pointer)
+	}
+	if len(res.Warnings) <= envelope.WarningsMax && total <= envelope.WarningsBytes {
+		return res
+	}
+	budget := envelope.WarningsBytes - len(envelope.WarningsTruncated)
+	kept, used := 0, 0
+	for kept < len(res.Warnings) && kept < envelope.WarningsMax-1 && used+len(res.Warnings[kept].Code)+len(res.Warnings[kept].Pointer) <= budget {
+		used += len(res.Warnings[kept].Code) + len(res.Warnings[kept].Pointer)
+		kept++
+	}
+	withheld := len(res.Warnings) - kept
+	first := res.Warnings[kept]
+	out := make([]ImportWarning, 0, kept+1)
+	out = append(out, res.Warnings[:kept]...)
+	res.Warnings = append(out, ImportWarning{Line: first.Line, Code: envelope.WarningsTruncated, Pointer: "",
+		Message: fmt.Sprintf("%d more warnings withheld; the first %d are listed in line order", withheld, kept)})
+	return res
 }

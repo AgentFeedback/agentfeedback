@@ -264,6 +264,18 @@ func TestConformanceKindSchemaGuides(t *testing.T) {
 		if !shaped {
 			continue
 		}
+		if cut := func() bool {
+			warnings, _ := f.expected["warnings"].([]any)
+			for _, w := range warnings {
+				if m, ok := w.(map[string]any); ok && m["code"] == "warnings_truncated" {
+					return true
+				}
+			}
+			return false
+		}(); cut {
+			t.Logf("skip %s: the warnings are cut after the guide ran (decoder territory)", f.name)
+			continue
+		}
 		t.Run(f.name, func(t *testing.T) {
 			got := keys(Validate(Token(kind), version, payload, nil))
 			var want []string

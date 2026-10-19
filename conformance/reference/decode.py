@@ -263,7 +263,42 @@ def decode(body: bytes, schemas: dict[tuple[str, int], dict] | None = None) -> R
     ordered = {name: env[name] for name in ENVELOPE_MEMBERS if name in env}
     hash_input = {name: ordered[name] for name in HASH_MEMBERS if name in ordered}
     digest = hashlib.sha256(canonical_bytes(hash_input)).hexdigest()
-    return Result(201, None, ordered, warnings, hash_input, digest)
+    return Result(201, None, ordered, _cap(warnings), hash_input, digest)
+
+
+# The warnings of one decode are bounded (the Go decoder's WarningsMax and
+# WarningsBytes): at most WARNINGS_MAX entries, the closing one included,
+# whose code and pointer together stay within WARNINGS_BYTES (messages are
+# advisory and outside the budget). A list that fits is returned as it is;
+# one that does not is sorted by pointer, code and message, cut to the
+# longest prefix that leaves room for the closing ``warnings_truncated``
+# entry at the record pointer "" under both bounds, and closed with it; its
+# message counts the withheld entries. Pointers are never shortened.
+WARNINGS_MAX = 100
+WARNINGS_BYTES = 65536
+WARNINGS_TRUNCATED = "warnings_truncated"
+
+
+def _warning_bytes(w: Warning_) -> int:
+    return len(w.code.encode()) + len(w.pointer.encode())
+
+
+def _cap(warnings: list[Warning_]) -> list[Warning_]:
+    if len(warnings) <= WARNINGS_MAX and sum(_warning_bytes(w) for w in warnings) <= WARNINGS_BYTES:
+        return warnings
+    ordered = sorted(warnings, key=lambda w: (w.pointer.encode(), w.code.encode(), w.message.encode()))
+    budget = WARNINGS_BYTES - len(WARNINGS_TRUNCATED)
+    kept: list[Warning_] = []
+    used = 0
+    for w in ordered:
+        if len(kept) >= WARNINGS_MAX - 1 or used + _warning_bytes(w) > budget:
+            break
+        used += _warning_bytes(w)
+        kept.append(w)
+    withheld = len(ordered) - len(kept)
+    kept.append(Warning_(WARNINGS_TRUNCATED, "",
+                         f"{withheld} more warnings withheld; the first {len(kept)} are listed in pointer order"))
+    return kept
 
 
 def _place(payload: dict, name: str, val, warnings: list[Warning_], code: str, message: str,

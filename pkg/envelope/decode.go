@@ -1,6 +1,7 @@
 package envelope
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -61,7 +62,60 @@ func DecodeWithLimits(body []byte, maxBytes, maxDepth int) (*Envelope, []schema.
 			warnings = append(warnings, schema.Detail{Code: "missing_recommended", Pointer: "/" + name, Message: name + " is recommended"})
 		}
 	}
-	return env, warnings, nil
+	return env, capWarnings(warnings), nil
+}
+
+// WarningsMax and WarningsBytes bound the warnings of one decode: at most
+// WarningsMax entries, the closing one included, whose code and pointer
+// together stay within WarningsBytes. Messages are advisory and differ
+// between implementations, so they are outside the budget; a body nested
+// deep under long member names makes every pointer repeat every name above
+// it, so without a bound the warnings can outweigh the body by orders of
+// magnitude. Both are reported in /api/v1/meta limits as warnings_max and
+// warnings_bytes.
+const (
+	WarningsMax   = 100
+	WarningsBytes = 65536
+)
+
+// WarningsTruncated is the code of the one closing warning a cut list carries,
+// at the record pointer "": its message counts the withheld entries.
+const WarningsTruncated = "warnings_truncated"
+
+func warningBytes(w schema.Detail) int {
+	return len(w.Code) + len(w.Pointer)
+}
+
+// capWarnings returns warnings unchanged when they fit both bounds. Otherwise
+// it sorts them by pointer, code and message, keeps the longest prefix that
+// leaves room for the closing WarningsTruncated entry under both bounds, and
+// appends that entry, so the kept set is deterministic and a client can tell
+// that something was withheld. A pointer is never shortened: cut, it would
+// name the wrong member.
+func capWarnings(warnings []schema.Detail) []schema.Detail {
+	total := 0
+	for _, w := range warnings {
+		total += warningBytes(w)
+	}
+	if len(warnings) <= WarningsMax && total <= WarningsBytes {
+		return warnings
+	}
+	sorted := slices.Clone(warnings)
+	slices.SortStableFunc(sorted, func(a, b schema.Detail) int {
+		return cmp.Or(cmp.Compare(a.Pointer, b.Pointer), cmp.Compare(a.Code, b.Code), cmp.Compare(a.Message, b.Message))
+	})
+	// The closing entry counts against both bounds: its pointer is "".
+	budget := WarningsBytes - len(WarningsTruncated)
+	kept, used := 0, 0
+	for kept < len(sorted) && kept < WarningsMax-1 && used+warningBytes(sorted[kept]) <= budget {
+		used += warningBytes(sorted[kept])
+		kept++
+	}
+	withheld := len(sorted) - kept
+	out := make([]schema.Detail, 0, kept+1)
+	out = append(out, sorted[:kept]...)
+	return append(out, schema.Detail{Code: WarningsTruncated, Pointer: "",
+		Message: fmt.Sprintf("%d more warnings withheld; the first %d are listed in pointer order", withheld, kept)})
 }
 
 type decoder struct {

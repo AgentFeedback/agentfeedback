@@ -1,0 +1,407 @@
+{
+  "row": "150 unlisted payload members: the warnings are cut to 99 in pointer order and closed by warnings_truncated",
+  "status": 201,
+  "note": "warnings_max 100 (the closing entry included) and warnings_bytes 65536 over code and pointer (limits in /meta). The kept set is the first 99 by pointer; the closing entry at the record pointer \"\" counts the 51 withheld. Messages are advisory; the stored record is complete.",
+  "warnings": [
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u001"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u002"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u003"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u004"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u005"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u006"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u007"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u008"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u009"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u010"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u011"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u012"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u013"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u014"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u015"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u016"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u017"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u018"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u019"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u020"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u021"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u022"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u023"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u024"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u025"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u026"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u027"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u028"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u029"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u030"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u031"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u032"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u033"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u034"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u035"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u036"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u037"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u038"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u039"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u040"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u041"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u042"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u043"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u044"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u045"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u046"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u047"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u048"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u049"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u050"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u051"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u052"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u053"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u054"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u055"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u056"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u057"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u058"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u059"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u060"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u061"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u062"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u063"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u064"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u065"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u066"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u067"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u068"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u069"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u070"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u071"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u072"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u073"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u074"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u075"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u076"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u077"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u078"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u079"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u080"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u081"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u082"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u083"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u084"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u085"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u086"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u087"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u088"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u089"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u090"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u091"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u092"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u093"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u094"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u095"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u096"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u097"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u098"
+    },
+    {
+      "code": "unknown_field",
+      "pointer": "/payload/u099"
+    },
+    {
+      "code": "warnings_truncated",
+      "pointer": ""
+    }
+  ]
+}
