@@ -92,17 +92,16 @@ Ask exactly this, and wait for the answer:
 
 > Where should this client's reports go? By default to a local database on
 > this machine: no server, no key. Or name a server: the Cloud
-> (`https://api.agentfeedback.io`, key from agentfeedback.io) or a
-> self-hosted server (its base URL). For a server, have the API key ready;
-> you will type it yourself in a later step, I will not ask you to paste it
-> here.
+> (`https://api.agentfeedback.dev`, a private preview) or a self-hosted
+> server (its base URL). For a server, have the API key ready; you will type
+> it yourself in a later step, I will not ask you to paste it here.
 
 Local is the default: an answer that names no server means local. Never
 pick a server, or guess a URL, the human did not name. Local mode needs the
 binary: with `binary_possible` false, tell the human that only a server
 works here and ask for one, or stop. For local, skip the command below and
 record `"server": "local"`. The Cloud answer means `<URL>` is
-`https://api.agentfeedback.io`. For a server, check that an AgentFeedback
+`https://api.agentfeedback.dev`. For a server, check that an AgentFeedback
 server answers there (no key is sent, so it must refuse):
 
 ```sh
@@ -348,27 +347,32 @@ Skip step 3; go to step 4.
 ### Step 2.8: Chat apps (Claude.ai, ChatGPT, Claude on mobile)
 
 You have no shell, and nothing gets installed. Your job is to explain the
-setup to the human. Say this plainly: Claude.ai, ChatGPT and the mobile apps
-reach the Cloud; their connectors require OAuth, and a self-hosted server
-accepts only an API key header, so a self-hosted server is not reachable from
-them. The one exception is a Claude.ai organisation whose administrator
-configures static headers (a beta feature), and only for a server reachable
-from the internet over HTTPS; making a self-hosted server reachable that way
-changes its exposure, so that is the human's decision, not yours. Give the
-human the connector settings to enter in the app:
+setup to the human. Say this plainly: a chat app reaches an AgentFeedback
+server only through a custom connector, and every AgentFeedback server, the
+Cloud included, authenticates a connector with an API key sent as a fixed
+request header; there is no sign-in. Claude.ai, Claude Desktop and Claude on
+mobile take such a header on every plan (on a Team or Enterprise plan an
+owner adds the connector, and everyone who uses it shares that one key).
+ChatGPT's connectors need OAuth, which no AgentFeedback server offers, so
+ChatGPT is not reachable. The server must be reachable from the internet
+over HTTPS: the Cloud is (a private preview); making a self-hosted server
+reachable that way changes its exposure, so that is the human's decision,
+not yours. Give the human the connector settings to enter in the app:
 
 ```text
-Cloud (any chat app): add a custom connector with the URL https://api.agentfeedback.io/mcp and sign in when asked.
-Self-hosted, Claude.ai organisations only: an organisation administrator adds a custom connector with the URL <URL>/mcp (a public HTTPS URL) and the static header x-api-key set to the key.
+Claude (web, desktop, mobile): add a custom connector with the URL <URL>/mcp, choose no sign-in, and add the request header x-api-key with the key as its value.
+The Cloud's <URL> is https://api.agentfeedback.dev (a private preview). A self-hosted <URL> must be a public HTTPS address.
+ChatGPT: not reachable (OAuth only).
 ```
 
 **Verify:** the human confirms the connector is added and the app lists the
-`submit_feedback` tool.
+`submit_feedback` tool. On ChatGPT there is nothing to add: the outcome is
+`{"step": "2.8", "status": "skipped", "reason": "ChatGPT connectors need OAuth"}`.
 
 **Outcome:**
 
 ```json
-{"step": "2.8", "status": "ok", "mode": "connector", "server": "https://api.agentfeedback.io/mcp", "done_by": "human"}
+{"step": "2.8", "status": "ok", "mode": "connector", "server": "<URL>/mcp", "done_by": "human"}
 ```
 
 Skip step 3; go to step 4.

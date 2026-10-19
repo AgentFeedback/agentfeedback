@@ -47,9 +47,10 @@ report to a server instead, run `agentfeedback init --server <URL>`; to run
 one, follow [`AGENT-INSTALL-STACK.md`](AGENT-INSTALL-STACK.md) or
 [`docs/operate.md`](docs/operate.md).
 
-This is the open-source, self-hostable AgentFeedback
-([agentfeedback.dev](https://agentfeedback.dev)). A hosted version runs at
-[agentfeedback.io](https://agentfeedback.io); it speaks the same API.
+This is the open-source AgentFeedback: local first, and self-hostable as a
+server. The project's site and docs are at
+[agentfeedback.dev](https://agentfeedback.dev). A hosted version, in private
+preview, speaks the same API.
 
 ## Start here
 

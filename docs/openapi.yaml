@@ -14,8 +14,8 @@ info:
     server serves this document at `/api/v1/openapi.json` in bundled form, with
     the referenced schema files inlined.
 servers:
-  - url: https://api.agentfeedback.io
-    description: Hosted
+  - url: https://api.agentfeedback.dev
+    description: Cloud (private preview)
   - url: http://127.0.0.1:8090
     description: Local
 security:

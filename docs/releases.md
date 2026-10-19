@@ -201,7 +201,9 @@ need a new version; corrections to release prose need no new tag.
 The project moved to [github.com/AgentFeedback/agentfeedback](https://github.com/AgentFeedback/agentfeedback)
 and is the open-source, self-hostable AgentFeedback
 ([agentfeedback.dev](https://agentfeedback.dev)); a hosted version with the
-same API runs at [agentfeedback.io](https://agentfeedback.io). Every name
+same API is in private preview (it was announced here for `agentfeedback.io`,
+a domain retired on 2026-10-18: the project has one domain, and `--to cloud`
+resolves to `https://api.agentfeedback.dev` from release 4.0.0). Every name
 changes and v3 is a fresh start: no migration from or compatibility with
 2.x deployments and skill installs. The HTTP API (1.1), payloads and hash forms are unchanged.
 
@@ -210,7 +212,8 @@ changes and v3 is a fresh start: no migration from or compatibility with
   invocation names (`/agentfeedback-triage`). Client environment variables
   keep their names (`AGENT_FEEDBACK_*`); the spool moves to `~/.cache/agentfeedback` and triage digests to
   `${TMPDIR:-/tmp}/agentfeedback-triage/`. The skills work against a
-  self-hosted service or `https://api.agentfeedback.io`.
+  self-hosted service or the hosted one (`https://api.agentfeedback.dev`
+  from release 4.0.0; this release's binaries name the retired domain).
 - **Service**: Go module `github.com/agentfeedback/agentfeedback`; binary
   `agentfeedback` (`cmd/agentfeedback`, `/opt/agentfeedback`, runs as user
   `agentfeedback`); image `ghcr.io/agentfeedback/agentfeedback`; default

@@ -23,8 +23,10 @@ import (
 )
 
 const (
-	// cloudURL is the hosted service, the target of --to cloud.
-	cloudURL   = "https://api.agentfeedback.io"
+	// cloudURL is the hosted service (a private preview), the target of
+	// --to cloud and of --server cloud. The project's one domain is
+	// agentfeedback.dev; the earlier domain is retired and never a default.
+	cloudURL   = "https://api.agentfeedback.dev"
 	metaPath   = "/api/v1/meta"
 	exportPath = "/api/v1/export"
 	importPath = "/api/v1/import"

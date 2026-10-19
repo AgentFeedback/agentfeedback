@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/agentfeedback/agentfeedback/v4/docs"
 )
 
 const (
@@ -642,5 +644,22 @@ func TestMigrate_ImportCountsMustAddUp(t *testing.T) {
 	if r.code != 1 || !strings.Contains(r.stderr, "counts 5 imported and 0 skipped for 1 records") ||
 		!strings.Contains(lastLine(r.stdout), `"sent":1,"imported":0`) {
 		t.Fatalf("%+v", r)
+	}
+}
+
+// The project has one domain (agentfeedback.dev; AFDEV-137): the cloud alias
+// and the served contract's first server must name its API host, so a future
+// edit cannot point a released binary at a retired or wrong host and pass
+// every test that compares against the constant.
+func TestCloudURL_IsTheProjectHost(t *testing.T) {
+	const want = "https://api.agentfeedback.dev"
+	if cloudURL != want {
+		t.Fatalf("cloudURL = %q, want %q", cloudURL, want)
+	}
+	if !strings.Contains(string(docs.OpenAPI), "- url: "+want+"\n") {
+		t.Fatalf("docs/openapi.yaml servers do not name %s", want)
+	}
+	if strings.Contains(string(docs.OpenAPI), "agentfeedback.io") {
+		t.Fatal("docs/openapi.yaml names the retired domain")
 	}
 }

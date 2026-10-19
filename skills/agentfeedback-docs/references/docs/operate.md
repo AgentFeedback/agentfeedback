@@ -806,7 +806,7 @@ stops at the first failure and says how many records landed. `--dry-run`
 sends no record (it still reads the target's metadata and tombstones): it prints the count per kind, the first record of each, and
 the source tombstones the target still holds unredacted; redact those on the
 target by hand. `--to cloud` targets the hosted service at
-`https://api.agentfeedback.io`.
+`https://api.agentfeedback.dev` (a private preview).
 
 ## Upgrading and downgrading
 

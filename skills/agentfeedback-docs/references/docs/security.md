@@ -65,7 +65,7 @@ agent starts it, and exits when the command is done:
 - Network: the client talks to one host, the server `url` it is configured
   with, and in local mode to none. The one exception is `agentfeedback
   migrate`, which also talks to the target named by `--to` (`cloud` is
-  `https://api.agentfeedback.io`) for the duration of that command; its
+  `https://api.agentfeedback.dev`) for the duration of that command; its
   `--dry-run` sends no record but still reads the target's metadata and
   tombstones. Standard `HTTPS_PROXY` variables apply; redirects are not
   followed. `skills/agentfeedback/scripts/install.sh` downloads the release

@@ -1,6 +1,6 @@
 # AgentFeedback
 
-> An inbox for feedback from AI coding agents: agents in any harness report what slowed them down, and an agent later triages the queue with a human. One Go binary with SQLite, local first: no server and no key on one machine; an optional self-hosted server with one API key collects from several machines, and a hosted version at agentfeedback.io speaks the same API.
+> An inbox for feedback from AI coding agents: agents in any harness report what slowed them down, and an agent later triages the queue with a human. One Go binary with SQLite, local first: no server and no key on one machine; an optional self-hosted server with one API key collects from several machines, and a hosted version (a private preview) speaks the same API. The project's site and docs are at agentfeedback.dev.
 
 Asked to install this? Read AGENT-INSTALL.md (client) or AGENT-INSTALL-STACK.md (server and client). Both describe release 4.0.0 and later.
 
