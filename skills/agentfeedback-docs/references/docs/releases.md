@@ -17,9 +17,9 @@ GitHub release or pushes an image (the steps below, recovery included) only
 when a maintainer asks for that version.
 
 Maintainers need Git, the tools `just ci` needs ([develop.md](develop.md)),
-GoReleaser 2.18.2 exactly (the `v2.18.2` archive from
+GoReleaser 2.18.3 exactly (the `v2.18.3` archive from
 github.com/goreleaser/goreleaser/releases, or `brew install goreleaser` while
-2.18.2 is Homebrew's version; `just release` refuses any other version,
+2.18.3 is Homebrew's version; `just release` refuses any other version,
 because the archives are only reproducible with the same one), Docker with
 buildx logged in to `ghcr.io` (push access to the
 `agentfeedback/agentfeedback` package), able to build and run `linux/amd64`
@@ -195,6 +195,109 @@ that version. Rewrite the section's relative links to repo-root paths
 (`api.md` to `docs/api.md`) — a release body resolves them against the
 repository root, not `docs/`. Corrections to source
 need a new version; corrections to release prose need no new tag.
+
+## v4.0.0 — Local first: one binary, the v1 contract, skills 5.0
+
+Release 4.0.0 is the first one with release assets and an image published
+by the release pipeline ([Assets](#assets)); every earlier tag is source
+only. It is a new major: the HTTP API is the v1 contract, version `1.0` (3.x
+served `1.1`), and the v3 API is gone; the Go module path is
+`github.com/agentfeedback/agentfeedback/v4`; both skills are 5.0; a v4
+binary refuses a v3 database ([operate.md](operate.md#upgrading-and-downgrading):
+keep the old database with the image that wrote it and start empty; a v3
+export is not format 2 and does not import); a spool left under
+`~/.cache/agentfeedback` by 3.x is reported by `doctor` and never sent.
+
+- **Local mode is the default.** `agentfeedback init` sets a machine up in
+  one pass: reports go to a SQLite database in the data directory
+  (`${XDG_DATA_HOME:-~/.local/share}/agentfeedback`) with no server and no
+  key; `init --server cloud|URL` points it at a server instead. Every client
+  command works on the local database; `--server URL` targets a server
+  once. Envelope files dropped into the data directory's `inbox/` are
+  submitted at the start of every local-mode command but `doctor` and
+  `hook`, or by `ingest`.
+- **One binary, every command.** `submit` (friction, review, any kind;
+  `--stdin`, `--dry-run`, `--scrub`), `list`, `get`, `stats`, `done`,
+  `undo`, `redact`, `rekind`, `export`, `import`, `backup`, `migrate --to
+  cloud|URL --to-key-from-stdin`, `digest`, `flush`, `ingest`, `doctor`
+  (`--e2e`, `--init`), `schema`, `skill render`, `version`;
+  `hook` (per-session failure counters and a bounded nudge, replacing
+  `flush --hook`), `sessions list|digest|mark|status` over the coding-agent
+  session logs on the machine (Claude Code, Codex, Copilot CLI, Gemini CLI
+  and OpenCode readers; read on demand, never sent),
+  `ui` (a read-only loopback page over the queue), `mcp` (the tools over
+  stdio on the local database), `serve` and `serve --init`, `server install
+  --systemd|--launchd|--compose`. The bash client of 3.x is retired;
+  `install.sh` installs the binary.
+- **Harness installer.** `install`, `uninstall`, `install --check`,
+  `install --project`, `install --mcp` and `prime` wire the skill, a rule in
+  the global instruction file, session-start and failure hooks or an MCP
+  entry into fourteen harnesses: Claude Code and OpenCode live-checked on
+  2026-10-07; omp, Codex, Cursor, pi, Copilot, Antigravity, Devin, Kiro,
+  Cline, Amp, VS Code and Gemini CLI written from their documentation and
+  listed as such by `install --list` until a live check is recorded.
+  `doctor` reports version skew between the hook binaries and the one on
+  `PATH`. Client data is created 0700/0600 (not on Windows); the spool
+  lives in the data directory and is bound to its destination.
+- **The v1 contract.** Envelope and kind schemas under `schemas/`, the
+  OpenAPI document and the conformance kit under `conformance/`
+  ([api.md](api.md)); context carries `origin`, `detector` and
+  `session_harness`, friction carries `evidence[]`; `client.min_version` is
+  the constant `4.0.0-rc.0`, so 4.0 release candidates are admitted. Importable packages: `pkg/schema`, `pkg/canonjson`,
+  `pkg/envelope`, `pkg/client`, `pkg/collect`, `pkg/scrub`.
+- **Server.** The v1 API on a SQLite store with numbered migrations and
+  pinned query plans; export and import in format 2 (the HTTP import keeps
+  uids and assigns new ids; the local `import` command restores ids); remote
+  MCP on `/mcp` (Streamable HTTP, the six tools, instructions), the served
+  skill on `/skill` and the discovery document on
+  `/.well-known/agentfeedback.json`; `API_KEY_FILE`; opt-in `INGEST_SCRUB`.
+  A bare `serve` listens on `127.0.0.1:8090` and, with `DATABASE_PATH`
+  unset, uses the data-directory database rather than
+  `/data/agentfeedback.db`; the image keeps `/data/agentfeedback.db` and
+  listens on `0.0.0.0:8080`.
+- **Skills.** `agentfeedback` 5.0 is generated from
+  `internal/skillgen/source` (`just skills`), `agentfeedback-triage` 5.0 is
+  a fix-it session that clusters by root cause, verifies read-only,
+  interviews, acts and marks, starts from the session logs on an empty
+  queue, and has an MCP-only route; `agentfeedback-docs` carries the
+  reference docs, schemas and OpenAPI document. An Agent Plugins bundle
+  ships under `plugins/agentfeedback`, with marketplace manifests at
+  `.claude-plugin/marketplace.json` (Claude Code) and
+  `.agents/plugins/marketplace.json` (Codex).
+- **Distribution.** The six archives, `SHA256SUMS` and `install.sh` on the
+  GitHub release; `ghcr.io/agentfeedback/agentfeedback` (distroless,
+  `linux/amd64` and `linux/arm64`, `CMD ["serve"]`) tagged `4.0.0`, the
+  commit SHA and `latest`; `go install
+  github.com/agentfeedback/agentfeedback/v4/cmd/agentfeedback@v4.0.0`.
+  Homebrew, npm, PyPI, RubyGems and the rest follow as separate releases of
+  their own channels.
+- **One domain.** The project's site is agentfeedback.dev; `--to cloud` and
+  `init --server cloud` resolve to `https://api.agentfeedback.dev`
+  (private preview). The 3.0.0 binaries named a domain that is retired.
+- **Gates.** `just ci` runs every gate in a toolchain container and ends
+  with a live Claude Code check; `just playbooks <tag>` runs both install
+  playbooks (`AGENT-INSTALL.md`, `AGENT-INSTALL-STACK.md`) in a clean
+  container; GitHub Actions is gone, there is no hosted CI.
+
+Manual checks for this release, recorded by the maintainer:
+
+- The paste check (both README prompts in two harnesses over the local
+  path, and one live MCP desktop client over stdio) was waived by the
+  maintainer on 2026-10-19 and not run for 4.0.0.
+- The remote MCP header check (an MCP entry carrying the key lists the
+  tools; a wrong key yields `unauthorized` with no OAuth discovery) was not
+  run for this tag: every harness's header support, Claude Code, OpenCode
+  and omp included, is written from documentation and unverified until a
+  live check is recorded here.
+
+Verify the release as a downloader:
+
+```bash
+gh release download v4.0.0 --repo AgentFeedback/agentfeedback --pattern 'agentfeedback_*' --pattern SHA256SUMS --pattern install.sh
+sha256sum -c SHA256SUMS                                      # shasum -a 256 -c on macOS
+tar -xOzf agentfeedback_4.0.0_linux_amd64.tar.gz agentfeedback | sha256sum
+docker run --rm ghcr.io/agentfeedback/agentfeedback:4.0.0 version   # prints 4.0.0
+```
 
 ## v3.0.0 — AgentFeedback: new home, new names, fresh start
 
