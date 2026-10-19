@@ -196,6 +196,36 @@ that version. Rewrite the section's relative links to repo-root paths
 repository root, not `docs/`. Corrections to source
 need a new version; corrections to release prose need no new tag.
 
+## v4.1.0 — Bounded warnings
+
+Compatible with 4.0.0 clients and servers; the HTTP API stays `1.0`. One
+contract addition: the warnings of a decode are bounded.
+
+- **Warnings are bounded.** A response lists at most `limits.warnings_max`
+  warnings (100, the closing entry included) whose `code` and `pointer`
+  together stay within `limits.warnings_bytes` (65536); both limits are in
+  [`/api/v1/meta`](api.md#meta). A list that fits is returned as before; one
+  that does not is cut to the first entries in pointer order and closed by
+  one `warnings_truncated` entry at the record pointer `""` whose message
+  counts the withheld ones. Pointers are never shortened. Import bounds its
+  response the same way in line order. Every surface inherits the bound:
+  `POST /api/v1/submissions`, `POST /api/v1/import`, the MCP `submit_feedback`
+  tool and the CLI's local decode. The code joins the closed list in
+  `conformance/warnings.json`; the conformance kit gains
+  `decode/interactions/warnings-truncated`; the Python reference mirrors the
+  rule.
+- The `agentfeedback` skill's "Warnings are advice" paragraph says a long
+  list is cut; its version does not change (the command contract is the
+  same).
+
+Verify the release as a downloader:
+
+```bash
+gh release download v4.1.0 --repo AgentFeedback/agentfeedback --pattern 'agentfeedback_*' --pattern SHA256SUMS --pattern install.sh
+sha256sum -c SHA256SUMS                                      # shasum -a 256 -c on macOS
+docker run --rm ghcr.io/agentfeedback/agentfeedback:4.1.0 version   # prints 4.1.0
+```
+
 ## v4.0.0 — Local first: one binary, the v1 contract, skills 5.0
 
 Release 4.0.0 is the first one with release assets and an image published
