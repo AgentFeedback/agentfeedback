@@ -9,11 +9,11 @@ The last line on stdout is one JSON outcome:
 | Outcome | Meaning | Exit |
 |---|---|---|
 | `submitted` | stored as a new report; `id` names it | 0 |
-| `duplicate` | the server already had the same report; `id` names it | 0 |
+| `duplicate` | AgentFeedback already had the same report; `id` names it | 0 |
 | `spooled` | the server or the local database could not take it now; saved locally and sent on the next command or `agentfeedback flush` | 0 |
 | `valid` | `--dry-run` passed; nothing was sent | 0 |
 | `disabled` | configuration excludes this directory from reporting; nothing was sent, and that is fine | 0 |
-| `rejected` | the server refused the body; the message names the member; fix it before sending again | 1 |
+| `rejected` | AgentFeedback refused the body; the message names the member; fix it before sending again | 1 |
 | `mismatch` | the same `key` was already used for different content; send the correction under a new key | 1 |
 | `error` | configuration or transport failure; nothing was sent | 1 |
 <!-- end -->

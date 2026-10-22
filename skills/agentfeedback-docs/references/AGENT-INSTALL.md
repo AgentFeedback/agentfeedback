@@ -7,8 +7,7 @@ one command in an `sh` block, one **Verify** line, and one **Outcome** in a
 human before you go on. A step that does not apply to you still gets its
 outcome, with `"status": "skipped"` and the reason.
 
-This file describes the client of release 4.0.0 and later; until that release
-is out, step 2.1 works only with a pre-release tag the human names.
+This file describes the client of release 4.0.0 and later.
 
 The client works locally by default: reports go to a database on this
 machine, with no server and no key. A server is used only when the human

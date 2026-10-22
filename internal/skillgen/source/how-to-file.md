@@ -2,8 +2,8 @@
 
 <!-- only: cli -->
 Run the `agentfeedback` binary. It collects the context (repository facts,
-machine, harness) for you, retries when the server is unreachable, and never
-prints the API key.
+machine, harness) for you, keeps the report and retries when the server or
+the local database cannot take it, and never prints the API key.
 
 ```bash
 agentfeedback submit friction --category documentation \
@@ -29,7 +29,8 @@ JSON
 ```
 
 The members above have flags of the same name with dashes (`--suggested-fix`,
-`--fix-status`, `--fix-ref`, `--project`); `context` goes in the stdin JSON.
+`--fix-status`, `--fix-ref`, `--project`); `context` goes in the stdin JSON,
+or one pair per repeatable `--context key=value` flag.
 `--dry-run` prints the body that would be sent and outcome `valid`, and sends
 nothing.
 `--scrub` replaces known secret formats (keys, tokens, private keys, URL

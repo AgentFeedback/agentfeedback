@@ -11,11 +11,10 @@ every step has one command in an `sh` block, one **Verify** line, and one
 before you go on. A step that does not apply to you still gets its outcome,
 with `"status": "skipped"` and the reason.
 
-This file describes release 4.0.0 and later; until that release is out,
-client step 2.1 works only with a pre-release tag the human names. The server
-runs on Linux (a systemd user unit) or macOS (a launchd agent), or in Docker
-Compose on either; not on Windows. The server and the client end up on this
-machine; other machines join later with the client playbook.
+This file describes release 4.0.0 and later. The server runs on Linux (a
+systemd user unit) or macOS (a launchd agent), or in Docker Compose on
+either; not on Windows. The server and the client end up on this machine;
+other machines join later with the client playbook.
 
 Placeholders, beyond the client playbook's: `<key_file>`,
 `<env_file>` and `<listen>` come from step S1's outcome, `<port>` is the

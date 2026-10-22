@@ -9,5 +9,5 @@ at 100 entries and ends with one `warnings_truncated` warning that counts the
 rest; the report is still complete.
 <!-- only: cli -->
 
-The binary relays the server's warnings on stderr, one per line.
+The binary relays the warnings on stderr, one per line.
 <!-- end -->

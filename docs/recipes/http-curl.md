@@ -16,7 +16,7 @@ you can first: a report that names an applied fix is worth more than one
 that only describes the problem. Only real friction: do not file a routine
 lookup, and do not file the same problem twice in one session.
 
-You only report. You never need to read the queue before filing; the server
+You only report. You never need to read the queue before filing; AgentFeedback
 absorbs duplicates, and someone else triages what you send.
 
 ## What to include

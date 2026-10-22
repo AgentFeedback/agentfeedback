@@ -26,7 +26,7 @@ you can first: a report that names an applied fix is worth more than one
 that only describes the problem. Only real friction: do not file a routine
 lookup, and do not file the same problem twice in one session.
 
-You only report. You never need to read the queue before filing; the server
+You only report. You never need to read the queue before filing; AgentFeedback
 absorbs duplicates, and someone else triages what you send.
 
 ## What to include
@@ -54,8 +54,8 @@ commands, paths and error text; do not paste private payloads.
 ## How to file
 
 Run the `agentfeedback` binary. It collects the context (repository facts,
-machine, harness) for you, retries when the server is unreachable, and never
-prints the API key.
+machine, harness) for you, keeps the report and retries when the server or
+the local database cannot take it, and never prints the API key.
 
 ```bash
 agentfeedback submit friction --category documentation \
@@ -81,7 +81,8 @@ JSON
 ```
 
 The members above have flags of the same name with dashes (`--suggested-fix`,
-`--fix-status`, `--fix-ref`, `--project`); `context` goes in the stdin JSON.
+`--fix-status`, `--fix-ref`, `--project`); `context` goes in the stdin JSON,
+or one pair per repeatable `--context key=value` flag.
 `--dry-run` prints the body that would be sent and outcome `valid`, and sends
 nothing.
 `--scrub` replaces known secret formats (keys, tokens, private keys, URL
@@ -99,11 +100,11 @@ The last line on stdout is one JSON outcome:
 | Outcome | Meaning | Exit |
 |---|---|---|
 | `submitted` | stored as a new report; `id` names it | 0 |
-| `duplicate` | the server already had the same report; `id` names it | 0 |
+| `duplicate` | AgentFeedback already had the same report; `id` names it | 0 |
 | `spooled` | the server or the local database could not take it now; saved locally and sent on the next command or `agentfeedback flush` | 0 |
 | `valid` | `--dry-run` passed; nothing was sent | 0 |
 | `disabled` | configuration excludes this directory from reporting; nothing was sent, and that is fine | 0 |
-| `rejected` | the server refused the body; the message names the member; fix it before sending again | 1 |
+| `rejected` | AgentFeedback refused the body; the message names the member; fix it before sending again | 1 |
 | `mismatch` | the same `key` was already used for different content; send the correction under a new key | 1 |
 | `error` | configuration or transport failure; nothing was sent | 1 |
 
@@ -117,7 +118,7 @@ the user only if it points at a mistake in what you sent. A long list is cut
 at 100 entries and ends with one `warnings_truncated` warning that counts the
 rest; the report is still complete.
 
-The binary relays the server's warnings on stderr, one per line.
+The binary relays the warnings on stderr, one per line.
 
 ## When something fails
 
