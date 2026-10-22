@@ -9,13 +9,15 @@ import (
 	"github.com/agentfeedback/agentfeedback/v4/internal/skillgen"
 )
 
-const primeSynopsis = "prime [--format text|cursor]"
+const primeSynopsis = "prime [--format text|cursor] [--full]"
 
-// runPrime prints the submission guidance a session starts with: as text,
+// runPrime prints the submission guidance a session starts with: the short
+// form that points at the skill, or with --full the whole guidance; as text,
 // or with --format cursor as the JSON Cursor's sessionStart hook reads.
 func runPrime(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := newFlagSet("prime")
 	format := fs.String("format", "text", "text, or cursor for the JSON object Cursor's sessionStart hook reads")
+	full := fs.Bool("full", false, "print the whole submission guidance, for a harness that loads no skill")
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), "usage: agentfeedback %s\n", primeSynopsis)
 		fs.PrintDefaults()
@@ -27,9 +29,11 @@ func runPrime(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if len(pos) > 0 {
 		return errArgs("prime", primeSynopsis)
 	}
-	text, err := skillgen.Prime()
-	if err != nil {
-		return err
+	text := skillgen.Prime()
+	if *full {
+		if text, err = skillgen.PrimeFull(); err != nil {
+			return err
+		}
 	}
 	switch *format {
 	case "text":

@@ -244,5 +244,5 @@ args = []
 
 [local.prime]
 command = "prime"
-flags = ["--format"]
+flags = ["--format", "--full"]
 args = []

@@ -905,3 +905,43 @@ func TestInstall_GeminiLegacyManifest(t *testing.T) {
 		t.Errorf("GEMINI_CLI_HOME was written: %v", err)
 	}
 }
+
+// The session-start hook prints the short prime where the harness loads
+// skills, and the whole guidance where it has no skills directory.
+func TestPrimeCmd_FullWithoutSkillsDir(t *testing.T) {
+	o := Options{Binary: "/bin/agentfeedback"}
+	if got := primeCmd(o); strings.HasSuffix(got, "--full") {
+		t.Errorf("with a skills directory: %q, want the short prime", got)
+	}
+	o.noSkillDir = true
+	if got := primeCmd(o); !strings.HasSuffix(got, " prime --full") {
+		t.Errorf("without a skills directory: %q, want prime --full", got)
+	}
+	// A stand-in adapter without a skills directory, shaped like cursor.
+	saved := registry
+	t.Cleanup(func() { registry = saved })
+	noSkills := *adapterOf("cursor")
+	noSkills.Name = "test-noskills"
+	noSkills.SkillDirs = func(Env) []string { return nil }
+	registry = append(slices.Clone(saved), noSkills)
+	p := newPlan(testEnv(t), &Manifest{})
+	for name, wantFull := range map[string]bool{"claude-code": false, "codex": false, "cursor": false, "test-noskills": true} {
+		d, err := p.wiring(name, Options{Mode: ModeCLI, Reminder: true, Binary: "/bin/agentfeedback"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		reminders := 0
+		for _, it := range d.items {
+			if it.Role != RoleReminder {
+				continue
+			}
+			reminders++
+			if got := strings.Contains(string(it.Value), " prime --full"); got != wantFull {
+				t.Errorf("%s: prime --full wired %v, want %v: %s", name, got, wantFull, it.Value)
+			}
+		}
+		if reminders != 1 {
+			t.Errorf("%s: %d session-start items, want 1", name, reminders)
+		}
+	}
+}

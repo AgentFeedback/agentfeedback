@@ -439,11 +439,22 @@ func Render(form, server string) ([]byte, error) {
 	return []byte(b.String()), nil
 }
 
-// Prime is the guidance agentfeedback prime prints: the title, the
-// description and every fragment as the cli channel shows it. Running prime
-// proves the binary is on PATH, so the file inbox fallback is left out. It is
-// not one of Forms.
-func Prime() ([]byte, error) {
+// primeText is what agentfeedback prime prints at a session start: the
+// triggers, the one command and a pointer to the skill, which carries the
+// rest.
+//
+//go:embed prime.md
+var primeText []byte
+
+// Prime is the short guidance agentfeedback prime prints. It is not one of
+// Forms.
+func Prime() []byte { return bytes.Clone(primeText) }
+
+// PrimeFull is the guidance agentfeedback prime --full prints, for a harness
+// that loads no skill: the title, the description and every fragment as the
+// cli channel shows it. Running prime proves the binary is on PATH, so the
+// file inbox fallback is left out. It is not one of Forms.
+func PrimeFull() ([]byte, error) {
 	m, frags, err := Source()
 	if err != nil {
 		return nil, err

@@ -357,8 +357,11 @@ type Options struct {
 	Docs bool
 	// Triage adds the agentfeedback-triage skill, in either mode.
 	Triage bool
-	Server string
-	Binary string
+	// noSkillDir is set per harness by wiring: the harness has no skills
+	// directory, so its session-start hook prints the whole guidance.
+	noSkillDir bool
+	Server     string
+	Binary     string
 }
 
 // ServerLocal is the Server of the local target: no URL, the data-directory
@@ -650,6 +653,7 @@ func (p *plan) wiring(name string, o Options) (desire, error) {
 		}
 	}
 	if a.hook != nil && !o.NoHooks {
+		o.noSkillDir = len(a.SkillDirs(p.env)) == 0
 		items, notes := a.hook(p, o)
 		d.items = append(d.items, items...)
 		d.notes = append(d.notes, notes...)

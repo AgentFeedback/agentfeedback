@@ -348,12 +348,14 @@ func TestSetupOnlyInSkillMD(t *testing.T) {
 			t.Errorf("%s shows Setup text", form)
 		}
 	}
-	out, err := Prime()
+	full, err := PrimeFull()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(out), "Setup applies only") || strings.Contains(string(out), marker) {
-		t.Error("prime shows Setup")
+	for _, out := range [][]byte{Prime(), full} {
+		if strings.Contains(string(out), "Setup applies only") || strings.Contains(string(out), marker) {
+			t.Error("prime shows Setup")
+		}
 	}
 }
 
@@ -422,10 +424,23 @@ func TestLoadRejectsABrokenSource(t *testing.T) {
 	}
 }
 
-// Prime is the cli channel only, without the file inbox fallback, and small
-// enough for a session-start hook.
+// The short prime names the command and the skill and stays small.
 func TestPrime(t *testing.T) {
-	out, err := Prime()
+	out := string(Prime())
+	if len(out) > 1200 {
+		t.Errorf("prime is %d bytes, want at most 1200", len(out))
+	}
+	for _, want := range []string{"agentfeedback submit friction", "--model", "the `agentfeedback` skill", "agentfeedback skill render"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("prime lacks %q:\n%s", want, out)
+		}
+	}
+}
+
+// The whole prime is the cli channel only, without the file inbox fallback,
+// and small enough for a session-start hook; the rules point at prime.
+func TestPrimeFull(t *testing.T) {
+	out, err := PrimeFull()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -441,17 +456,17 @@ func TestPrime(t *testing.T) {
 		cli := f.text(ChannelCLI)
 		for _, p := range paragraphs(f.text(ChannelFile)) {
 			if !strings.Contains(cli, p) && strings.Contains(got, p) {
-				t.Errorf("prime shows file-only text of %s:\n%s", f.ID, p)
+				t.Errorf("prime --full shows file-only text of %s:\n%s", f.ID, p)
 			}
 		}
 		for _, p := range paragraphs(cli) {
 			if !strings.Contains(got, p) {
-				t.Errorf("prime lacks cli text of %s:\n%s", f.ID, p)
+				t.Errorf("prime --full lacks cli text of %s:\n%s", f.ID, p)
 			}
 		}
 	}
 	if len(out) >= 8000 {
-		t.Errorf("prime is %d bytes, want under 8000", len(out))
+		t.Errorf("prime --full is %d bytes, want under 8000", len(out))
 	}
 	for name, s := range map[string]string{"rule": m.Rule, "project_rule": m.ProjectRule} {
 		if !strings.Contains(s, "agentfeedback prime") {

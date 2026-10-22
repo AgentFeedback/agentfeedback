@@ -17,10 +17,7 @@ import (
 
 func TestPrime(t *testing.T) {
 	isolateCLI(t)
-	want, err := skillgen.Prime()
-	if err != nil {
-		t.Fatal(err)
-	}
+	want := skillgen.Prime()
 	r := runCLI(t, "", "prime")
 	if r.code != 0 || r.stdout != string(want) {
 		t.Fatalf("prime: %+v", r)
@@ -38,6 +35,18 @@ func TestPrime(t *testing.T) {
 	}
 	if strings.Contains(r.stdout, `\u003c`) {
 		t.Error("prime --format cursor escapes HTML")
+	}
+	full, err := skillgen.PrimeFull()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := runCLI(t, "", "prime", "--full"); r.code != 0 || r.stdout != string(full) {
+		t.Fatalf("prime --full: %+v", r)
+	}
+	r = runCLI(t, "", "prime", "--full", "--format", "cursor")
+	v = nil
+	if err := json.Unmarshal([]byte(r.stdout), &v); r.code != 0 || err != nil || v["additional_context"] != string(full) {
+		t.Fatalf("prime --full --format cursor: %v %+v", err, r)
 	}
 	if r := runCLI(t, "", "prime", "--format", "html"); r.code != 2 || !strings.Contains(r.stderr, `unknown format "html"`) {
 		t.Errorf("unknown format: %+v", r)

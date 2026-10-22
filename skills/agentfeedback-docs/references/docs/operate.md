@@ -278,7 +278,7 @@ agentfeedback install claude-code --with-triage=false     # without the agentfee
 agentfeedback install claude-code --no-hooks     # no hooks at all, the session-start one included: the skill and the rule
 agentfeedback install --check                    # is the rule section current in each detected or recorded harness? changes nothing; exit 3 when one is missing or stale
 agentfeedback install --project --yes            # the pointer section in this repository's AGENTS.md (or CLAUDE.md); --uninstall removes it
-agentfeedback prime                              # the guidance the session-start hook prints (--format cursor: Cursor's JSON)
+agentfeedback prime                              # the short guidance the session-start hook prints (--format cursor: Cursor's JSON; --full: the whole guidance)
 agentfeedback install opencode --mcp             # an MCP entry instead of the skill and the hook: stdio (agentfeedback mcp) for local, a URL for a server
 agentfeedback install claude-code --docs         # also the agentfeedback-docs skill: the reference docs, schemas and OpenAPI document for integrators and operators
 agentfeedback install all --dry-run              # print every file that would change, change nothing
@@ -379,8 +379,10 @@ are not wired on Windows; undo the steps by hand.
   `agentfeedback install <harness>` again: the older entries are replaced, and
   `agentfeedback doctor` names each harness that still runs one. The
   session-start hook (on by default, `--with-reminder=false` leaves it out)
-  runs `agentfeedback prime`, which prints the guidance (the skill's
-  CLI text, under 8,000 bytes) for the harness to add to the session;
+  runs `agentfeedback prime`, which prints short guidance (the triggers,
+  the one command and a pointer to the skill, under 1,200 bytes) for the
+  harness to add to the session; `prime --full` prints the skill's whole
+  CLI text, and install wires it for a harness without a skills directory;
   Cursor's runs `prime --format cursor`, which prints
   `{"additional_context": ...}`. A rerun replaces the `skill reminder`
   entry older installs wired; `skill reminder` still works. It is supported

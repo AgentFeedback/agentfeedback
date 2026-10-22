@@ -202,9 +202,17 @@ func hookCmd(o Options, harness, event string) string {
 	return shellBinary(o.Binary) + " hook " + harness + " " + event
 }
 
-// primeCmd is the session-start command: prime prints the guidance the
-// harness adds to the session.
-func primeCmd(o Options) string { return shellBinary(o.Binary) + " prime" }
+// primeCmd is the session-start command: prime prints the short guidance
+// that points at the skill, or with --full the whole guidance for a harness
+// without a skills directory.
+func primeCmd(o Options) string {
+	cmd := shellBinary(o.Binary) + " prime"
+	if o.noSkillDir {
+		cmd += " --full"
+	}
+
+	return cmd
+}
 
 // noHookDeliver is the NoDeliver of a harness without hooks.
 const noHookDeliver = "no hook is wired"
