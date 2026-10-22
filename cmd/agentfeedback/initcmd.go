@@ -16,7 +16,7 @@ import (
 	"golang.org/x/term"
 )
 
-const initSynopsis = "init [--local | --server cloud|URL [--key-from-stdin]] [--harnesses all|none|<harness>,...] [--yes] [--no-hooks] [--mcp] [--json]"
+const initSynopsis = "init [--local | --server cloud|URL [--key-from-stdin]] [--harnesses all|none|<harness>,...] [--yes] [--no-hooks] [--no-triage] [--mcp] [--json]"
 
 // initResult is what init did; with --json it is the one line printed.
 type initResult struct {
@@ -67,6 +67,7 @@ func runInit(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	names := fs.String("harnesses", "", "harnesses to wire, comma-separated; all is every detected one, none wires nothing (default: ask on a terminal, else all detected)")
 	yes := fs.Bool("yes", false, "ask nothing; take the defaults for what no flag sets")
 	noHooks := fs.Bool("no-hooks", false, "wire no hooks: the skill and the rule only")
+	noTriage := fs.Bool("no-triage", false, "do not install the agentfeedback-triage skill (default: ask on a terminal, else install it)")
 	mcp := fs.Bool("mcp", false, "add an MCP entry instead of the skill, the hooks and the rule, as install --mcp does")
 	asJSON := fs.Bool("json", false, "print one JSON object instead of the summary")
 	fs.Usage = func() {
@@ -157,9 +158,15 @@ func runInit(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		}
 	}
 	wire := !slices.Contains(wanted, "none") && (len(detected) > 0 || !slices.Equal(wanted, []string{"all"}))
+	triage := !*noTriage
+	if wire && triage && ask {
+		if triage, err = askTriage(in, stderr); err != nil {
+			return finishInit(stdout, res, *asJSON, err)
+		}
+	}
 
 	if wire {
-		out, err := wireHarnesses(env, wanted, wireOptions{mcp: *mcp, reminder: true, noHooks: *noHooks},
+		out, err := wireHarnesses(env, wanted, wireOptions{mcp: *mcp, triage: triage, reminder: true, noHooks: *noHooks},
 			func() (string, bool, error) { return t.server, true, nil }, "init", stderr)
 		res.Harnesses, res.Changed, res.Backups, res.Warnings = out.Harnesses, out.Changed, out.Backups, out.Warnings
 		if err != nil {
@@ -361,6 +368,21 @@ func askHarnesses(detected []string, in *bufio.Reader, stderr io.Writer) ([]stri
 	return parseHarnessList(line)
 }
 
+// askTriage asks whether to install the triage skill; Enter is yes.
+func askTriage(in *bufio.Reader, stderr io.Writer) (bool, error) {
+	fmt.Fprint(stderr, "Install the agentfeedback-triage skill (process the reports with /agentfeedback-triage)? [Y/n] ")
+	line, err := in.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return false, errInitAnswer(err)
+	}
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "", "y", "yes":
+		return true, nil
+	}
+
+	return false, nil
+}
+
 // parseHarnessList splits a comma-separated list of harness names; all and
 // none are words of their own, and none stands alone.
 func parseHarnessList(s string) ([]string, error) {
@@ -438,8 +460,10 @@ func initNextSteps(res initResult, t initTargetChoice, noKey bool) []initNext {
 	next = append(next,
 		initNext{Command: "agentfeedback ui", Does: "browse the reports in a read-only page on this machine"},
 		initNext{Command: "agentfeedback list --open", Does: "list the reports not yet processed"},
-		initNext{Command: "npx skills add AgentFeedback/agentfeedback --skill agentfeedback-triage -g", Does: "install the triage skill (third-party skills CLI), then invoke /agentfeedback-triage in the harness to work through the reports"},
 	)
+	if slices.ContainsFunc(res.Harnesses, func(h harness.HarnessStatus) bool { return h.Triage == "wired" || h.Triage == "external" }) {
+		next = append(next, initNext{Command: "/agentfeedback-triage", Does: "invoke it in the harness to work through the reports"})
+	}
 	if len(res.Restart) > 0 {
 		next = append(next, initNext{Command: "agentfeedback uninstall " + strings.Join(res.Restart, " "), Does: "remove what init wired, restoring the files it changed"})
 	}
@@ -518,7 +542,7 @@ func printInitSummary(w io.Writer, res initResult) {
 			continue
 		}
 		var parts []string
-		for _, c := range [][2]string{{"skill", h.Skill}, {"mcp", h.MCP}, {"hook", h.Hook}, {"reminder", h.Reminder}, {"rule", h.Rule}} {
+		for _, c := range [][2]string{{"skill", h.Skill}, {"mcp", h.MCP}, {"hook", h.Hook}, {"reminder", h.Reminder}, {"triage", h.Triage}, {"rule", h.Rule}} {
 			if c[1] != "-" {
 				parts = append(parts, c[0]+" "+c[1])
 			}

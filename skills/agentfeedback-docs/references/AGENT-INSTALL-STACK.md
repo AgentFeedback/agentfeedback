@@ -262,32 +262,27 @@ Then run client step 2.3 (or 2.4 or 2.5, as that step routes), client step
 {"step": "S5", "status": "ok", "server": "<URL>", "config": "/home/user/.config/agentfeedback/config.toml", "install_check_id": 1}
 ```
 
-## Step S6: The triage skill (optional)
+## Step S6: The triage skill
 
 `agentfeedback-triage` processes the queue with the human, only when they
-invoke it (`/agentfeedback-triage`). It is installed with the third-party
-`skills` CLI from the npm registry, so ask the human whether they want it at
-all. Only on yes, as in client step 2.5 (`<agent>` is your harness's name in
-that CLI's agent list). Client step 2.5's rule against an agent that client
-step 2.3 wired does not apply here: it protects the `agentfeedback`
-directory, and this skill installs into `agentfeedback-triage`.
+invoke it (`/agentfeedback-triage`). Client step 2.3 installed it with the
+rest of the wiring, unless the human declined and it ran with `--no-triage`.
+Check it:
 
 ```sh
-DISABLE_TELEMETRY=1 npx --yes skills add AgentFeedback/agentfeedback --skill agentfeedback-triage -g -a <agent> -y
+"<binary>" install --list --json
 ```
 
-**Verify:** exit code 0 and the output lists `agentfeedback-triage` as
-installed for `<agent>`. The triage scripts read the server from
-`AGENT_FEEDBACK_URL` and `AGENT_FEEDBACK_API_KEY`: put into step S7's
-`human_todo` that the human adds `export AGENT_FEEDBACK_URL=<URL>` and
-`export AGENT_FEEDBACK_API_KEY="$(cat <key_file>)"` to their shell profile.
-Those hold the same values as the client configuration; client step 3.1 then
-reports `"source": "env"`, which client step 3.1 accepts for this case.
+**Verify:** your harness shows `"triage": "wired"`. It shows `"-"` after
+`--no-triage`, and after client step 2.4 or 2.5 (the plugin or the `skills`
+CLI installs only the submission skill): report the step as skipped with
+that reason. `"external"` means a
+triage skill installed another way was already there and was left as it is.
 
 **Outcome:**
 
 ```json
-{"step": "S6", "status": "skipped", "reason": "the human declined"}
+{"step": "S6", "status": "ok", "harness": "claude-code", "triage": "wired"}
 ```
 
 ## Step S7: Report

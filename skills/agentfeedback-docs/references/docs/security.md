@@ -109,7 +109,10 @@ provider of the model that reads it ([sessions.md](sessions.md#provider-boundary
 **What `install` writes.** The files of the harness table in
 [operate.md](operate.md#wire-the-harnesses), and in CLI mode one section in each
 harness's global instruction file (its Rule column), between
-`<!-- agentfeedback:begin ... -->` and `<!-- agentfeedback:end -->`. Each
+`<!-- agentfeedback:begin ... -->` and `<!-- agentfeedback:end -->`; unless
+`--with-triage=false` (`init --no-triage`), also the binary's copy of the
+`agentfeedback-triage` skill in each skills directory, never over a triage
+directory or link it did not write. Each
 file is backed up before its first change (`<file>.agentfeedback-backup`) and recorded in the install
 manifest like the other files; the text between the markers belongs to
 install, which replaces it in place and removes it by its markers even

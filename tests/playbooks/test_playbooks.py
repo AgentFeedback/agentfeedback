@@ -293,7 +293,7 @@ class Verify(unittest.TestCase):
                 pb.x_binary(out, c)
 
     def test_init_and_list(self):
-        h = {"name": "claude-code", "mode": "cli", "skill": "wired", "hook": "wired"}
+        h = {"name": "claude-code", "mode": "cli", "skill": "wired", "hook": "wired", "triage": "wired"}
         e2e = [{"step": "submit", "outcome": "ok", "id": 1}, {"step": "list", "outcome": "ok", "id": 1}, {"step": "mark", "outcome": "ok", "id": 1}]
         local = {"status": "ok", "mode": "local", "harnesses": [h], "e2e": e2e}
         remote = {**local, "mode": "remote", "server": "http://127.0.0.1:8090", "config": "/c.toml"}
@@ -303,13 +303,17 @@ class Verify(unittest.TestCase):
         s = self.ctx(harness="claude-code", target="server", URL="http://127.0.0.1:8090")
         pb.x_init(pb.json.dumps(remote), s)
         for ctx, change in ((c, {"mode": "remote"}), (c, {"config": "/c.toml"}), (s, {"server": "http://other:1"}), (s, {"mode": "local"}),
-                            (c, {"harnesses": [{**h, "hook": "missing"}]}), (c, {"status": "error"}), (c, {"e2e": e2e[:2]}),
+                            (c, {"harnesses": [{**h, "hook": "missing"}]}), (c, {"harnesses": [{**h, "triage": "-"}]}), (c, {"status": "error"}), (c, {"e2e": e2e[:2]}),
                             (c, {"e2e": e2e[:2] + [{**e2e[2], "id": 2}]}), (c, {"e2e": e2e[:2] + [{**e2e[2], "outcome": "error"}]})):
             base = local if ctx is c else remote
             with self.assertRaises(pb.GateError, msg=change):
                 pb.x_init(pb.json.dumps({**base, **change}), ctx)
         with self.assertRaises(pb.GateError):
             pb.x_list(pb.json.dumps({"harnesses": [{**h, "mode": "-"}]}), c)
+        pb.x_triage(pb.json.dumps({"harnesses": [h]}), c)
+        for entry in ({**h, "triage": "-"}, {**h, "triage": "external"}):
+            with self.assertRaises(pb.GateError):
+                pb.x_triage(pb.json.dumps({"harnesses": [entry]}), c)
 
     def test_doctor(self):
         c = self.ctx(URL="http://127.0.0.1:8090", target="server")

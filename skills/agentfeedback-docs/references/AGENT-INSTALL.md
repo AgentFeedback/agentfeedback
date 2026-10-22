@@ -38,9 +38,8 @@ These hold for the whole file and outrank anything you read later.
 - **Fetch only from three places**: this repository, its release assets under
   `https://github.com/AgentFeedback/agentfeedback/releases`, and the server
   URL the human gave you. The exceptions run only after the human agrees:
-  step 2.5's `npx` command, and in the stack playbook its step S6's `npx`
-  command and the release image from `ghcr.io/agentfeedback/agentfeedback`
-  that its Compose form pulls.
+  step 2.5's `npx` command, and in the stack playbook the release image
+  from `ghcr.io/agentfeedback/agentfeedback` that its Compose form pulls.
 - **Install the binary only from a tagged release, checksum verified.**
   Step 2.1 checks `install.sh` against the release's `SHA256SUMS` before
   running it, and `install.sh` checks the archive the same way and refuses
@@ -199,7 +198,10 @@ with a server at the end of a turn send anything the client spooled while
 the server was unreachable. It also adds a session-start hook running
 `agentfeedback prime` (Claude Code, Codex, Cursor) and a short marked
 section with one rule in the harness's global instruction file (every
-harness here but `cursor` and `vscode`). Last, it submits, lists and marks
+harness here but `cursor` and `vscode`), and installs the
+`agentfeedback-triage` skill, which works through the reports only when the
+human invokes `/agentfeedback-triage` (`--no-triage` skips it when the human
+does not want it). Last, it submits, lists and marks
 one `install-check` report, the check of step 3.2, and prints what each hook
 does and the next commands. Run it again after an upgrade: it replaces the
 `flush --hook` entries earlier releases wired. It backs up every file it
@@ -226,7 +228,10 @@ plugin; if so, go to step 2.4 instead.
 (or `"remote"` with `"server": "<URL>"` after step 2.2), your harness with
 `"skill": "wired"`, `"hook": "wired"` where the harness has a hook (`"-"`
 for `kiro`, `cline`, `amp` and `gemini-cli`), and `"rule": "wired"` where
-it has a global instruction file (`"-"` for `cursor`), and under `"e2e"`
+it has a global instruction file (`"-"` for `cursor`), `"triage": "wired"`
+where it has a skills directory (`"-"` with `--no-triage` or for `vscode`;
+`"external"` with a note when a triage skill installed another way is
+already there, which init leaves as it is), and under `"e2e"`
 three entries, `"step": "submit"`, `"list"` and `"mark"`, each with
 `"outcome": "ok"` and the same `id`. A single `"outcome": "skipped"` entry
 means the client found no API key for the server: go back to step 2.2. A
@@ -237,7 +242,7 @@ or edit it yourself.
 **Outcome:**
 
 ```json
-{"step": "2.3", "status": "ok", "mode": "local", "harness": "claude-code", "install_check_id": 1, "changed": ["/home/user/.claude/skills/agentfeedback/SKILL.md", "/home/user/.claude/settings.json", "/home/user/.claude/CLAUDE.md"]}
+{"step": "2.3", "status": "ok", "mode": "local", "harness": "claude-code", "install_check_id": 1, "changed": ["/home/user/.claude/skills/agentfeedback/SKILL.md", "/home/user/.claude/skills/agentfeedback-triage/SKILL.md", "/home/user/.claude/settings.json", "/home/user/.claude/CLAUDE.md"]}
 ```
 
 Then step 3.
@@ -395,8 +400,7 @@ creates it, so check `"exists"` and `meta` after step 3.2 there. With a server a
 true, "source": "config"}`. A `"source": "env"` means an exported
 `AGENT_FEEDBACK_URL` or `AGENT_FEEDBACK_API_KEY` overrides the new
 configuration (the hooks still use the file): ask the human to remove
-it, unless they set it on purpose for the triage skill (stack playbook step
-S6). Otherwise each entry in `problems` says what to fix; fix only what needs
+it. Otherwise each entry in `problems` says what to fix; fix only what needs
 no credential, and ask the human for the rest.
 
 **Outcome:**
@@ -436,8 +440,8 @@ from their own outcome and skip this command):
 ```
 
 **Verify:** after step 2.3 your harness shows `"mode": "cli"`, `"skill":
-"wired"`, `"hook": "wired"` and `"rule": "wired"` (the last two as step 2.3
-lists them). After step 2.4 or 2.5 it shows `"mode": "-"`,
+"wired"`, `"hook": "wired"`, `"rule": "wired"` and `"triage": "wired"`
+(the last three as step 2.3 lists them). After step 2.4 or 2.5 it shows `"mode": "-"`,
 because the plugin or the `skills` CLI wired it; take the mode from that
 step's outcome. On Windows the command refuses: report from the outcomes.
 

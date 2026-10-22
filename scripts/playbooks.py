@@ -247,6 +247,7 @@ def x_init(out: str, c: Ctx) -> None:
     entry = next((e for e in v.get("harnesses", []) if e.get("name") == h), None)
     need(entry is not None, f"{h} is not in the outcome: {v}")
     need(entry.get("skill") == "wired" and entry.get("hook") == ("-" if h in NO_HOOK else "wired"), f"{h} is not wired: {entry}")
+    need(entry.get("triage") == "wired", f"{h} has no triage skill: {entry}")
     steps = v.get("e2e") or []
     need([s.get("step") for s in steps] == ["submit", "list", "mark"] and all(s.get("outcome") == "ok" for s in steps), f"init e2e: {steps}")
     need(len({s.get("id") for s in steps}) == 1 and steps[0].get("id") is not None, f"init e2e ids differ: {steps}")
@@ -279,6 +280,13 @@ def x_list(out: str, c: Ctx) -> None:
     entry = next((e for e in v.get("harnesses", []) if e.get("name") == h), None)
     need(entry is not None, f"{h} is not listed: {v}")
     need(entry.get("mode") == "cli" and entry.get("skill") == "wired" and entry.get("hook") == ("-" if h in NO_HOOK else "wired"), f"{h} listed as {entry}")
+
+
+def x_triage(out: str, c: Ctx) -> None:
+    v = last_json(out)
+    h = c.values["harness"]
+    entry = next((e for e in v.get("harnesses", []) if e.get("name") == h), None)
+    need(entry is not None and entry.get("triage") == "wired", f"{h} triage listed as {entry}")
 
 
 def x_user(out: str, c: Ctx) -> None:
@@ -351,6 +359,7 @@ STACK_ROUTE = [
     Entry(STACK, "S4", "stack", when=unless("ADDRESS"), expect=x_exposed, probe=S4_PROBE, probe_expect=x_unauthorized),
     Entry(STACK, "S5", "stack", expect=x_written),
     *client_route("stack"),
+    Entry(STACK, "S6", "stack", expect=x_triage),
     Entry(CLIENT, "4", "stack", expect=x_list),
     Entry(STACK, "S7", "stack", expect=x_running),
 ]
@@ -390,7 +399,6 @@ EXCLUDED = {
     (CLIENT, "2.4"): "needs the claude or codex CLI and its plugin marketplace",
     (CLIENT, "2.5"): "needs npx and the third-party skills CLI from the npm registry",
     (CLIENT, "2.8"): "chat apps have no shell; its block is text for the human",
-    (STACK, "S6"): "needs npx and the third-party skills CLI from the npm registry",
 }
 
 

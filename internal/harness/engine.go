@@ -73,6 +73,7 @@ type HarnessRecord struct {
 	Mode     string `json:"mode"`
 	Reminder bool   `json:"reminder"`
 	Docs     bool   `json:"docs"`
+	Triage   bool   `json:"triage"`
 	// Binary is the agentfeedback binary the CLI-mode hooks or the stdio MCP
 	// entry of this harness run; empty for a URL MCP entry and for records
 	// written before it was kept.
@@ -351,7 +352,7 @@ func isLink(path string) bool {
 func (p *plan) symlinkRefusal(path string) error {
 	next := "wire this harness by hand from the table in docs/operate.md, or replace the link with the file it points to"
 	switch filepath.Base(path) {
-	case "SKILL.md", "agentfeedback", "agentfeedback-docs", "agentfeedback.js", "agentfeedback.ts", "agentfeedback.json":
+	case "SKILL.md", "agentfeedback", "agentfeedback-docs", TriageDir, "agentfeedback.js", "agentfeedback.ts", "agentfeedback.json":
 		next = "remove it, then run agentfeedback install again"
 	}
 	if p.env.skillRootOf(path) != "" {
@@ -907,6 +908,23 @@ func (p *plan) ownsBelow(dir string) bool {
 	return false
 }
 
+// externalNow reports whether dir exists while the manifest records no file
+// beneath it, neither before the run nor as the plan leaves it.
+func (p *plan) externalNow(dir string) bool {
+	if _, err := os.Lstat(dir); err != nil || p.ownsBelow(dir) {
+		return false
+	}
+	for _, h := range p.man.Harnesses {
+		for _, it := range h.Items {
+			if strings.HasPrefix(it.File, dir+string(filepath.Separator)) {
+				return false
+			}
+		}
+	}
+
+	return !slices.Contains(p.man.DirsCreated, dir)
+}
+
 // ourEmptyDir reports whether dir is an empty directory the manifest
 // records as created by install, such as one left by an interrupted run.
 func (p *plan) ourEmptyDir(dir string) bool {
@@ -995,7 +1013,7 @@ func (p *plan) install(name string, o Options) error {
 		}
 		final[i] = it
 	}
-	s.record = &HarnessRecord{Mode: o.Mode, Reminder: o.Reminder && o.Mode == ModeCLI && !o.NoHooks, Docs: o.Docs, Items: final}
+	s.record = &HarnessRecord{Mode: o.Mode, Reminder: o.Reminder && o.Mode == ModeCLI && !o.NoHooks, Docs: o.Docs, Triage: o.Triage, Items: final}
 	if o.Mode == ModeCLI || o.stdio() {
 		s.record.Binary = o.Binary
 	}
@@ -1179,6 +1197,9 @@ type HarnessStatus struct {
 	Hook     string `json:"hook"`
 	Reminder string `json:"reminder"`
 	Docs     string `json:"docs"`
+	// Triage is the agentfeedback-triage skill; external when a skill
+	// directory holds one install did not write.
+	Triage string `json:"triage"`
 	// Rule is the section in the global instruction file.
 	Rule string `json:"rule"`
 	// Binary is the agentfeedback binary a CLI-mode harness's hooks or its
@@ -1396,9 +1417,9 @@ func (e Env) apply(p *plan, applied *Manifest, mpath string, req Request, w *wri
 		rec := applied.Harnesses[s.name]
 		if rec != nil {
 			oldItems = slices.Clone(rec.Items)
-			rec = &HarnessRecord{Mode: rec.Mode, Reminder: rec.Reminder, Docs: rec.Docs, Binary: rec.Binary, Items: slices.Clone(rec.Items)}
+			rec = &HarnessRecord{Mode: rec.Mode, Reminder: rec.Reminder, Docs: rec.Docs, Triage: rec.Triage, Binary: rec.Binary, Items: slices.Clone(rec.Items)}
 		} else if s.record != nil {
-			rec = &HarnessRecord{Mode: s.record.Mode, Reminder: s.record.Reminder, Docs: s.record.Docs, Binary: s.record.Binary}
+			rec = &HarnessRecord{Mode: s.record.Mode, Reminder: s.record.Reminder, Docs: s.record.Docs, Triage: s.record.Triage, Binary: s.record.Binary}
 		} else {
 			rec = &HarnessRecord{}
 		}
@@ -1742,8 +1763,18 @@ func (p *plan) statuses(namesWanted []string) []HarnessStatus {
 	return out
 }
 
-func (p *plan) status(name string) HarnessStatus {
-	hs := HarnessStatus{Name: name, Mode: "-", Skill: "-", MCP: "-", Hook: "-", Reminder: "-", Docs: "-", Rule: "-"}
+func (p *plan) status(name string) (hs HarnessStatus) {
+	hs = HarnessStatus{Name: name, Mode: "-", Skill: "-", MCP: "-", Hook: "-", Reminder: "-", Docs: "-", Triage: "-", Rule: "-"}
+	defer func() {
+		if hs.Triage != "-" {
+			return
+		}
+		for _, dir := range p.env.skillDirs(name) {
+			if p.externalNow(filepath.Join(dir, TriageDir)) {
+				hs.Triage = "external"
+			}
+		}
+	}()
 	rec := p.man.Harnesses[name]
 	if rec == nil {
 		return hs
@@ -1766,7 +1797,7 @@ func (p *plan) status(name string) HarnessStatus {
 			hs.Binary = cmp.Or(bin, rec.Binary)
 		}
 	}
-	col := map[string]*string{RoleSkill: &hs.Skill, RoleMCP: &hs.MCP, RoleHook: &hs.Hook, RoleReminder: &hs.Reminder, RoleDocs: &hs.Docs, RoleRule: &hs.Rule}
+	col := map[string]*string{RoleSkill: &hs.Skill, RoleMCP: &hs.MCP, RoleHook: &hs.Hook, RoleReminder: &hs.Reminder, RoleDocs: &hs.Docs, RoleTriage: &hs.Triage, RoleRule: &hs.Rule}
 	for _, it := range rec.Items {
 		c := col[it.Role]
 		ok, err := p.present(it)

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -43,6 +44,7 @@ const (
 	RoleHook     = "hook"
 	RoleReminder = "reminder"
 	RoleDocs     = "docs"
+	RoleTriage   = "triage"
 	RoleRule     = "rule"
 )
 
@@ -284,6 +286,10 @@ func (e Env) DocsDir(name string) string {
 	return filepath.Join(d[0], "agentfeedback-docs")
 }
 
+// TriageDir is the name of the agentfeedback-triage skill directory in a
+// skills directory.
+const TriageDir = "agentfeedback-triage"
+
 // ruleSection is the global instruction section; a variable so tests can
 // stand in for another binary's version of it.
 var ruleSection = RuleSection
@@ -291,6 +297,10 @@ var ruleSection = RuleSection
 // docsFiles is the docs skill tree; a variable so tests can stand in for
 // another binary's version of it.
 var docsFiles = skillgen.Docs
+
+// triageFiles is the triage skill tree; a variable so tests can stand in for
+// another binary's version of it.
+var triageFiles = skillgen.Triage
 
 func jsonString(s string) []byte {
 	var buf bytes.Buffer
@@ -342,7 +352,9 @@ type Options struct {
 	// NoHooks leaves out every hook, the session-start reminder included.
 	NoHooks bool
 	// Docs adds the agentfeedback-docs skill, in either mode.
-	Docs   bool
+	Docs bool
+	// Triage adds the agentfeedback-triage skill, in either mode.
+	Triage bool
 	Server string
 	Binary string
 }
@@ -358,24 +370,59 @@ func (o Options) stdio() bool { return o.Server == ServerLocal }
 // choice of an OpenCode config file sees the planned state.
 func (p *plan) desired(name string, o Options) (desire, error) {
 	d, err := p.wiring(name, o)
-	if err != nil || !o.Docs {
-		return d, err
-	}
-	files, err := docsFiles()
 	if err != nil {
 		return d, err
 	}
 	dirs := p.env.skillDirs(name)
-	if len(dirs) == 0 {
-		d.notes = append(d.notes, name+" has no skill directory; --docs added nothing for it")
+	if o.Docs {
+		files, err := docsFiles()
+		if err != nil {
+			return d, err
+		}
+		if len(dirs) == 0 {
+			d.notes = append(d.notes, name+" has no skill directory; --docs added nothing for it")
+		}
+		for _, dir := range dirs {
+			for _, f := range files {
+				d.items = append(d.items, fileItem(KindSkillFile, RoleDocs, filepath.Join(dir, "agentfeedback-docs", filepath.FromSlash(f.Path)), f.Data))
+			}
+		}
 	}
-	for _, dir := range dirs {
-		for _, f := range files {
-			d.items = append(d.items, fileItem(KindSkillFile, RoleDocs, filepath.Join(dir, "agentfeedback-docs", filepath.FromSlash(f.Path)), f.Data))
+	if o.Triage {
+		files, err := triageFiles()
+		if err != nil {
+			return d, err
+		}
+		if len(dirs) == 0 {
+			d.notes = append(d.notes, name+" has no skill directory; the triage skill was not installed")
+		}
+		for _, dir := range dirs {
+			td := filepath.Join(dir, TriageDir)
+			// A triage skill install did not write, such as one a skills
+			// CLI added, is left as it is.
+			if p.externalTriage(td) {
+				d.notes = append(d.notes, td+" already exists and agentfeedback install did not write it; left as is (remove it and run agentfeedback install again to get this binary's agentfeedback-triage skill)")
+
+				continue
+			}
+			for _, f := range files {
+				d.items = append(d.items, fileItem(KindSkillFile, RoleTriage, filepath.Join(td, filepath.FromSlash(f.Path)), f.Data))
+			}
 		}
 	}
 
 	return d, nil
+}
+
+// externalTriage reports whether dir, a triage skill directory, exists (a
+// directory or a link) while the manifest records nothing of it as written
+// by install.
+func (p *plan) externalTriage(dir string) bool {
+	if _, err := os.Lstat(dir); err != nil {
+		return false
+	}
+
+	return !p.ownsBelow(dir) && !slices.Contains(p.man.DirsCreated, dir)
 }
 
 // wiring is the skill, the hook and the rule in the global instruction
@@ -695,31 +742,37 @@ func (e Env) validateManifest(m *Manifest, mpath string) error {
 	for _, d := range ancestors(mpath, e.Home) {
 		dirs[d] = true
 	}
-	// The docs skill's files follow the binary's version, so any clean path
-	// beneath a docs directory is accepted, and so are its directories.
-	var docsDirs []string
+	// The docs and triage skills' files follow the binary's version, so any
+	// clean path beneath one of their directories is accepted, and so are
+	// those directories; treeRole maps each directory to the role of the
+	// items beneath it.
+	treeRole := map[string]string{}
 	for _, a := range registry {
 		for _, sd := range a.SkillDirs(e) {
-			dd := filepath.Join(sd, "agentfeedback-docs")
-			docsDirs = append(docsDirs, dd)
-			dirs[dd] = true
-			for _, d := range ancestors(dd, e.Home) {
-				dirs[d] = true
+			for dir, role := range map[string]string{"agentfeedback-docs": RoleDocs, TriageDir: RoleTriage} {
+				dd := filepath.Join(sd, dir)
+				treeRole[dd] = role
+				dirs[dd] = true
+				for _, d := range ancestors(dd, e.Home) {
+					dirs[d] = true
+				}
 			}
 		}
 	}
-	underDocs := func(x string) bool {
+	// roleUnder is the role of the skill tree x lies beneath, or "".
+	roleUnder := func(x string) string {
 		if !filepath.IsAbs(x) || filepath.Clean(x) != x {
-			return false
+			return ""
 		}
-		for _, dd := range docsDirs {
+		for dd, role := range treeRole {
 			if strings.HasPrefix(x, dd+string(filepath.Separator)) {
-				return true
+				return role
 			}
 		}
 
-		return false
+		return ""
 	}
+	underTree := func(x string) bool { return roleUnder(x) != "" }
 	bad := func(x string) error {
 		return &Refusal{
 			Problem: "the install manifest " + mpath + " names " + x + ", which agentfeedback install does not write under this environment",
@@ -731,22 +784,22 @@ func (e Env) validateManifest(m *Manifest, mpath string) error {
 			if it.File == "" || files[it.File] {
 				continue
 			}
-			// Only the docs skill's own files lie beneath a docs directory.
-			if !underDocs(it.File) || it.Kind != KindSkillFile || it.Role != RoleDocs {
+			// Only a skill tree's own files lie beneath its directory.
+			if role := roleUnder(it.File); role == "" || it.Kind != KindSkillFile || it.Role != role {
 				return bad(it.File)
 			}
 		}
 	}
 	for _, path := range sortedKeys(m.Files) {
-		if !files[path] && !underDocs(path) {
+		if !files[path] && !underTree(path) {
 			return bad(path)
 		}
-		if b := m.Files[path].Backup; b != "" && !backups[b] && (b != path+BackupSuffix || !underDocs(path)) {
+		if b := m.Files[path].Backup; b != "" && !backups[b] && (b != path+BackupSuffix || !underTree(path)) {
 			return bad(b)
 		}
 	}
 	for _, d := range m.DirsCreated {
-		if !dirs[d] && !underDocs(d) {
+		if !dirs[d] && !underTree(d) {
 			return bad(d)
 		}
 	}

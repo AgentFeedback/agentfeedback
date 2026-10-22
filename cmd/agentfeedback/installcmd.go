@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	installSynopsis   = "install [all|<harness>...] [--server local|cloud|URL] [--mcp] [--with-reminder=false] [--no-hooks] [--docs] [--dry-run] [--list] [--json] | install --check [all|<harness>...] [--project] [--json] | install --project [--yes] [--uninstall] [--dry-run]"
+	installSynopsis   = "install [all|<harness>...] [--server local|cloud|URL] [--mcp] [--with-reminder=false] [--no-hooks] [--docs] [--with-triage=false] [--dry-run] [--list] [--json] | install --check [all|<harness>...] [--project] [--json] | install --project [--yes] [--uninstall] [--dry-run]"
 	uninstallSynopsis = "uninstall all|<harness>... [--dry-run] [--json]"
 )
 
@@ -122,6 +122,7 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 	server := fs.String("server", "", "local, cloud or a base URL (default: url in config.toml, then the one recorded at the last install, then a prompt, then local); a URL MCP entry points at it")
 	mcp := fs.Bool("mcp", false, "add an MCP entry instead of the skill and the hooks: for local, a stdio entry that runs this binary's mcp command; for a server, a URL entry")
 	docs := fs.Bool("docs", false, "also install the agentfeedback-docs skill (reference docs for integrators and operators)")
+	triage := fs.Bool("with-triage", true, "install the agentfeedback-triage skill, which works through the reports; --with-triage=false leaves it out and removes one install wrote")
 	reminder := fs.Bool("with-reminder", true, "add a session-start hook that runs agentfeedback prime, where the harness supports one; --with-reminder=false leaves it out")
 	noHooks := fs.Bool("no-hooks", false, "wire no hooks (neither the failure note and end-of-turn flush nor the session-start reminder); the skill and the rule only")
 	dryRun := fs.Bool("dry-run", false, "print what would change and change nothing")
@@ -174,7 +175,7 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 		return listHarnesses(env, *asJSON, stdout)
 	}
 
-	out, err := wireHarnesses(env, pos, wireOptions{mcp: *mcp, docs: *docs, reminder: *reminder, reminderAsked: reminderAsked, noHooks: *noHooks, dryRun: *dryRun},
+	out, err := wireHarnesses(env, pos, wireOptions{mcp: *mcp, docs: *docs, triage: *triage, reminder: *reminder, reminderAsked: reminderAsked, noHooks: *noHooks, dryRun: *dryRun},
 		func() (string, bool, error) { return resolveInstallServer(os.Getenv, env, *server, stdin, stderr) }, "install", stderr)
 
 	return printInstallOutcome(stdout, out, err)
@@ -182,7 +183,7 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 
 // wireOptions are the choices of one install run.
 type wireOptions struct {
-	mcp, docs, reminder, reminderAsked, noHooks, dryRun bool
+	mcp, docs, triage, reminder, reminderAsked, noHooks, dryRun bool
 }
 
 // wireHarnesses wires the harnesses pos names (all: every detected one, plus
@@ -222,7 +223,7 @@ func wireHarnesses(env harness.Env, pos []string, o wireOptions, resolve func() 
 		kept := names[:0:0]
 		for _, n := range names {
 			if ok, reason := harness.Supports(n, mode); !ok && !slices.Contains(pos, n) {
-				skipped = append(skipped, harness.HarnessStatus{Name: n, Mode: "-", Skill: "-", MCP: "-", Hook: "-", Reminder: "-", Docs: "-", Rule: "-",
+				skipped = append(skipped, harness.HarnessStatus{Name: n, Mode: "-", Skill: "-", MCP: "-", Hook: "-", Reminder: "-", Docs: "-", Triage: "-", Rule: "-",
 					Notes: []string{reason + "; it was left out of " + command + " all"}})
 
 				continue
@@ -264,7 +265,7 @@ func wireHarnesses(env harness.Env, pos []string, o wireOptions, resolve func() 
 	}
 	res, err := env.Run(harness.Request{
 		Harnesses: names,
-		Options:   harness.Options{Mode: mode, Reminder: o.reminder, ReminderAsked: o.reminderAsked, NoHooks: o.noHooks, Docs: o.docs, Server: srv, Binary: bin},
+		Options:   harness.Options{Mode: mode, Reminder: o.reminder, ReminderAsked: o.reminderAsked, NoHooks: o.noHooks, Docs: o.docs, Triage: o.triage, Server: srv, Binary: bin},
 		DryRun:    o.dryRun,
 	})
 	out := installOutcome{Status: res.Status, Harnesses: res.Harnesses, Changed: res.Changed, Backups: res.Backups, Warnings: warnings}
@@ -439,13 +440,13 @@ func listHarnesses(env harness.Env, asJSON bool, stdout io.Writer) error {
 
 		return s
 	}
-	fmt.Fprintln(tw, "HARNESS\tDETECTED\tMODE\tSKILL\tMCP\tHOOK\tREMINDER\tDOCS\tRULE\tVERIFIED\tBINARY\tVERSION")
+	fmt.Fprintln(tw, "HARNESS\tDETECTED\tMODE\tSKILL\tMCP\tHOOK\tREMINDER\tDOCS\tTRIAGE\tRULE\tVERIFIED\tBINARY\tVERSION")
 	for _, h := range st {
 		verified := "-"
 		if v := h.Verification; v != nil {
 			verified = v.Level + " " + v.Date
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", h.Name, h.Detected, h.Mode, h.Skill, h.MCP, h.Hook, h.Reminder, h.Docs, h.Rule,
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", h.Name, h.Detected, h.Mode, h.Skill, h.MCP, h.Hook, h.Reminder, h.Docs, h.Triage, h.Rule,
 			verified, dash(h.Binary), dash(h.BinaryVersion))
 	}
 

@@ -58,7 +58,10 @@ the playbook whose question matches the user's request.
 
 ## Uninstall
 
-Delete this directory or its link. Its only state is digest directories
+When `agentfeedback install` or `agentfeedback init` wrote this directory,
+run `agentfeedback install <harness> --with-triage=false` (or
+`agentfeedback uninstall <harness>`); otherwise delete this directory or its
+link. Its only state is digest directories
 under the `agentfeedback` cache directory, safe to remove at any time, and
 the saved session selection and session marks in the `agentfeedback`
 data-directory database, which the CLI owns.

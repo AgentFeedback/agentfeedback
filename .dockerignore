@@ -13,6 +13,8 @@ scripts/
 skills/
 # go:embed in references.go: the plugin bundle carries the install script
 !skills/agentfeedback/scripts/install.sh
+# go:embed in references.go: install copies the triage skill into harnesses
+!skills/agentfeedback-triage
 tests/
 .env
 **/.env

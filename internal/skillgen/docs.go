@@ -156,3 +156,32 @@ func describe(p string, data []byte) (string, error) {
 
 	return "", errors.New("no description rule for this file type")
 }
+
+// Triage is the agentfeedback-triage skill as the binary carries it: every
+// file of skills/agentfeedback-triage/, relative to that directory, in path
+// order.
+func Triage() ([]File, error) {
+	root, err := fs.Sub(agentfeedback.Triage, "skills/agentfeedback-triage")
+	if err != nil {
+		return nil, err
+	}
+	var out []File
+	err = fs.WalkDir(root, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		data, err := fs.ReadFile(root, p)
+		if err != nil {
+			return err
+		}
+		out = append(out, File{Path: p, Data: data})
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+
+	return out, nil
+}

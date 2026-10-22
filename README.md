@@ -41,8 +41,10 @@ agentfeedback list --open          # the reports not yet processed
 agentfeedback uninstall all        # remove what init wired
 ```
 
-Triage the reports with the `agentfeedback-triage` skill (`init` prints the
-command that installs it): invoke `/agentfeedback-triage` in the harness. To
+Triage the reports with the `agentfeedback-triage` skill, which `init`
+installs beside the submission skill (`--no-triage` skips it; `agentfeedback
+install all --with-triage` adds it later): invoke `/agentfeedback-triage` in
+the harness. To
 report to a server instead, run `agentfeedback init --server <URL>`; to run
 one, follow [`AGENT-INSTALL-STACK.md`](AGENT-INSTALL-STACK.md) or
 [`docs/operate.md`](docs/operate.md).

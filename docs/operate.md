@@ -271,9 +271,10 @@ does).
 mode:
 
 ```bash
-agentfeedback install                            # list the harnesses: detected, mode, skill, mcp, hook, reminder, docs, rule; changes nothing (also --list, --json)
-agentfeedback install all                        # every detected harness: the skill, hooks running agentfeedback hook, a session-start hook running agentfeedback prime, and the rule in the global instruction file
+agentfeedback install                            # list the harnesses: detected, mode, skill, mcp, hook, reminder, docs, triage, rule; changes nothing (also --list, --json)
+agentfeedback install all                        # every detected harness: the skill, hooks running agentfeedback hook, a session-start hook running agentfeedback prime, the rule in the global instruction file, and the agentfeedback-triage skill
 agentfeedback install claude-code --with-reminder=false   # without the session-start hook
+agentfeedback install claude-code --with-triage=false     # without the agentfeedback-triage skill
 agentfeedback install claude-code --no-hooks     # no hooks at all, the session-start one included: the skill and the rule
 agentfeedback install --check                    # is the rule section current in each detected or recorded harness? changes nothing; exit 3 when one is missing or stale
 agentfeedback install --project --yes            # the pointer section in this repository's AGENTS.md (or CLAUDE.md); --uninstall removes it
@@ -292,7 +293,7 @@ Unknown names exit 2. The last stdout line is a JSON outcome (`status`
 `installed`, `unchanged`, `uninstalled`, `dry_run` or `error`, `harnesses`,
 `changed`, `backups`, `next`); progress goes to stderr. Running install twice
 changes nothing the second time (`unchanged`); a changed mode, binary path,
-server, `--with-reminder`, `--no-hooks` or `--docs` replaces what the previous run added.
+server, `--with-reminder`, `--with-triage`, `--no-hooks` or `--docs` replaces what the previous run added.
 
 - **The rule.** In CLI mode install writes one section into each harness's
   global instruction file (the Rule column): a begin marker
@@ -456,6 +457,16 @@ are not wired on Windows; undo the steps by hand.
   `references/`, which holds this binary's copies of `docs/`, the OpenAPI
   document, `schemas/` and both install playbooks. A run without `--docs`
   removes it; an edited file in it is refused like an edited skill.
+- **`--with-triage`.** On by default: the `agentfeedback-triage` skill goes
+  to `<skills dir>/agentfeedback-triage/` (for `--mcp` too), this binary's
+  copy of `skills/agentfeedback-triage/` (`SKILL.md`, `playbooks/`,
+  `reference/`, `scripts/cluster.py`); the agent runs it only when the human
+  invokes `/agentfeedback-triage`. `--with-triage=false` removes it; an edited
+  file in it is refused like an edited skill. A triage directory or link
+  install did not write (one `npx skills add` installed, say) is left as it
+  is, with a note, and its column reads `external`; remove it and run
+  install again to get this binary's version. `agentfeedback init` installs
+  it too unless given `--no-triage` (on a terminal it asks first).
 - **`--mcp`.** The MCP entry replaces the skill and the hook for that
   harness: the server's MCP instructions teach the agent, and nothing is
   spooled without the CLI. The entry follows the server: for local it is a
@@ -888,7 +899,8 @@ removing any service; the data is gone with the volume.
 ### Skills, on every machine that has them
 
 1. Run `agentfeedback uninstall all` first: it removes what `agentfeedback install`
-   wired and restores the files it changed.
+   wired, the `agentfeedback-triage` skill it wrote included, and restores the
+   files it changed.
 2. Find the installed copies (`agentfeedback`, `agentfeedback-docs`, `agentfeedback-triage`) in every harness skills directory you
    use, e.g. `ls -la ~/.claude/skills | grep feedback`. Entries may be symlinks into
    a shared checkout; remove the links, then the checkout if nothing else uses it.

@@ -2150,7 +2150,7 @@ func TestInstall_AllLeavesOutUnsupported(t *testing.T) {
 func TestInstall_ListShowsVerification(t *testing.T) {
 	newInstallEnv(t)
 	r := runCLI(t, "", "install", "--list")
-	if !strings.Contains(r.stdout, "DOCS  RULE  VERIFIED") || !strings.Contains(r.stdout, "live-checked 2026-10-07") {
+	if !strings.Contains(r.stdout, "DOCS  TRIAGE  RULE  VERIFIED") || !strings.Contains(r.stdout, "live-checked 2026-10-07") {
 		t.Errorf("table: %s", r.stdout)
 	}
 	r = runCLI(t, "", "install", "--list", "--json")
