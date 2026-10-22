@@ -415,8 +415,8 @@ func TestInstall_ForeignRefusals(t *testing.T) {
 		args    []string
 		setup   func(e installEnv, t *testing.T) string
 	}{
-		{"skill directory", "claude-code", nil, func(e installEnv, t *testing.T) string {
-			p := filepath.Join(e.home, ".claude", "skills", "agentfeedback")
+		{"docs skill directory", "claude-code", []string{"--docs"}, func(e installEnv, t *testing.T) string {
+			p := filepath.Join(e.home, ".claude", "skills", "agentfeedback-docs")
 			putFile(t, filepath.Join(p, "SKILL.md"), "old copy\n", 0o644)
 
 			return p
@@ -1114,10 +1114,25 @@ func TestInstall_SymlinkedSkillDir(t *testing.T) {
 	if err := os.Symlink(src, link); err != nil {
 		t.Fatal(err)
 	}
+	// A linked skill directory install did not write is left as it is: the
+	// rest is wired and the skill reads as external, until uninstall.
+	before := snapshot(t, src)
 	r, out := installRun(t, "install", "claude-code")
-	if r.code != 1 || fmt.Sprint(out["message"]) != link+" is a symbolic link; agentfeedback install edits only regular files; remove it, then run agentfeedback install again." {
+	if r.code != 0 || harnessField(t, out, "claude-code", "skill") != "external" || harnessField(t, out, "claude-code", "hook") != "wired" ||
+		!strings.Contains(notesOf(out), link+" already exists and agentfeedback install did not write it; left as is") {
 		t.Fatalf("%+v", r)
 	}
+	if dest, err := os.Readlink(link); err != nil || dest != src {
+		t.Fatalf("the link changed: %q %v", dest, err)
+	}
+	sameTree(t, "linked skill after install", snapshot(t, src), before)
+	if r, _ := installRun(t, "uninstall", "claude-code"); r.code != 0 {
+		t.Fatalf("%+v", r)
+	}
+	if dest, err := os.Readlink(link); err != nil || dest != src {
+		t.Fatalf("uninstall changed the link: %q %v", dest, err)
+	}
+	sameTree(t, "linked skill after uninstall", snapshot(t, src), before)
 }
 
 func TestUninstall_BackupMissingOrReplaced(t *testing.T) {

@@ -11,8 +11,11 @@
 // the binary), file (the same forms: the file inbox, for when the binary is
 // not on PATH), http (the prompt forms, for agents with nothing but HTTP),
 // curl (the prompt form's request written for curl), powershell (the
-// prompt-powershell form's request written for PowerShell) and mcp (the
-// server's MCP instructions). {{server}} is the server's base URL.
+// prompt-powershell form's request written for PowerShell), mcp (the
+// server's MCP instructions) and skill (the SKILL.md form alone: what only
+// a copy of the skill on disk can say, such as its own scripts). A fragment
+// whose heading opens inside a block lies wholly in blocks and is left out
+// of every form that shows none of them. {{server}} is the server's base URL.
 package skillgen
 
 import (
@@ -49,19 +52,22 @@ const (
 	ChannelFile = "file"
 	ChannelHTTP = "http"
 	ChannelMCP  = "mcp"
+	// ChannelSkill is shown by the skill-md form only.
+	ChannelSkill = "skill"
 
 	ChannelCurl       = "curl"
 	ChannelPowerShell = "powershell"
 )
 
 // channels lists every channel a block may name.
-var channels = []string{ChannelCLI, ChannelFile, ChannelHTTP, ChannelCurl, ChannelPowerShell, ChannelMCP}
+var channels = []string{ChannelCLI, ChannelFile, ChannelHTTP, ChannelCurl, ChannelPowerShell, ChannelMCP, ChannelSkill}
 
 // formChannels are the channels each form shows: the forms that run the
 // binary also teach the file inbox, which is local to the same machine; the
-// prompt forms and mcp reach a server and never do.
+// prompt forms and mcp reach a server and never do. Only skill-md shows the
+// skill channel.
 var formChannels = map[string][]string{
-	FormSkillMD:  {ChannelCLI, ChannelFile},
+	FormSkillMD:  {ChannelCLI, ChannelFile, ChannelSkill},
 	FormAgentsMD: {ChannelCLI, ChannelFile},
 	FormCursor:   {ChannelCLI, ChannelFile},
 	FormPrompt:   {ChannelHTTP, ChannelCurl},
@@ -246,8 +252,17 @@ func parseFragment(id, text string) (Fragment, error) {
 	if open != nil {
 		return f, fmt.Errorf("source/%s.md: block not closed", id)
 	}
-	if len(f.lines) == 0 || f.lines[0].channels != nil || !strings.HasPrefix(f.lines[0].text, "## ") {
-		return f, fmt.Errorf("source/%s.md: must start with a level-2 heading outside any block", id)
+	if len(f.lines) == 0 || !strings.HasPrefix(f.lines[0].text, "## ") {
+		return f, fmt.Errorf("source/%s.md: must start with a level-2 heading", id)
+	}
+	// A heading inside a block makes the whole fragment that block's: every
+	// line then lies in a block naming the same channels.
+	if head := f.lines[0].channels; head != nil {
+		for _, l := range f.lines {
+			if !slices.Equal(l.channels, head) {
+				return f, fmt.Errorf("source/%s.md: a heading inside a block needs every line in a block naming the same channels", id)
+			}
+		}
 	}
 	f.Shared = tidy(strings.Join(shared, "\n"))
 
@@ -382,7 +397,9 @@ func Render(form, server string) ([]byte, error) {
 
 	parts := make([]string, 0, len(frags))
 	for _, f := range frags {
-		parts = append(parts, strings.ReplaceAll(f.text(chans...), "{{server}}", shown))
+		if t := f.text(chans...); t != "" {
+			parts = append(parts, strings.ReplaceAll(t, "{{server}}", shown))
+		}
 	}
 	body := strings.Join(parts, "\n\n")
 
@@ -433,7 +450,9 @@ func Prime() ([]byte, error) {
 	}
 	parts := make([]string, 0, len(frags))
 	for _, f := range frags {
-		parts = append(parts, f.text(ChannelCLI))
+		if t := f.text(ChannelCLI); t != "" {
+			parts = append(parts, t)
+		}
 	}
 
 	return []byte(fmt.Sprintf("# %s\n\n%s\n\n%s\n", m.Title, m.Description, strings.Join(parts, "\n\n"))), nil

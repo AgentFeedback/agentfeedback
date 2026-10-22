@@ -133,7 +133,9 @@ Never work around a failure by writing the report somewhere else; tell the
 user the report was not filed and why.
 
 The one exception is a machine where the `agentfeedback` command is not
-found at all: write the report as one JSON object into a file in the inbox,
+found at all. Offer Setup first, where this skill has a Setup section; when
+the human declines it, or there is none, write the report as one JSON object
+into a file in the inbox,
 `${XDG_DATA_HOME:-~/.local/share}/agentfeedback/inbox/`. The next
 `agentfeedback` command on this machine, or `agentfeedback ingest`, files it
 with `context.origin` `inbox` and moves the file to `inbox/done/`, or to
@@ -170,6 +172,29 @@ with open(os.open(t, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as f:
 os.replace(t, os.path.join(d, k + ".json"))
 PY
 ```
+
+## Setup
+
+Setup applies only when `command -v agentfeedback` finds nothing, or
+`agentfeedback install --list` shows your harness with MODE `-`. Ask the
+human first; then:
+
+1. `bash <this skill's directory>/scripts/install.sh` installs the
+   checksum-verified release binary into `~/.local/bin` and prints its path;
+   run step 2 with that path when `agentfeedback` is not on PATH. A copy of
+   this skill without `scripts/` uses step 2.1 of `AGENT-INSTALL.md` in
+   github.com/AgentFeedback/agentfeedback instead.
+2. `agentfeedback init --yes --harnesses <your harness> --json` reports
+   to the server already configured on this machine (`config.toml` or
+   `AGENT_FEEDBACK_URL`) and otherwise locally (a new server only when the
+   human names one: `--server <URL> --key-from-stdin`, the key typed by the
+   human, never by you), wires this harness's rule and hooks, leaves this skill as it is,
+   installs the triage skill, and runs a check: the JSON shows
+   `"status": "ok"`.
+
+Other harnesses on the machine are the human's to wire with
+`agentfeedback init`. If the human declines, file through the inbox as
+"When something fails" says.
 
 ## Examples
 

@@ -15,6 +15,7 @@
     "outcome",
     "warnings",
     "when-it-fails",
+    "setup",
     "examples"
   ]
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
@@ -177,14 +178,18 @@ func TestInstall_EmptyRecordedSkillDirIsOurs(t *testing.T) {
 	if _, err := e.Run(cliRequest("pi")); err != nil {
 		t.Fatalf("the recorded empty skill directory was refused: %v", err)
 	}
-	// An empty one the manifest does not record is still foreign.
+	// An empty one the manifest does not record is not install's: it is
+	// left as it is and the skill reads as external.
 	e2 := testEnv(t)
 	if err := os.MkdirAll(filepath.Dir(e2.SkillPath("pi")), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	var r *Refusal
-	if _, err := e2.Run(cliRequest("pi")); !errors.As(err, &r) {
-		t.Fatalf("unrecorded skill directory: %v", err)
+	res, err := e2.Run(cliRequest("pi"))
+	if err != nil || res.Harnesses[0].Skill != "external" {
+		t.Fatalf("unrecorded skill directory: %v %+v", err, res.Harnesses)
+	}
+	if _, err := os.Lstat(e2.SkillPath("pi")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("the unrecorded skill directory was written into: %v", err)
 	}
 }
 

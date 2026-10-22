@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -17,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/agentfeedback/agentfeedback/v4/internal/skillgen"
+	"github.com/pelletier/go-toml/v2"
 )
 
 // Modes of a wired harness.
@@ -397,32 +399,218 @@ func (p *plan) desired(name string, o Options) (desire, error) {
 			d.notes = append(d.notes, name+" has no skill directory; the triage skill was not installed")
 		}
 		for _, dir := range dirs {
-			td := filepath.Join(dir, TriageDir)
-			// A triage skill install did not write, such as one a skills
-			// CLI added, is left as it is.
-			if p.externalTriage(td) {
-				d.notes = append(d.notes, td+" already exists and agentfeedback install did not write it; left as is (remove it and run agentfeedback install again to get this binary's agentfeedback-triage skill)")
-
-				continue
-			}
 			for _, f := range files {
-				d.items = append(d.items, fileItem(KindSkillFile, RoleTriage, filepath.Join(td, filepath.FromSlash(f.Path)), f.Data))
+				d.items = append(d.items, fileItem(KindSkillFile, RoleTriage, filepath.Join(dir, TriageDir, filepath.FromSlash(f.Path)), f.Data))
 			}
 		}
 	}
 
-	return d, nil
+	return p.settleRoots(d), nil
 }
 
-// externalTriage reports whether dir, a triage skill directory, exists (a
-// directory or a link) while the manifest records nothing of it as written
-// by install.
-func (p *plan) externalTriage(dir string) bool {
-	if _, err := os.Lstat(dir); err != nil {
+// externalTrees are the skill directories that, found unrecorded and not
+// adoptable, are left as they are rather than refused: a skills CLI or a hub
+// installs these two.
+var externalTrees = []string{"agentfeedback", TriageDir}
+
+// settleRoots decides, per skill directory the items write into, what an
+// existing directory the manifest records nothing of becomes: one holding
+// only files the items write, byte for byte, is adopted (see adoptableDir);
+// any other agentfeedback or agentfeedback-triage directory, or a link, is
+// left as it is, its items dropped and a note added (external); any other
+// one is refused when its files are added.
+func (p *plan) settleRoots(d desire) desire {
+	want := map[string]map[string][]byte{}
+	var roots []string
+	for _, it := range d.items {
+		root := p.env.skillRootOf(it.File)
+		if it.Kind != KindSkillFile || root == "" {
+			continue
+		}
+		if want[root] == nil {
+			want[root] = map[string][]byte{}
+			roots = append(roots, root)
+		}
+		want[root][it.File] = it.content
+	}
+	drop := map[string]bool{}
+	for _, root := range roots {
+		if _, err := os.Lstat(root); err != nil || p.ownsBelow(root) {
+			continue
+		}
+		if dirs, ok := adoptableDir(root, want[root]); ok {
+			p.adopt[root] = dirs
+
+			continue
+		}
+		if p.unrecorded(root) && slices.Contains(externalTrees, filepath.Base(root)) {
+			drop[root] = true
+			d.notes = append(d.notes, externalNote(root))
+		}
+	}
+	if len(drop) > 0 {
+		d.items = slices.DeleteFunc(d.items, func(it Item) bool { return it.Kind == KindSkillFile && drop[p.env.skillRootOf(it.File)] })
+	}
+
+	return d
+}
+
+func externalNote(root string) string {
+	return root + " already exists and agentfeedback install did not write it; left as is (remove it and run agentfeedback install again to get this binary's " + filepath.Base(root) + " skill)"
+}
+
+// unrecorded reports whether root exists (a directory or a link) while the
+// manifest records nothing of it as written by install.
+func (p *plan) unrecorded(root string) bool {
+	if _, err := os.Lstat(root); err != nil {
 		return false
 	}
 
-	return !p.ownsBelow(dir) && !slices.Contains(p.man.DirsCreated, dir)
+	return !p.ownsBelow(root) && !slices.Contains(p.man.DirsCreated, root)
+}
+
+// adoptableDir reports whether root is a directory, not a link, holding at
+// least one file and nothing but files of want with exactly its bytes, in
+// directories want's files lie in; it then returns those directories, root first, parents
+// before children. Such a directory is what an install interrupted before
+// its manifest write leaves, and install records it as its own.
+func adoptableDir(root string, want map[string][]byte) ([]string, bool) {
+	info, err := os.Lstat(root)
+	if err != nil || !info.IsDir() {
+		return nil, false
+	}
+	sep := string(filepath.Separator)
+	allowed := map[string]bool{root: true}
+	for f := range want {
+		for d := filepath.Dir(f); strings.HasPrefix(d, root+sep); d = filepath.Dir(d) {
+			allowed[d] = true
+		}
+	}
+	var dirs []string
+	ok, files := true, 0
+	err = filepath.WalkDir(root, func(path string, e fs.DirEntry, err error) error {
+		switch {
+		case err != nil:
+			ok = false
+		case e.IsDir():
+			ok = allowed[path]
+			dirs = append(dirs, path)
+		case e.Type().IsRegular():
+			content, wanted := want[path]
+			data, rerr := os.ReadFile(path)
+			ok = wanted && rerr == nil && bytes.Equal(data, content)
+			files++
+		default:
+			ok = false
+		}
+		if !ok {
+			return filepath.SkipAll
+		}
+
+		return nil
+	})
+	if err != nil || !ok || files == 0 {
+		return nil, false
+	}
+	sort.Strings(dirs)
+
+	return dirs, true
+}
+
+// treeWant is what install writes into the skill directory root, by its
+// name, for the status of an unrecorded one.
+func treeWant(root string) (map[string][]byte, error) {
+	out := map[string][]byte{}
+	switch filepath.Base(root) {
+	case "agentfeedback":
+		skill, err := skillgen.Render(skillgen.FormSkillMD, "")
+		if err != nil {
+			return nil, err
+		}
+		out[filepath.Join(root, "SKILL.md")] = skill
+	case TriageDir:
+		files, err := triageFiles()
+		if err != nil {
+			return nil, err
+		}
+		for _, f := range files {
+			out[filepath.Join(root, filepath.FromSlash(f.Path))] = f.Data
+		}
+	}
+
+	return out, nil
+}
+
+// pluginNote is the note of a harness whose agentfeedback plugin provides
+// the skill.
+const pluginNote = "the agentfeedback plugin provides the skill; install wires the rule and hooks only"
+
+// pluginSkill reports whether the harness's plugin registry lists an
+// enabled user-scope agentfeedback plugin, which carries the skill itself:
+// Claude Code's plugins/installed_plugins.json with an
+// agentfeedback@<marketplace> entry holding a "scope": "user" record, not
+// set to false under enabledPlugins in settings.json (claude plugin disable
+// writes false; install writes true), or a
+// [plugins."agentfeedback@<marketplace>"] table in Codex's config.toml whose
+// enabled is absent or true. The registries are only read, and one that is
+// missing or does not parse lists no plugin; a settings.json that cannot be
+// read disables none.
+func (e Env) pluginSkill(name string) bool {
+	const prefix = "agentfeedback@"
+	switch name {
+	case "claude-code":
+		data, err := os.ReadFile(filepath.Join(e.claudeDir(), "plugins", "installed_plugins.json"))
+		if err != nil {
+			return false
+		}
+		var reg struct {
+			Plugins map[string]json.RawMessage `json:"plugins"`
+		}
+		if json.Unmarshal(data, &reg) != nil {
+			return false
+		}
+		settings, _ := os.ReadFile(filepath.Join(e.claudeDir(), "settings.json"))
+		for k, v := range reg.Plugins {
+			var installs []struct {
+				Scope string `json:"scope"`
+			}
+			if !strings.HasPrefix(k, prefix) || json.Unmarshal(v, &installs) != nil ||
+				!slices.ContainsFunc(installs, func(i struct {
+					Scope string `json:"scope"`
+				}) bool {
+					return i.Scope == "user"
+				}) {
+				continue
+			}
+			if on, err := GetMember(settings, []string{"enabledPlugins"}, k); err == nil && on != nil && string(bytes.TrimSpace(Standard(on))) == "false" {
+				continue
+			}
+
+			return true
+		}
+	case "codex":
+		data, err := os.ReadFile(filepath.Join(e.codexHome(), "config.toml"))
+		if err != nil {
+			return false
+		}
+		var cfg struct {
+			Plugins map[string]any `toml:"plugins"`
+		}
+		if toml.Unmarshal(data, &cfg) != nil {
+			return false
+		}
+		for k, v := range cfg.Plugins {
+			t, isTable := v.(map[string]any)
+			if !strings.HasPrefix(k, prefix) || !isTable {
+				continue
+			}
+			if enabled, set := t["enabled"]; !set || enabled == true {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // wiring is the skill, the hook and the rule in the global instruction
@@ -454,8 +642,12 @@ func (p *plan) wiring(name string, o Options) (desire, error) {
 	if err != nil {
 		return d, err
 	}
-	for _, dir := range a.SkillDirs(p.env) {
-		d.items = append(d.items, fileItem(KindSkillFile, RoleSkill, filepath.Join(dir, "agentfeedback", "SKILL.md"), skill))
+	if p.env.pluginSkill(name) {
+		d.notes = append(d.notes, pluginNote)
+	} else {
+		for _, dir := range a.SkillDirs(p.env) {
+			d.items = append(d.items, fileItem(KindSkillFile, RoleSkill, filepath.Join(dir, "agentfeedback", "SKILL.md"), skill))
+		}
 	}
 	if a.hook != nil && !o.NoHooks {
 		items, notes := a.hook(p, o)

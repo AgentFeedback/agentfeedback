@@ -235,6 +235,9 @@ type fileState struct {
 	backupNew    bool
 	backupDelete string
 	owner        string
+	// adopted marks a file install found in place with exactly the bytes
+	// it would write and records as its own, without writing it.
+	adopted bool
 }
 
 // dest is the file written: the link's target, or path itself.
@@ -265,6 +268,9 @@ type plan struct {
 	steps []*step
 	notes map[string][]string
 	kept  []string // backups left in place because a file changed since
+	// adopt maps an unrecorded skill directory install takes over whole
+	// (see adoptableDir) to its directories, recorded as created by install.
+	adopt map[string][]string
 }
 
 func (p *plan) load(path string) (*fileState, error) {
@@ -739,20 +745,29 @@ func (p *plan) add(s *step, it *Item) error {
 	case KindSkillFile, KindPluginFile:
 		dir := it.File
 		what := "a file named " + filepath.Base(it.File)
-		ours := p.owned[it.File]
+		ours := p.owned[it.File] || adoptable(f, *it)
 		if it.Kind == KindSkillFile {
 			dir = p.skillRoot(s.name, it.File)
 			what = "an " + filepath.Base(dir) + " skill directory"
 			if link := p.env.symlinkedAncestor(it.File); link != "" {
 				return p.symlinkRefusal(link)
 			}
-			ours = p.ownsBelow(dir)
+			ours = p.ownsBelow(dir) || p.adopt[dir] != nil
 		}
 		if _, err := os.Lstat(dir); err == nil && !ours && !p.ourEmptyDir(dir) {
 			return foreign(dir, what)
 		}
 		if f.present && !p.owned[it.File] {
-			return foreign(it.File, what)
+			// A file install did not record but holds exactly what it
+			// would write, such as one an interrupted run wrote before
+			// its manifest write, is recorded as written by install.
+			if !adoptable(f, *it) {
+				return foreign(it.File, what)
+			}
+			f.adopted = true
+			p.touch(s, f)
+
+			return nil
 		}
 		p.touch(s, f)
 		f.cur, f.present = bytes.Clone(it.content), true
@@ -897,6 +912,12 @@ func (e Env) symlinkedAncestor(file string) string {
 	}
 }
 
+// adoptable reports whether f, a regular file as found, holds exactly the
+// whole-file item's content.
+func adoptable(f *fileState, it Item) bool {
+	return f.exists && f.present && f.target == "" && bytes.Equal(f.orig, f.cur) && bytes.Equal(f.cur, it.content)
+}
+
 // ownsBelow reports whether the manifest records a file beneath dir.
 func (p *plan) ownsBelow(dir string) bool {
 	for f := range p.owned {
@@ -937,7 +958,7 @@ func (p *plan) ourEmptyDir(dir string) bool {
 }
 
 func newPlan(env Env, man *Manifest) *plan {
-	p := &plan{env: env, man: man.clone(), files: map[string]*fileState{}, owned: map[string]bool{}, notes: map[string][]string{}}
+	p := &plan{env: env, man: man.clone(), files: map[string]*fileState{}, owned: map[string]bool{}, notes: map[string][]string{}, adopt: map[string][]string{}}
 	for _, h := range man.Harnesses {
 		for _, it := range h.Items {
 			if it.File != "" {
@@ -1093,8 +1114,10 @@ func (p *plan) finalize() error {
 		}
 		fresh := rec == nil
 		if fresh {
-			rec = &FileRecord{Created: !f.exists}
-			if f.exists {
+			// An adopted file counts as created by install: uninstall
+			// removes it, and there is nothing to back up.
+			rec = &FileRecord{Created: !f.exists || f.adopted}
+			if f.exists && !f.adopted {
 				rec.Backup = path + BackupSuffix
 				rec.BackupSHA256 = sha(f.orig)
 				f.backupNew = true
@@ -1539,6 +1562,15 @@ func (e Env) apply(p *plan, applied *Manifest, mpath string, req Request, w *wri
 			} else {
 				delete(applied.Files, path)
 			}
+			// The directories of a skill directory adopted whole are
+			// recorded as install's, so uninstall removes them once empty.
+			if f.adopted {
+				for _, d := range p.adopt[p.env.skillRootOf(path)] {
+					if !slices.Contains(applied.DirsCreated, d) {
+						applied.DirsCreated = append(applied.DirsCreated, d)
+					}
+				}
+			}
 			inFile := func(it Item) bool { return it.File == path }
 			if err := update(inFile, inFile); err != nil {
 				return err
@@ -1556,18 +1588,26 @@ func (e Env) apply(p *plan, applied *Manifest, mpath string, req Request, w *wri
 			return err
 		}
 	}
-	// Directories install created and that are now empty go, deepest first.
-	var left []string
-	for i := len(applied.DirsCreated) - 1; i >= 0; i-- {
-		d := applied.DirsCreated[i]
+	// Directories install created and that are now empty go, deepest first
+	// whatever order they were recorded in (an adopted skill directory's
+	// are recorded after the ones a run creates beneath it).
+	deepest := slices.Clone(applied.DirsCreated)
+	sort.SliceStable(deepest, func(i, j int) bool {
+		return strings.Count(deepest[i], string(filepath.Separator)) > strings.Count(deepest[j], string(filepath.Separator))
+	})
+	gone := map[string]bool{}
+	for _, d := range deepest {
 		if entries, err := os.ReadDir(d); err == nil && len(entries) == 0 {
-			if os.Remove(d) == nil {
-				continue
-			}
+			gone[d] = os.Remove(d) == nil
 		} else if errors.Is(err, fs.ErrNotExist) {
-			continue
+			gone[d] = true
 		}
-		left = append([]string{d}, left...)
+	}
+	var left []string
+	for _, d := range applied.DirsCreated {
+		if !gone[d] {
+			left = append(left, d)
+		}
 	}
 	if !slices.Equal(left, applied.DirsCreated) && len(applied.Harnesses) > 0 {
 		applied.DirsCreated = left
@@ -1765,13 +1805,28 @@ func (p *plan) statuses(namesWanted []string) []HarnessStatus {
 
 func (p *plan) status(name string) (hs HarnessStatus) {
 	hs = HarnessStatus{Name: name, Mode: "-", Skill: "-", MCP: "-", Hook: "-", Reminder: "-", Docs: "-", Triage: "-", Rule: "-"}
+	// A skill install did not write and would not take over, or one a
+	// plugin provides, reads as external.
 	defer func() {
-		if hs.Triage != "-" {
-			return
+		if hs.Skill == "-" && p.env.pluginSkill(name) {
+			hs.Skill = "external"
 		}
-		for _, dir := range p.env.skillDirs(name) {
-			if p.externalNow(filepath.Join(dir, TriageDir)) {
-				hs.Triage = "external"
+		for col, base := range map[*string]string{&hs.Skill: "agentfeedback", &hs.Triage: TriageDir} {
+			for _, dir := range p.env.skillDirs(name) {
+				root := filepath.Join(dir, base)
+				if *col != "-" || !p.externalNow(root) {
+					continue
+				}
+				want, err := treeWant(root)
+				if err != nil {
+					// An unknown status is not reported as external.
+					hs.Notes = append(hs.Notes, "cannot tell whether "+root+" is install's: "+err.Error())
+
+					continue
+				}
+				if _, ok := adoptableDir(root, want); !ok {
+					*col = "external"
+				}
 			}
 		}
 	}()

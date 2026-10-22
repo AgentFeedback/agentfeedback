@@ -530,8 +530,12 @@ are not wired on Windows; undo the steps by hand.
   crash in the moment between a write and its manifest update leaves an
   entry unrecorded; the next run then refuses it as foreign, naming it,
   except that a leftover backup equal to its file is taken over as the
-  backup and an empty skill directory the manifest records as created is
-  reused. The manifest records the Codex home, Claude Code configuration
+  backup, an empty skill directory the manifest records as created is
+  reused, and a whole file (a skill file or plugin file) holding exactly the
+  bytes install would write is taken over as written by install: recorded,
+  not rewritten, no backup, and removed by uninstall. A skill directory the
+  manifest records nothing of is taken over that way only when it holds
+  nothing but such files. The manifest records the Codex home, Claude Code configuration
   directory and Gemini CLI `.gemini` directory of the harnesses it keeps; a
   later run under another `CODEX_HOME`, `CLAUDE_CONFIG_DIR` or
   `GEMINI_CLI_HOME` keeps using the recorded location for
@@ -546,12 +550,27 @@ are not wired on Windows; undo the steps by hand.
   no harness is left. What a harness added to a file install created (OpenCode
   adds `$schema`) stays.
 - **Foreign entries are refused.** An `agentfeedback` MCP entry, TOML table,
-  skill directory or plugin file, or an identical hook, that the manifest does
-  not record stops the run before anything is written, naming the path:
-  remove or rename it and run install again. A skill directory provisioned
-  before `install` existed (a copy or symlink of `skills/agentfeedback`) must
-  be removed first. A recorded skill or plugin file edited since install is
-  refused too.
+  `agentfeedback-docs` skill directory or plugin file with other bytes than
+  install writes, or an identical hook, that the manifest does not record
+  stops the run before anything is written, naming the path: remove or
+  rename it and run install again. A recorded skill or plugin file edited
+  since install is refused too, and so is an unrecorded file with other
+  bytes in a skill directory the manifest records.
+- **Skills installed another way are left.** An `agentfeedback` or
+  `agentfeedback-triage` skill directory or link the manifest records
+  nothing of (a copy or link of `skills/agentfeedback`, or one `npx skills
+  add` installed with its `scripts/`), and that install would not take over
+  as above, is left as it is with a note; the rest is wired, its column
+  reads `external`, and uninstall leaves it. Remove it and run install again
+  to get this binary's version. When the harness's plugin registry lists an
+  `agentfeedback@<marketplace>` plugin (Claude Code:
+  `<claude config>/plugins/installed_plugins.json`; Codex: a
+  `[plugins."agentfeedback@<marketplace>"]` table in
+  `<codex home>/config.toml` not set `enabled = false`), the plugin provides
+  the skill: install writes none, removes the copy an earlier install
+  wrote, wires the rule and hooks, and the skill column reads `external`.
+  Install only reads those registries; one that is missing or does not
+  parse lists no plugin.
 - **`CLAUDE_CONFIG_DIR`** moves Claude Code's settings, skills and
   `.claude.json` (to `$CLAUDE_CONFIG_DIR/.claude.json`), and install follows
   it. Set to `~/.claude` counts as set: Claude Code then reads

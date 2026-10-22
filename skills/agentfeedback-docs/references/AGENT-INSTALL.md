@@ -260,8 +260,15 @@ Codex: run `codex plugin marketplace add AgentFeedback/agentfeedback && codex pl
 in place of that command.
 
 **Verify:** the command exits 0 and `claude plugin list` (or `codex plugin
-list`) shows `agentfeedback`. There are no hooks: put "run `agentfeedback
-flush` now and then" in step 4's `human_todo`.
+list`) shows `agentfeedback`. The plugin has no hooks and no rule. When the
+human allows the binary (`binary_possible` in step 0), run step 2.1 if it
+has not run, then `"<binary>" init --yes --harnesses <harness> --json`: it
+reports to the target of step 1 as step 2.3 describes, wires the rule and
+the hooks, and leaves the plugin's skill as it is (your harness shows
+`"skill": "external"` with a note); check its last line as step 2.3's
+Verify says, `"skill"` aside. Without `init` there are no hooks to send what the client
+spools while a server is unreachable: then put "run `agentfeedback flush`
+now and then" in step 4's `human_todo`.
 
 **Outcome:**
 
@@ -276,8 +283,8 @@ Then step 3.
 This runs the third-party `skills` CLI from the npm registry, so ask the
 human first. It installs the skill from this repository for your harness
 only: `<agent>` is your harness's name in that CLI's agent list (for example
-`gemini-cli`). Never pass an agent that step 2.3 wires; `init` and
-`install` refuse a skill directory they did not create. `DISABLE_TELEMETRY=1` stops the CLI from
+`gemini-cli`). `init` and `install` leave a skill directory they did not
+create as it is and report it `"external"`. `DISABLE_TELEMETRY=1` stops the CLI from
 sending the repository and skill names to its vendor.
 
 ```sh
@@ -285,8 +292,15 @@ DISABLE_TELEMETRY=1 npx --yes skills add AgentFeedback/agentfeedback --skill age
 ```
 
 **Verify:** exit code 0 and the output lists `agentfeedback` as installed
-for `<agent>`. There are no hooks: put "run `agentfeedback flush` now and
-then" in step 4's `human_todo`.
+for `<agent>`. The skill comes without hooks and without the rule. When the
+human allows the binary (`binary_possible` in step 0) and step 2.3 knows
+your harness, run step 2.1 if it has not run, then `"<binary>" init --yes
+--harnesses <harness> --json`: it wires the rule and the hooks and leaves
+the `skills` CLI's skill as it is (your harness shows `"skill":
+"external"` with a note); check its last line as step 2.3's Verify says,
+`"skill"` aside. Without `init` there are no hooks to send what the client
+spools while a server is unreachable: then put "run `agentfeedback flush`
+now and then" in step 4's `human_todo`.
 
 **Outcome:**
 
@@ -393,9 +407,10 @@ Only after steps 2.1, 2.2 and one of 2.3 to 2.5.
 
 **Verify:** `"status": "ok"`, `"problems": []` and `"meta": {… "ok": true
 …}`. In local mode also `"mode": "local"`, `"database": {… "exists": true}`
-and `"url": {"value": "", …}`; after step 2.4 or 2.5 the database does not
-exist yet (`"exists": false`, and `meta` is not checked) until step 3.2
-creates it, so check `"exists"` and `meta` after step 3.2 there. With a server also `"mode": "remote"`,
+and `"url": {"value": "", …}`; after step 2.4 or 2.5 without `init` the
+database does not exist yet (`"exists": false`, and `meta` is not checked)
+until step 3.2 creates it, so check `"exists"` and `meta` after step 3.2
+there. With a server also `"mode": "remote"`,
 `"url": {"value": "<URL>", "source": "config"}` and `"api_key": {"set":
 true, "source": "config"}`. A `"source": "env"` means an exported
 `AGENT_FEEDBACK_URL` or `AGENT_FEEDBACK_API_KEY` overrides the new
@@ -441,9 +456,10 @@ from their own outcome and skip this command):
 
 **Verify:** after step 2.3 your harness shows `"mode": "cli"`, `"skill":
 "wired"`, `"hook": "wired"`, `"rule": "wired"` and `"triage": "wired"`
-(the last three as step 2.3 lists them). After step 2.4 or 2.5 it shows `"mode": "-"`,
-because the plugin or the `skills` CLI wired it; take the mode from that
-step's outcome. On Windows the command refuses: report from the outcomes.
+(the last three as step 2.3 lists them). After step 2.4 or 2.5 with `init`
+it shows the same with `"skill": "external"`; without `init` it shows
+`"mode": "-"`, because the plugin or the `skills` CLI wired it alone: take
+the mode from that step's outcome. On Windows the command refuses: report from the outcomes.
 
 **Outcome:** quote this to the human, with every earlier outcome above it.
 

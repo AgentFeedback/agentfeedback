@@ -111,8 +111,11 @@ provider of the model that reads it ([sessions.md](sessions.md#provider-boundary
 harness's global instruction file (its Rule column), between
 `<!-- agentfeedback:begin ... -->` and `<!-- agentfeedback:end -->`; unless
 `--with-triage=false` (`init --no-triage`), also the binary's copy of the
-`agentfeedback-triage` skill in each skills directory, never over a triage
-directory or link it did not write. Each
+`agentfeedback-triage` skill in each skills directory, never over a skill
+or triage directory or link it did not write (it takes over only one that
+holds exactly the files it would write). It reads, never writes, Claude
+Code's `plugins/installed_plugins.json` and Codex's `config.toml` to find an
+`agentfeedback` plugin, which then provides the skill instead. Each
 file is backed up before its first change (`<file>.agentfeedback-backup`) and recorded in the install
 manifest like the other files; the text between the markers belongs to
 install, which replaces it in place and removes it by its markers even

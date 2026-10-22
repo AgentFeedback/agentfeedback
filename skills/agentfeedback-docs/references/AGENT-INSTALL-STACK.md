@@ -274,9 +274,9 @@ Check it:
 ```
 
 **Verify:** your harness shows `"triage": "wired"`. It shows `"-"` after
-`--no-triage`, and after client step 2.4 or 2.5 (the plugin or the `skills`
-CLI installs only the submission skill): report the step as skipped with
-that reason. `"external"` means a
+`--no-triage`, and after client step 2.4 or 2.5 when `init` did not run
+(the plugin or the `skills` CLI installs only the submission skill): report
+the step as skipped with that reason. `"external"` means a
 triage skill installed another way was already there and was left as it is.
 
 **Outcome:**

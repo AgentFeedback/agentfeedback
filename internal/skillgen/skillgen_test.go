@@ -37,7 +37,12 @@ func TestSourceParses(t *testing.T) {
 		t.Fatalf("%d fragments, skill.json lists %d", len(frags), len(m.Fragments))
 	}
 	for _, f := range frags {
-		for _, c := range []string{ChannelCLI, ChannelHTTP, ChannelMCP} {
+		want := []string{ChannelCLI, ChannelHTTP, ChannelMCP}
+		// A fragment wholly in one block has content for its channels only.
+		if own := f.lines[0].channels; own != nil {
+			want = own
+		}
+		for _, c := range want {
 			if strings.Count(f.text(c), "\n") < 2 {
 				t.Errorf("%s has no content for channel %s", f.ID, c)
 			}
@@ -291,17 +296,18 @@ func TestNormalizeServer(t *testing.T) {
 
 func TestParseFragmentErrors(t *testing.T) {
 	for name, text := range map[string]string{
-		"no heading":       "text\n",
-		"level 1":          "# Title\n",
-		"unclosed":         "## H\n<!-- only: cli -->\nx\n",
-		"stray end":        "## H\n<!-- end -->\n",
-		"nested":           "## H\n<!-- only: cli -->\n<!-- only: mcp -->\n<!-- end -->\n",
-		"bad channel":      "## H\n<!-- only: cli sms -->\nx\n<!-- end -->\n",
-		"other comment":    "## H\n<!-- note -->\n",
-		"indented":         "## H\n  <!-- only: cli -->\nx\n<!-- end -->\n",
-		"no channel":       "## H\n<!-- only:  -->\nx\n<!-- end -->\n",
-		"heading in block": "<!-- only: cli -->\n## H\n<!-- end -->\n",
-		"carriage return":  "## H\r\nx\n",
+		"no heading":                    "text\n",
+		"level 1":                       "# Title\n",
+		"unclosed":                      "## H\n<!-- only: cli -->\nx\n",
+		"stray end":                     "## H\n<!-- end -->\n",
+		"nested":                        "## H\n<!-- only: cli -->\n<!-- only: mcp -->\n<!-- end -->\n",
+		"bad channel":                   "## H\n<!-- only: cli sms -->\nx\n<!-- end -->\n",
+		"other comment":                 "## H\n<!-- note -->\n",
+		"indented":                      "## H\n  <!-- only: cli -->\nx\n<!-- end -->\n",
+		"no channel":                    "## H\n<!-- only:  -->\nx\n<!-- end -->\n",
+		"heading in block, shared line": "<!-- only: cli -->\n## H\n<!-- end -->\nx\n",
+		"heading in block, other block": "<!-- only: cli -->\n## H\n<!-- end -->\n<!-- only: mcp -->\nx\n<!-- end -->\n",
+		"carriage return":               "## H\r\nx\n",
 	} {
 		if _, err := parseFragment("t", text); err == nil {
 			t.Errorf("%s: accepted", name)
@@ -313,6 +319,41 @@ func TestParseFragmentErrors(t *testing.T) {
 	}
 	if f.Shared != "## H\n\nshared" || f.text(ChannelCLI) != "## H\n\nshared\nboth" || f.text(ChannelMCP) != "## H\n\nshared\nmcp" {
 		t.Fatalf("%q %q %q", f.Shared, f.text(ChannelCLI), f.text(ChannelMCP))
+	}
+}
+
+// A fragment whose heading opens inside a block is that block's alone.
+func TestFragmentInOneBlock(t *testing.T) {
+	f, err := parseFragment("t", "<!-- only: skill -->\n## H\n\nbody\n<!-- end -->\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Shared != "" || f.text(ChannelSkill) != "## H\n\nbody" || f.text(ChannelCLI, ChannelFile) != "" {
+		t.Fatalf("%q %q %q", f.Shared, f.text(ChannelSkill), f.text(ChannelCLI, ChannelFile))
+	}
+}
+
+// The Setup section names this skill's own scripts, so only the SKILL.md
+// form (and the plugin bundle's copy of it) carries it.
+func TestSetupOnlyInSkillMD(t *testing.T) {
+	const marker = "## Setup"
+	const step = "scripts/install.sh` installs the"
+	for _, form := range Forms() {
+		out := render(t, form, "")
+		want := form == FormSkillMD
+		if got := strings.Contains(out, marker) && strings.Contains(out, step); got != want {
+			t.Errorf("%s: Setup shown %v, want %v", form, got, want)
+		}
+		if form != FormSkillMD && (strings.Contains(out, "Setup applies only") || strings.Contains(out, "init --yes --harnesses <your harness>")) {
+			t.Errorf("%s shows Setup text", form)
+		}
+	}
+	out, err := Prime()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(out), "Setup applies only") || strings.Contains(string(out), marker) {
+		t.Error("prime shows Setup")
 	}
 }
 

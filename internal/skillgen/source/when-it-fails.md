@@ -38,7 +38,9 @@ user the report was not filed and why.
 <!-- only: file -->
 
 The one exception is a machine where the `agentfeedback` command is not
-found at all: write the report as one JSON object into a file in the inbox,
+found at all. Offer Setup first, where this skill has a Setup section; when
+the human declines it, or there is none, write the report as one JSON object
+into a file in the inbox,
 `${XDG_DATA_HOME:-~/.local/share}/agentfeedback/inbox/`. The next
 `agentfeedback` command on this machine, or `agentfeedback ingest`, files it
 with `context.origin` `inbox` and moves the file to `inbox/done/`, or to
