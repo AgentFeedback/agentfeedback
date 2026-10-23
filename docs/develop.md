@@ -92,7 +92,7 @@ python3 tests/playbooks/test_playbooks.py     # the extractor's tests
 just contract                                 # contract gate: the three commands below
 uv run --locked --script tests/docs/test_api_examples.py  # the api.md example check's tests
 uv run --locked --script scripts/contract-check.py   # schemas valid 2020-12, every example validates, fixtures agree with conformance/reference
-npx --yes @redocly/cli@2.54.2 lint docs/openapi.yaml # OpenAPI lint (recommended ruleset, redocly.yaml)
+npx --yes @redocly/cli@2.65.1 lint docs/openapi.yaml # OpenAPI lint (recommended ruleset, redocly.yaml)
 python3 conformance/reference/fixtures.py     # the fixtures alone, no dependencies
 just docs-check                               # relative links and anchors in every Markdown file, the README and AGENTS.md route tables (scripts/check-docs.py)
 shellcheck -x -P SCRIPTDIR skills/*/scripts/*.sh tests/skill/*.sh

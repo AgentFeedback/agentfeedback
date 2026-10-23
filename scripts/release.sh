@@ -9,7 +9,7 @@
 # procedure, recovery included.
 set -euo pipefail
 
-goreleaser_version=2.18.3
+goreleaser_version=2.19.0
 repo=AgentFeedback/agentfeedback
 origin_re='github\.com[:/]AgentFeedback/agentfeedback(\.git)?/?$'
 install_sh=skills/agentfeedback/scripts/install.sh

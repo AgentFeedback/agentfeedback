@@ -17,11 +17,12 @@ GitHub release or pushes an image (the steps below, recovery included) only
 when a maintainer asks for that version.
 
 Maintainers need Git, the tools `just ci` needs ([develop.md](develop.md)),
-GoReleaser 2.18.3 exactly (the `v2.18.3` archive from
+GoReleaser 2.19.0 exactly (the `v2.19.0` archive from
 github.com/goreleaser/goreleaser/releases, or `brew install goreleaser` while
-2.18.3 is Homebrew's version; `just release` refuses any other version,
-because the archives are only reproducible with the same one), Docker with
-buildx logged in to `ghcr.io` (push access to the
+2.19.0 is Homebrew's version; `just release` refuses any other version,
+because the archives are only reproducible with the same one; an earlier
+release is reproducible with the version `scripts/release.sh` pins at its
+tag), Docker with buildx logged in to `ghcr.io` (push access to the
 `agentfeedback/agentfeedback` package), able to build and run `linux/amd64`
 and `linux/arm64` images (on a machine of the other architecture, QEMU
 emulation: `docker run --privileged --rm tonistiigi/binfmt --install all`;

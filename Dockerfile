@@ -9,7 +9,7 @@ ARG BINARY_FROM=source
 
 # Build on the BuildKit builder platform and cross-compile the static binary for
 # the target image platform. CGO stays off: the SQLite driver is pure Go.
-FROM --platform=$BUILDPLATFORM golang:1.27.1-bookworm AS source
+FROM --platform=$BUILDPLATFORM golang:1.27.3-bookworm AS source
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -36,7 +36,7 @@ FROM ${BINARY_FROM} AS binary
 
 # Distroless static: CA roots, timezone data, no shell and no package manager.
 # Pinned by the digest of the multi-platform index.
-FROM gcr.io/distroless/static-debian13@sha256:58133991db06659feaabe0f4e97a35cebf15ef4ea08f8a4c6d2ee5f75e4aa6a0
+FROM gcr.io/distroless/static-debian13@sha256:034df5c1737e8241f6ed6423a12e720ee0f6d6f088609ee172f98f6f2166ef5d
 
 COPY --from=binary /out/agentfeedback /opt/agentfeedback
 

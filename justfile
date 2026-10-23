@@ -21,7 +21,7 @@ vet:
 tidy:
     go mod tidy
 
-staticcheck_version := "2026.2.1"
+staticcheck_version := "2026.2.2"
 
 # Run staticcheck at the pinned version.
 staticcheck:
@@ -88,7 +88,7 @@ run-local: build
 contract:
     uv run --locked --script tests/docs/test_api_examples.py
     uv run --locked --script scripts/contract-check.py
-    npx --yes @redocly/cli@2.54.2 lint docs/openapi.yaml
+    npx --yes @redocly/cli@2.65.1 lint docs/openapi.yaml
 
 # Every relative link and anchor in the Markdown files resolves, and the README and AGENTS.md route tables name every document
 docs-check:
