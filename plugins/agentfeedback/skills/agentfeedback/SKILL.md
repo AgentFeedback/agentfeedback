@@ -137,8 +137,8 @@ found at all. Offer Setup first, where this skill has a Setup section; when
 the human declines it, or there is none, write the report as one JSON object
 into a file in the inbox,
 `${XDG_DATA_HOME:-~/.local/share}/agentfeedback/inbox/`. The next
-`agentfeedback` command on this machine, or `agentfeedback ingest`, files it
-with `context.origin` `inbox` and moves the file to `inbox/done/`, or to
+`agentfeedback` command on this machine in local mode, or `agentfeedback
+ingest` in either mode, files it with `context.origin` `inbox` and moves the file to `inbox/done/`, or to
 `inbox/rejected/` with a `.reason` file beside it. The members are those
 of the minimum body plus the ones listed above (`kind`, `summary`,
 `category`, `details`, `model`, ...); nothing is collected for you, so set

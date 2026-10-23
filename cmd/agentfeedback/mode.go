@@ -161,7 +161,7 @@ func startupPass(cfg client.Config) {
 	if err != nil {
 		return
 	}
-	if client.HasDue(cfg.DataDir, nowFunc()) {
+	if client.HasDueFor(cfg.DataDir, client.LocalDestination, nowFunc()) {
 		c.Flush(context.Background())
 	}
 	inboxPass(context.Background(), c, cfg.DataDir)

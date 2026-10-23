@@ -833,23 +833,52 @@ func TestFlush_IngestsInboxLocal(t *testing.T) {
 	mustExist(t, filepath.Join(dir, inboxDone, strconv.FormatInt(rowID(t, rows[0]), 10)+"-a.json"))
 }
 
-// TestFlushHookBody_IngestsInbox proves the hook body with an empty spool
-// still ingests an inbox file in local mode.
-func TestFlushHookBody_IngestsInbox(t *testing.T) {
+// TestFlushHookBody_LocalModeLeavesTheWork proves the hook body in local
+// mode opens no database and leaves an inbox file and a due spool entry
+// for the next local-mode command, which delivers them.
+func TestFlushHookBody_LocalModeLeavesTheWork(t *testing.T) {
 	isolate(t)
 	data := dataRoot(t)
 	dir := inboxDir(t)
 	writeFile(t, filepath.Join(dir, "a.json"), inboxEnvelope, 0o600)
+	spoolOne(t, data, client.LocalDestination)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	err := flushHookBody(ctx, data, modeFlags{})
+	opened := localTarget != nil
 	closeLocal()
 	if err != nil {
 		t.Fatal(err)
 	}
-	mustBeGone(t, filepath.Join(dir, "a.json"))
+	if opened {
+		t.Fatal("the hook body opened the local database")
+	}
+	db, err := localDBPath(os.Getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(db); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the hook body created the database: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "a.json")); err != nil {
+		t.Fatalf("the inbox file is gone: %v", err)
+	}
+	if entries, _ := os.ReadDir(client.SpoolDir(data)); len(entries) != 1 {
+		t.Fatalf("spool after the hook: %v", entries)
+	}
 	rows := listRows(t)
-	if len(rows) != 1 || rows[0]["summary"] != "from inbox" {
-		t.Fatalf("rows %v", rows)
+	if len(rows) != 2 {
+		t.Fatalf("the next command did not deliver the inbox and the spool: rows %v", rows)
+	}
+	var fromInbox, fromSpool bool
+	for _, r := range rows {
+		fromInbox = fromInbox || r["summary"] == "from inbox"
+		fromSpool = fromSpool || r["key"] == "k-hook"
+	}
+	if !fromInbox || !fromSpool {
+		t.Fatalf("rows %v, want the inbox file and the spool entry", rows)
+	}
+	if entries, _ := os.ReadDir(client.SpoolDir(data)); len(entries) != 0 {
+		t.Fatalf("spool after the next command: %v", entries)
 	}
 }

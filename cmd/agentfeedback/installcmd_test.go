@@ -853,15 +853,23 @@ func TestFlushHook(t *testing.T) {
 			t.Fatalf("log %v", lines)
 		}
 	})
-	t.Run("other destination in local mode", func(t *testing.T) {
-		// Nothing configured is local mode: an entry bound to a server is
-		// left in place without a request, a log line or a word.
+	t.Run("other destination", func(t *testing.T) {
+		// An entry bound to another server is left in place without a
+		// request, a log line or a word.
 		isolate(t)
+		var hits atomic.Int64
+		srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits.Add(1) }))
+		defer srv.Close()
+		t.Setenv(envURL, srv.URL)
+		t.Setenv(envAPIKey, "throwaway")
 		data := dataRoot(t)
 		spoolOne(t, data, "http://127.0.0.1:1")
 		r := runCLI(t, "", "flush", "--hook")
 		if r.code != 0 || r.stdout != "" || r.stderr != "" {
 			t.Fatalf("%+v", r)
+		}
+		if hits.Load() != 0 {
+			t.Fatalf("requests = %d", hits.Load())
 		}
 		if _, err := os.Stat(client.LogPath(filepath.Join(os.Getenv("XDG_CACHE_HOME"), "agentfeedback"))); err == nil {
 			t.Fatal("a mismatching entry wrote a log line")
@@ -870,10 +878,45 @@ func TestFlushHook(t *testing.T) {
 			t.Fatalf("spool after the hook: %v", entries)
 		}
 	})
+	t.Run("malformed config", func(t *testing.T) {
+		// A due entry makes the hook read the config; a malformed one is
+		// logged once, and the hook still prints nothing and exits 0.
+		cfg, cache := isolate(t)
+		putFile(t, cfg, "url = [\n", 0o600)
+		data := dataRoot(t)
+		spoolOne(t, data, client.LocalDestination)
+		r := runCLI(t, "", "flush", "--hook")
+		if r.code != 0 || r.stdout != "" || r.stderr != "" {
+			t.Fatalf("%+v", r)
+		}
+		lines := hookLogLines(t, cache)
+		if len(lines) != 1 || lines[0]["outcome"] != "error" {
+			t.Fatalf("log %v", lines)
+		}
+	})
+	t.Run("inbox only", func(t *testing.T) {
+		// The hook never ingests the inbox, so an inbox file alone makes it
+		// return before reading the config: a malformed one logs nothing.
+		cfg, cache := isolate(t)
+		putFile(t, cfg, "url = [\n", 0o600)
+		putFile(t, filepath.Join(dataRoot(t), "inbox", "a.json"), `{"kind":"friction","summary":"s"}`, 0o600)
+		r := runCLI(t, "", "flush", "--hook")
+		if r.code != 0 || r.stdout != "" || r.stderr != "" {
+			t.Fatalf("%+v", r)
+		}
+		if lines := hookLogLines(t, cache); len(lines) != 0 {
+			t.Fatalf("the hook read the config for an inbox file: %v", lines)
+		}
+	})
 	t.Run("undecodable entry", func(t *testing.T) {
 		// An entry that cannot be decoded counts as due, so the hook goes on
-		// to Flush (which quarantines it) instead of returning early.
+		// to Flush (which quarantines it) instead of returning early. The
+		// hook flushes in remote mode only.
 		isolate(t)
+		srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+		defer srv.Close()
+		t.Setenv(envURL, srv.URL)
+		t.Setenv(envAPIKey, "throwaway")
 		data := dataRoot(t)
 		putFile(t, filepath.Join(client.SpoolDir(data), "af1-20260101T000000.000000001Z-00000000.json"), "garbage", 0o600)
 		r := runCLI(t, "", "flush", "--hook")

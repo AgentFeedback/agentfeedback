@@ -120,12 +120,13 @@ set or checked on Windows.
 
 An agent that cannot run the binary writes one envelope, a JSON object as
 `POST /api/v1/submissions` takes it, into `inbox/<name>.json` under the data
-directory; the recipe is in the skill. Every local-mode command but `doctor`
-delivers the inbox, after the due spool entries, and prints nothing about
-it; the end-of-turn hook in remote mode (`agentfeedback hook`, or
-`flush --hook` in older installs) does it within its deadline. `agentfeedback
-ingest` does the same pass on demand, in either mode, and prints the counts
-(`--json` for one JSON object). Nothing watches the directory.
+directory; the recipe is in the skill. Every local-mode command that
+opens the database (`submit`, the read and processing commands, `ui`,
+`mcp`, `init`'s check; not `doctor` and never the hooks) delivers the inbox
+at start, after the due spool entries, and prints nothing about it. In remote mode only
+`agentfeedback ingest` delivers it, on demand and with the counts
+(`--json` for one JSON object); `ingest` works in local mode too. Nothing
+watches the directory.
 
 - Each row gets `context.origin` `inbox` (a `context` that is not an object
   is kept in the payload as `context_raw`). A file without a `key` gets one
@@ -438,7 +439,8 @@ are not wired on Windows; undo the steps by hand.
   local mode needs no flush and opens no database. The hook prints nothing
   but the note, never writes to stderr, logs any failure to `client.jsonl`
   and otherwise exits 0. `agentfeedback flush --hook`, which older installs
-  wired, still works unchanged. Hook commands hold the binary's
+  wired, still works in remote mode; in local mode it does nothing, and the
+  next command delivers the spool and the inbox. Hook commands hold the binary's
   resolved absolute path, which may contain only letters, digits and
   `/ . _ - + @ , =`, single-quoted when it holds anything outside ASCII
   letters, digits and `/ . _ - +`; rerun install after moving the binary.
@@ -859,9 +861,9 @@ a binary older than the database's schema refuses it rather than writing rows
 the schema no longer expects: the command exits 1 with `database schema is
 newer than this binary supports`, and `client.jsonl` gets an `error` line
 whose reason starts with `schema_too_new`; `submit` spools its report instead
-([Local mode](#local-mode-no-server)). Harness hooks log the same line and
-still exit 0, so a stale hook binary shows up only there and in
-`agentfeedback doctor`, which lists the binary each harness's hook runs, its
+([Local mode](#local-mode-no-server)). Harness hooks never open the local
+database, so a stale hook binary shows up in `agentfeedback doctor`, which
+lists the binary each harness's hook runs, its
 version, and the `agentfeedback` on `PATH`, and reports a hook binary that is
 missing, does not answer `version --json`, or is older than the one running
 `doctor`. Keep one binary per machine,
@@ -909,8 +911,12 @@ docker run --rm --volumes-from "$(docker compose ps -q agentfeedback)" alpine:3.
 ```
 
 Client spools live in `~/.local/share/agentfeedback/spool/` on each producer
-and age out on their own (frictions after 20 hours, other kinds after 30
-days; an expiry is an `error` line in `client.jsonl`).
+and age out (frictions bound to a server after 20 hours; everything else,
+local-bound frictions included, after 30 days): the next flush bound to an
+entry's destination deletes it, which a local-mode command's start-up pass
+does for local ones, and logs an `error` line in `client.jsonl`; an entry
+bound to a server this machine no longer uses stays until a flush to that
+server runs.
 
 ## Monitoring
 

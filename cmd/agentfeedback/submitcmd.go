@@ -758,7 +758,7 @@ func runFlush(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	skipStartupPass = true
 	fs := newFlagSet("flush")
 	mf := addModeFlags(fs)
-	hook := fs.Bool("hook", false, "run as a harness hook, as installs before agentfeedback hook wired it: print nothing, stop within 4.5 seconds, log failures to the client log and exit 0")
+	hook := fs.Bool("hook", false, "run as a harness hook, as installs before agentfeedback hook wired it: print nothing, stop within 4.5 seconds, log failures to the client log and exit 0; in local mode it does nothing")
 	pos, err := parseInterleaved(fs, args, stderr)
 	if err != nil {
 		return errFlags("flush", err)
@@ -885,13 +885,18 @@ func boundedHook(start time.Time, label string, mf modeFlags) {
 }
 
 // flushHookBody is the work boundedHook bounds; it returns the failure to
-// log, or nil. An empty spool and an empty inbox return before the config
-// is read; data is the data directory the spool and the inbox live in. In
-// local mode the inbox is ingested after the flush, within the same
-// deadline.
+// log, or nil. A spool with nothing due returns before the config is read;
+// data is the data directory the spool lives in. It never ingests the
+// inbox. In local mode it does nothing: it opens no database, so it can
+// neither race the command's exit nor wait out a busy database past the
+// harness's budget, and the next local-mode command delivers the spool and
+// the inbox.
 func flushHookBody(ctx context.Context, data string, mf modeFlags) error {
-	if !flushHookHasDue(data, nowFunc()) && !inboxHasCandidates(data) {
+	if !flushHookHasDue(data, nowFunc()) {
 		return nil
+	}
+	if local, err := localMode(mf); err != nil || local {
+		return err
 	}
 	if ctx.Err() != nil {
 		return errors.New("the flush ran past its deadline")
@@ -915,14 +920,5 @@ func flushHookBody(ctx context.Context, data string, mf modeFlags) error {
 	case ctx.Err() != nil:
 		return errors.New("the flush ran past its deadline")
 	}
-	// The inbox goes last and only with a second to spare: a file it cannot
-	// finish is left for the next command.
-	if dl, ok := ctx.Deadline(); ok && time.Until(dl) < time.Second {
-		return nil
-	}
-	if local, err := localMode(mf); err == nil && local {
-		inboxPass(ctx, c, data)
-	}
-
 	return nil
 }

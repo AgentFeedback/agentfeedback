@@ -365,12 +365,24 @@ func (c *Client) quarantine(name string, why error) {
 	fmt.Fprintf(c.stderr, "agentfeedback: warning: spool file %s is not a readable entry (%v) and could not be moved to %s\n", name, why, RejectedDir(c.dataDir))
 }
 
-// expire deletes an entry past retention (frictions 20 h, other kinds 30
-// days since created_at), warns, and logs it.
+// retention is how long e is kept unsent: 20 h for a friction bound to a
+// server, 30 days for everything else, frictions bound to LocalDestination
+// included.
+func retention(e entry) time.Duration {
+	if strings.EqualFold(strings.TrimSpace(e.Kind), "friction") && e.Destination != LocalDestination {
+		return frictionMaxAge
+	}
+
+	return entryMaxAge
+}
+
+// expire deletes an entry past retention (frictions bound to a server 20 h
+// since created_at; everything else, local-bound frictions included, 30
+// days), warns, and logs it.
 func (c *Client) expire(path string, e entry, now time.Time) bool {
 	age := now.Sub(e.CreatedAt)
 	friction := strings.EqualFold(strings.TrimSpace(e.Kind), "friction")
-	if (friction && age <= frictionMaxAge) || (!friction && age <= entryMaxAge) {
+	if age <= retention(e) {
 		return false
 	}
 	if err := os.Remove(path); err != nil {
@@ -573,12 +585,21 @@ func HasEntries(data string) bool {
 }
 
 // HasDue reports whether the spool under data holds an entry a Flush would
-// act on now: one within retention and past its not_before, or one that
-// cannot be decoded, which Flush quarantines. One that cannot be read is
-// not due: Flush skips it too. It reads no configuration, so it cannot tell
-// an entry's destination from the caller's; a Flush then leaves a
-// mismatching one in place without a request. It changes nothing.
-func HasDue(data string, now time.Time) bool {
+// send now: one within retention and past its not_before, or one that
+// cannot be decoded, which Flush quarantines. One that cannot be read is not
+// due: Flush skips it too. It reads no configuration, so it cannot tell an
+// entry's destination from the caller's; a Flush then leaves a mismatching
+// one in place without a request. An entry past retention is not due here:
+// only a flush bound to its destination deletes it, so counting it would
+// keep an entry bound elsewhere due forever (HasDueFor counts it for a known
+// destination). It changes nothing.
+func HasDue(data string, now time.Time) bool { return hasDue(data, "", now) }
+
+// HasDueFor is HasDue for a flush bound to dest, which also acts on an entry
+// bound to dest that is past retention: it deletes and logs it.
+func HasDueFor(data, dest string, now time.Time) bool { return hasDue(data, dest, now) }
+
+func hasDue(data, dest string, now time.Time) bool {
 	c := &Client{dataDir: data, stderr: io.Discard, now: func() time.Time { return now }}
 	spool := SpoolDir(data)
 	for _, cand := range c.candidates(spool, now) {
@@ -590,9 +611,11 @@ func HasDue(data string, now time.Time) bool {
 		if err != nil {
 			return true
 		}
-		age := now.Sub(e.CreatedAt)
-		friction := strings.EqualFold(strings.TrimSpace(e.Kind), "friction")
-		if (friction && age > frictionMaxAge) || (!friction && age > entryMaxAge) {
+		if now.Sub(e.CreatedAt) > retention(e) {
+			if dest != "" && e.Destination == dest {
+				return true
+			}
+
 			continue
 		}
 		if !e.NotBefore.After(now) {

@@ -67,18 +67,23 @@ func TestSchemaTooNew_Command(t *testing.T) {
 	}
 }
 
-// TestSchemaTooNew_FlushHook: the hook stays silent and exits 0 on a newer
-// local database, and logs schema_too_new instead of a generic hook line.
+// TestSchemaTooNew_FlushHook: in local mode the hook opens no database, so
+// a newer one leaves it silent, exiting 0 with nothing logged; the next
+// local-mode command meets the newer schema and logs schema_too_new.
 func TestSchemaTooNew_FlushHook(t *testing.T) {
 	_, cache := isolate(t)
 	newerSchemaDB(t)
-	spoolOne(t, dataRoot(t), client.LocalDestination)
+	data := dataRoot(t)
+	spoolOne(t, data, client.LocalDestination)
 	r := runCLI(t, "", "flush", "--hook")
 	if r.code != 0 || r.stdout != "" || r.stderr != "" {
 		t.Fatalf("%+v", r)
 	}
-	if !schemaTooNewLogged(t, cache) {
-		t.Fatalf("no schema_too_new line: %v", hookLogLines(t, cache))
+	if entries, _ := os.ReadDir(client.SpoolDir(data)); len(entries) != 1 {
+		t.Fatalf("spool after the hook: %v", entries)
+	}
+	if schemaTooNewLogged(t, cache) {
+		t.Fatalf("the hook opened the local database: %v", hookLogLines(t, cache))
 	}
 	for _, l := range hookLogLines(t, cache) {
 		if strings.HasPrefix(fmt.Sprint(l["reason"]), "flush --hook") {

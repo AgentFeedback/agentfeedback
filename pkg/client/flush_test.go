@@ -260,9 +260,8 @@ func TestHasDue(t *testing.T) {
 		t.Fatal("empty spool reported due")
 	}
 	e.spoolEntry(t, entryName(1), "event", "later", t0, t0.Add(time.Minute))
-	e.spoolEntry(t, entryName(2), "friction", "old", t0.Add(-21*time.Hour), t0.Add(-time.Hour))
 	if HasDue(e.data, t0) {
-		t.Fatal("deferred and expired entries reported due")
+		t.Fatal("a deferred entry reported due")
 	}
 	e.spoolEntry(t, entryName(4), "event", "now", t0, t0)
 	if !HasDue(e.data, t0) {
@@ -293,7 +292,7 @@ func TestHasDue(t *testing.T) {
 	if !HasDue(e.data, t0) {
 		t.Fatal("an undecodable entry not reported due")
 	}
-	if got := af1Files(t, SpoolDir(e.data)); len(got) != 3 {
+	if got := af1Files(t, SpoolDir(e.data)); len(got) != 2 {
 		t.Fatalf("HasDue changed the spool: %v", got)
 	}
 }
