@@ -29,8 +29,10 @@ catch { if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } els
 <!-- only: mcp -->
 On a connection to a server, a tool error that says `unauthorized` means the
 connection's key header is missing or wrong; the user fixes it in the MCP
-client's configuration. The local `agentfeedback mcp` server (stdio, on this
-machine's database) needs no key; a tool error there names its cause.
+client's configuration. The `agentfeedback mcp` server (stdio, on this
+machine) takes no key from the MCP client: it uses this machine's database,
+or the server and key in this machine's agentfeedback configuration; a tool
+error there names its cause.
 <!-- end -->
 
 Never work around a failure by writing the report somewhere else; tell the

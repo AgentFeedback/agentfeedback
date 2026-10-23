@@ -377,10 +377,22 @@ again replays: outcome `duplicate`, exit 0. Different content under the same
 key is outcome `mismatch` (the server's 409), exit 1: file a second finding
 at that span with the next `--ordinal`.
 
+Over MCP, `submit_feedback` of `agentfeedback mcp` takes `context_from`
+(`<harness>:<session id>#<span>`) and `ordinal` (default 1): the other
+arguments are what `--stdin` would read, `kind` is required, and the body
+is the one `submit <kind> --stdin --context-from <ref> --ordinal <n>` builds,
+so the same report filed both ways is one row (the second filing is a
+duplicate). An `unknown-project` session is refused: admitting it is a
+human's decision, `--allow-unknown-project` on the CLI. A refused call is a
+validation error on `context_from` with the CLI's message. In remote mode
+the body is built on this machine and forwarded to the server's
+`submit_feedback`; the HTTP `/mcp` never takes these arguments.
+
 ## MCP tools
 
 `agentfeedback mcp` (stdio) serves three more tools over the same database
-and policy; the HTTP `/mcp` never serves them.
+and policy, in local and in remote mode (the session state stays in the
+data-directory database either way); the HTTP `/mcp` never serves them.
 
 | Tool | Arguments | CLI |
 |---|---|---|

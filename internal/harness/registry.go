@@ -107,9 +107,9 @@ type Adapter struct {
 	// mcp is the MCP-mode items, with notes; nil when there is no entry.
 	mcp func(p *plan, o Options) ([]Item, []string, error)
 	// mcpValue is the JSON (or TOML) of the MCP entry for a URL, and
-	// mcpStdio that of the stdio entry running bin.
+	// mcpStdio that of the stdio entry running bin with args.
 	mcpValue func(url string) string
-	mcpStdio func(bin string) string
+	mcpStdio func(bin string, args []string) string
 	// files lists the configuration files (JSON, JSONC, TOML) and the whole
 	// files install owns, besides skills.
 	files        func(Env) (config, owned []string)
@@ -147,7 +147,7 @@ func bearer(ref string) string {
 // else the URL entry, with urlNotes for a URL entry only.
 func (a *Adapter) mcpEntry(o Options, urlNotes []string) (string, []string) {
 	if o.stdio() {
-		return a.mcpStdio(o.Binary), nil
+		return a.mcpStdio(o.Binary, o.stdioArgs()), nil
 	}
 
 	return a.mcpValue(o.Server + "/mcp"), urlNotes
@@ -168,18 +168,30 @@ func jsonMCP(a *Adapter, file func(p *plan) (string, error), notes, urlNotes []s
 	}
 }
 
-// stdioArgs is the arguments of the stdio entry's command.
-const stdioArgs = `["mcp"]`
+// strArray is ss as a JSON array of strings, which is a TOML array too.
+func strArray(ss []string) string {
+	parts := make([]string, len(ss))
+	for i, s := range ss {
+		parts[i] = str(s)
+	}
+
+	return "[" + strings.Join(parts, ", ") + "]"
+}
+
+// jsonArray is ss as a compact JSON array of strings.
+func jsonArray(ss []string) string { return strings.ReplaceAll(strArray(ss), `", "`, `","`) }
 
 // typedStdio is the stdio entry with a type member typ.
-func typedStdio(typ string) func(bin string) string {
-	return func(bin string) string {
-		return string(obj("type", str(typ), "command", str(bin), "args", stdioArgs))
+func typedStdio(typ string) func(bin string, args []string) string {
+	return func(bin string, args []string) string {
+		return string(obj("type", str(typ), "command", str(bin), "args", jsonArray(args)))
 	}
 }
 
 // plainStdio is the stdio entry without a type member.
-func plainStdio(bin string) string { return string(obj("command", str(bin), "args", stdioArgs)) }
+func plainStdio(bin string, args []string) string {
+	return string(obj("command", str(bin), "args", jsonArray(args)))
+}
 
 func fixed(f func(Env) string) func(p *plan) (string, error) {
 	return func(p *plan) (string, error) { return f(p.env), nil }
@@ -357,7 +369,7 @@ var registry = []Adapter{
 		mcp: func(p *plan, o Options) ([]Item, []string, error) {
 			text := codexBlock(o.Server)
 			if o.stdio() {
-				text = codexStdioBlock(o.Binary)
+				text = codexStdioBlock(o.Binary, o.stdioArgs())
 			}
 
 			return []Item{{Kind: KindTOMLBlock, Role: RoleMCP, File: filepath.Join(p.env.codexHome(), "config.toml"), Text: text}}, nil, nil
@@ -449,8 +461,8 @@ var registry = []Adapter{
 			return string(obj("type", str("remote"), "url", str(u), "enabled", "true", "oauth", "false",
 				"headers", bearer("{env:AGENT_FEEDBACK_API_KEY}")))
 		},
-		mcpStdio: func(bin string) string {
-			return string(obj("type", str("local"), "command", "["+str(bin)+","+str("mcp")+"]", "enabled", "true"))
+		mcpStdio: func(bin string, args []string) string {
+			return string(obj("type", str("local"), "command", jsonArray(append([]string{bin}, args...)), "enabled", "true"))
 		},
 		files: func(e Env) ([]string, []string) {
 			oc := e.opencodeDir()
@@ -566,8 +578,8 @@ var registry = []Adapter{
 		mcpValue: func(u string) string {
 			return string(obj("type", str("http"), "url", str(u), "headers", bearer("${AGENT_FEEDBACK_API_KEY}"), "tools", `["*"]`))
 		},
-		mcpStdio: func(bin string) string {
-			return string(obj("type", str("local"), "command", str(bin), "args", stdioArgs, "tools", `["*"]`))
+		mcpStdio: func(bin string, args []string) string {
+			return string(obj("type", str("local"), "command", str(bin), "args", jsonArray(args), "tools", `["*"]`))
 		},
 		files: func(e Env) ([]string, []string) {
 			return []string{filepath.Join(e.copilotDir(), "mcp-config.json")}, []string{e.copilotHookFile()}
@@ -629,7 +641,7 @@ var registry = []Adapter{
 			hook:     "`~/.gemini/config/hooks.json` `agentfeedback` (on `PostToolUse`, `PreInvocation`, which delivers the note, and `Stop`)",
 			reminder: "not supported",
 			rule:     "`~/.gemini/GEMINI.md` (shared with gemini-cli unless `$GEMINI_CLI_HOME` is set)",
-			mcp:      "`~/.gemini/config/mcp_config.json` `mcpServers.agentfeedback`; the key reference in the header may not be expanded",
+			mcp:      "`~/.gemini/config/mcp_config.json` `mcpServers.agentfeedback`; a URL entry's key reference in the header may not be expanded",
 		},
 	},
 	{
@@ -725,7 +737,7 @@ var registry = []Adapter{
 			hook:     "none",
 			reminder: "not supported",
 			rule:     "`~/.cline/rules/agentfeedback.md`",
-			mcp:      "`~/.cline/data/settings/cline_mcp_settings.json` `mcpServers.agentfeedback`; the key reference in the header may not be expanded",
+			mcp:      "`~/.cline/data/settings/cline_mcp_settings.json` `mcpServers.agentfeedback`; a URL entry's key reference in the header may not be expanded",
 		},
 	},
 	{
@@ -828,7 +840,7 @@ func init() {
 			a.MCP.URLShape = a.mcpValue("<url>")
 		}
 		if a.mcpStdio != nil {
-			a.MCP.StdioShape = a.mcpStdio("<binary>")
+			a.MCP.StdioShape = a.mcpStdio("<binary>", []string{"mcp"})
 		}
 		if a.mcp != nil || a.mcpValue == nil {
 			continue
@@ -839,7 +851,7 @@ func init() {
 				v, _ := a.mcpEntry(o, nil)
 				it := Item{Kind: KindClaudeMCP, Role: RoleMCP, Args: []string{"mcp", "add-json", "agentfeedback", v, "--scope", "user"}}
 				if o.stdio() {
-					it.Stdio = []string{o.Binary, "mcp"}
+					it.Stdio = append([]string{o.Binary}, o.stdioArgs()...)
 				} else {
 					it.URL = o.Server + "/mcp"
 				}

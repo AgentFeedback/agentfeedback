@@ -108,7 +108,7 @@ func manualSteps(command string, pos []string, serverFlag string, stderr io.Writ
 				m.Command = harness.ClaudeCommand(it.Args)
 			}
 			s.MCP = m
-			stdio = stdio || srv == serverLocal
+			stdio = stdio || bin != ""
 		}
 		s.Notes = append(s.Notes, ruleNote)
 		out = append(out, s)

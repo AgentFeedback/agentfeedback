@@ -68,7 +68,11 @@ agent starts it, and exits when the command is done:
   `https://api.agentfeedback.dev`) for the duration of that command; its
   `--dry-run` sends no record but still reads the target's metadata and
   tombstones. Standard `HTTPS_PROXY` variables apply; redirects are not
-  followed. `skills/agentfeedback/scripts/install.sh` downloads the release
+  followed. `agentfeedback mcp` in remote mode holds the key in memory for
+  the life of the process and sends it, in the same two headers, only to
+  the configured server's `/mcp`; no MCP entry `install` writes holds the
+  key or a reference to it (the Codex block names `AGENT_FEEDBACK_API_KEY`
+  in `env_vars`, so Codex passes the variable through, never its value). `skills/agentfeedback/scripts/install.sh` downloads the release
   and its `SHA256SUMS` from GitHub Releases over HTTPS only, and runs
   `version` on an `agentfeedback` it finds already installed to decide
   whether to keep it. The triage
@@ -97,8 +101,10 @@ reports a data-directory path other users can reach, with the `chmod` to
 run.
 
 **Session stores.** The harness session stores ([sessions.md](sessions.md#harnesses) lists
-them) are read only by `agentfeedback sessions`, `submit --context-from` and the
-stdio `sessions_*` tools, on demand and never written; the OpenCode
+them) are read only by `agentfeedback sessions`, `submit --context-from`, the
+stdio `sessions_*` tools and the stdio `submit_feedback`'s `context_from`
+(in remote mode too: the session is read here, and only the body built
+from it is sent), on demand and never written; the OpenCode
 database is opened read-only, without creating any file beside it. The `[collect]`
 rules are applied per session before a log is opened, and a digest is
 bounded and scrubbed before it is shown. Only the watermark rows and what

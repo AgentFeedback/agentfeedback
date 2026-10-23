@@ -16,12 +16,15 @@
 # Operations listed with a reason still list their parameters and body.
 
 # The transports that serve the tools. stdio serves the http tools plus the
-# [local] tools; coverage_test.go checks that stdio registers exactly the
-# http tools and the [local] tools, the shared tools identically, and that
-# http registers no [local] tool.
+# [local] tools and the [local_arguments]; coverage_test.go checks that
+# stdio registers exactly the http tools and the [local] tools, the shared
+# tools identically once the [local_arguments] are set aside, and that http
+# registers no [local] tool and no [local_arguments] argument. In remote
+# mode stdio is a relay: the server's /mcp tools, forwarded, plus the same
+# [local] tools and [local_arguments], so it lists what local mode lists.
 [transports]
 http = "POST /mcp and POST /mcp/{project}, mounted by internal/api"
-stdio = "agentfeedback mcp, on the local database (internal/localmode), plus the [local] tools"
+stdio = "agentfeedback mcp: on the local database (internal/localmode), or relayed to the configured server's /mcp (internal/mcp NewRelay); plus the [local] tools and the [local_arguments]"
 
 # Tools with no OpenAPI operation, served on stdio only: they read the
 # machine the server runs on. Each names the CLI command it mirrors, and
@@ -30,6 +33,24 @@ stdio = "agentfeedback mcp, on the local database (internal/localmode), plus the
 #   [local.<tool>]             command = "<cli command and subcommand>"
 #   [local.<tool>.arguments]   <name> = { flag = "--name" } or { arg = "<name>" }
 #   [local.<tool>.cli_only]    "--flag" = "<why no tool argument sets it>"
+# Arguments of a shared tool served on stdio only: they read the machine
+# the server runs on. Each names the CLI command it mirrors, and every
+# argument maps to a flag of it (cmd/agentfeedback/coverage_test.go checks
+# those exist); the command's other flags no argument sets are listed with
+# their reason when they belong to the same feature.
+#   [local_arguments.<tool>]             command = "<cli command>"
+#   [local_arguments.<tool>.arguments]   <name> = { flag = "--name" }
+#   [local_arguments.<tool>.cli_only]    "--flag" = "<why no tool argument sets it>"
+[local_arguments.submit_feedback]
+command = "submit friction"
+
+[local_arguments.submit_feedback.arguments]
+context_from = { flag = "--context-from" }
+ordinal = { flag = "--ordinal" }
+
+[local_arguments.submit_feedback.cli_only]
+"--allow-unknown-project" = "a human decision: a session that records no working directory escapes every project rule, so the model that calls the tool cannot admit it"
+
 [local.sessions_list]
 command = "sessions list"
 

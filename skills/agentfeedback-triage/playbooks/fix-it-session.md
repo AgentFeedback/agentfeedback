@@ -139,7 +139,7 @@ resolution. The session start:
 ```
 
 ```json
-{"tool": "submit_feedback", "arguments": {"kind": "friction", "key": "session-scan-<event-ref>/1/v<detector-version>", "summary": "<summary>", "harness": "<session-harness>", "model": "<session-model>", "project": "<session-project>", "occurred_at": "<event-at>", "context": {"origin": "session-scan", "session_id": "<session-id>", "session_harness": "<session-harness>"}, "payload": {"category": "tooling", "details": "<details>"}}}
+{"tool": "submit_feedback", "arguments": {"kind": "friction", "context_from": "<event-ref>", "summary": "<summary>", "payload": {"category": "tooling", "details": "<details>"}}}
 ```
 
 ```json
@@ -293,13 +293,13 @@ or stop if nothing was.
 **MCP-only route.** The same rules. There is no status tool: ask the
 interview at the start of every run (no saved default), keep the selection
 in the conversation, and read `sessions_list`'s `stores[]` for the present
-stores. Without `--context-from`, set the facts by hand from the digest:
-`key` is `session-scan-` and the event's `ref`, then `/<ordinal>/v` and
-`detector_version` (ordinal 1 unless another finding was filed at that
-event); `occurred_at` the event's `at`; `harness` and
-`context.session_harness` the session's `harness`; `context.session_id` its
-`session_id`; `model` the session's `model` when present; `project` the
-last path element of its `project`. Nothing else is collected. A filing
+stores. `submit_feedback` takes `context_from`, the event's `ref`, as the
+CLI takes `--context-from`, and `ordinal` as `--ordinal` (1 unless another
+finding was filed at that event): it sets the key, `occurred_at`,
+`harness`, `model`, `project` and the session context from the session log,
+and scrubs the body, exactly as the CLI does, so do not send those members.
+A session without a working directory is refused there; leave it to the
+user, who can file it with the CLI's `--allow-unknown-project`. A filing
 whose key was used for other content is refused: read the row filed under
 it (`list_submissions` with `{"key": "..."}`), and file with the next
 ordinal only a genuinely different finding.

@@ -368,8 +368,24 @@ type Options struct {
 // database. Its MCP entry is a stdio entry running Binary's mcp command.
 const ServerLocal = "local"
 
-// stdio reports whether the MCP entry for o is a stdio entry.
-func (o Options) stdio() bool { return o.Server == ServerLocal }
+// stdio reports whether the MCP entry for o is a stdio entry: always when
+// the binary is known, so a server target gets the same entry as the local
+// one (agentfeedback mcp --server relays to it and the key stays out of
+// the harness files); the URL entry only for a server target whose
+// binary is unknown.
+func (o Options) stdio() bool { return o.Server == ServerLocal || o.Binary != "" }
+
+// stdioArgs are the arguments of the stdio entry's command: mcp for the
+// local target, which follows the configuration as every command does, and
+// mcp --server <URL> for a server target, so the entry always relays to
+// that server and never falls back to the local database.
+func (o Options) stdioArgs() []string {
+	if o.Server == ServerLocal {
+		return []string{"mcp"}
+	}
+
+	return []string{"mcp", "--server", o.Server}
+}
 
 // desired computes the items for name; files are read through p so the
 // choice of an OpenCode config file sees the planned state.
@@ -675,7 +691,7 @@ func (p *plan) wiring(name string, o Options) (desire, error) {
 }
 
 // ManualMCP is the MCP entry install --mcp would add for the harness against
-// server (a stdio entry running binary for ServerLocal), for wiring it by
+// server (a stdio entry running binary when binary is known), for wiring it by
 // hand; it writes nothing. The OpenCode config file is chosen from what is
 // on disk.
 func (e Env) ManualMCP(name, server, binary string) (Item, error) {

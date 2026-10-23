@@ -105,10 +105,11 @@ func Open(ctx context.Context, path, version string, stderr io.Writer) (*Target,
 // instructions with the placeholder base and no operator text, and the
 // version Open was given. Every tool call gets its own request id, which a
 // tool error's body carries as over HTTP. sessions, when not nil, adds the
-// session tools, which the HTTP transport never serves.
-func (t *Target) MCPServer(sessions mcp.Sessions) (*sdk.Server, error) {
-	return mcp.NewServer(mcp.Config{Service: t.svc, ErrorBody: api.ToolErrorBody, CallContext: api.WithNewRequestID, Sessions: sessions},
-		"", "", t.version)
+// session tools, and from, when not nil, the [local] arguments of
+// submit_feedback; the HTTP transport serves neither.
+func (t *Target) MCPServer(sessions mcp.Sessions, from mcp.ContextFrom) (*sdk.Server, error) {
+	return mcp.NewServer(mcp.Config{Service: t.svc, ErrorBody: api.ToolErrorBody, CallContext: api.WithNewRequestID,
+		Sessions: sessions, ContextFrom: from}, "", "", t.version)
 }
 
 // DB is the target's database, for the local state that is not a

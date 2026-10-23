@@ -29,6 +29,7 @@ type tools struct {
 	errorBody     func(context.Context, error) []byte
 	observeCreate func(created bool, err error)
 	sessions      Sessions
+	contextFrom   ContextFrom
 }
 
 func ptr(b bool) *bool { return &b }
@@ -154,8 +155,12 @@ const submitDescription = "File feedback at the end of a task when something slo
 // provider (the stdio one) registers.
 func (t *tools) register(s *sdk.Server) {
 	preset := t.preset != ""
+	var input any = submitSchema(preset)
+	if t.contextFrom != nil {
+		input = withContextFrom(input)
+	}
 	s.AddTool(&sdk.Tool{Name: ToolSubmit, Description: submitDescription,
-		InputSchema: submitSchema(preset), Annotations: annotations(false, false)}, t.submit)
+		InputSchema: input, Annotations: annotations(false, false)}, t.submit)
 	s.AddTool(&sdk.Tool{Name: ToolList,
 		Description: "List submissions newest first, filtered like GET /api/v1/submissions. Use it to read the feedback queue or check for duplicates.",
 		InputSchema: listSchema(preset), Annotations: annotations(true, false)}, t.list)
@@ -209,6 +214,12 @@ func (t *tools) submit(ctx context.Context, req *sdk.CallToolRequest) (*sdk.Call
 	if t.preset != "" {
 		var err error
 		if body, err = withPreset(body, t.preset); err != nil {
+			return t.respond(ctx, nil, err)
+		}
+	}
+	if t.contextFrom != nil && UsesContextFrom(body) {
+		var err error
+		if body, err = t.contextFrom.Body(ctx, body); err != nil {
 			return t.respond(ctx, nil, err)
 		}
 	}

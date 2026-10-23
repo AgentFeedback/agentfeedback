@@ -27,18 +27,19 @@ func codexBlock(server string) string {
 // env_vars lists: the binary resolves its data, config and cache directories
 // and the configured server from these, so without them a custom data
 // directory would silently open another database and a server URL set in
-// the environment would not be refused.
-func codexStdioBlock(bin string) string {
+// the environment would not be used; the key is forwarded by name for a
+// server target whose key is in the environment, never written.
+func codexStdioBlock(bin string, args []string) string {
 	return tomlBegin + "\n" +
 		"[mcp_servers.agentfeedback]\n" +
 		"command = " + tomlString(bin) + "\n" +
-		"args = [\"mcp\"]\n" +
+		"args = " + strArray(args) + "\n" +
 		codexStdioEnv + "\n" +
 		tomlEnd + "\n"
 }
 
 // codexStdioEnv is the env_vars line of the stdio block.
-const codexStdioEnv = `env_vars = ["XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "AGENT_FEEDBACK_URL"]`
+const codexStdioEnv = `env_vars = ["XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "AGENT_FEEDBACK_URL", "AGENT_FEEDBACK_API_KEY"]`
 
 // tomlString is s as a TOML basic string; JSON string escapes are valid in
 // one.

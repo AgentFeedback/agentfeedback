@@ -61,8 +61,8 @@ func windowsInstall(t *testing.T, args ...string) (result, windowsOutcome) {
 }
 
 // TestWindows_InstallManualSteps: install is refused on Windows with the
-// wiring by hand of each harness, the MCP entry a stdio entry for local and
-// a URL entry for a server.
+// wiring by hand of each harness, the MCP entry the stdio entry for local
+// and for a server alike.
 func TestWindows_InstallManualSteps(t *testing.T) {
 	t.Run("local", func(t *testing.T) {
 		e := newInstallEnv(t)
@@ -91,12 +91,11 @@ func TestWindows_InstallManualSteps(t *testing.T) {
 			t.Fatalf("%+v", r)
 		}
 		claude, cursor := out.Manual[0].MCP, out.Manual[1].MCP
-		if claude == nil || !strings.HasPrefix(claude.Command, "claude mcp add-json agentfeedback ") ||
-			!strings.Contains(claude.Command, "https://feedback.example.test/mcp") {
+		if claude == nil || claude.Command != "claude mcp add-json agentfeedback '{\"type\":\"stdio\",\"command\":\""+e.exe+"\",\"args\":[\"mcp\",\"--server\",\"https://feedback.example.test\"]}' --scope user" {
 			t.Fatalf("claude-code %+v", claude)
 		}
 		if cursor == nil || cursor.File != filepath.Join(e.home, ".cursor", "mcp.json") || cursor.Key != "agentfeedback" ||
-			!strings.Contains(string(cursor.Value), "https://feedback.example.test/mcp") {
+			compactJSON(t, cursor.Value) != stdioMember(e.exe, "mcp", "--server", "https://feedback.example.test")["cursor"].want {
 			t.Fatalf("cursor %+v", cursor)
 		}
 	})

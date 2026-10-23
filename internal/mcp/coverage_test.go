@@ -3,6 +3,7 @@ package mcp_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"os"
@@ -25,6 +26,8 @@ type coverageFile struct {
 	Transports map[string]string      `toml:"transports"`
 	Operations map[string]*opCoverage `toml:"operations"`
 	Local      map[string]*localTool  `toml:"local"`
+	// LocalArguments are arguments of shared tools served on stdio only.
+	LocalArguments map[string]*localTool `toml:"local_arguments"`
 }
 
 // localTool is one [local] tool: served on stdio only, mirroring a CLI
@@ -253,6 +256,41 @@ func TestCoverage_ToolsAndArgumentsExist(t *testing.T) {
 func localProblems(cov *coverageFile, stdio, http map[string]string, stdioProps registered) []string {
 	var probs []string
 	add := func(format string, args ...any) { probs = append(probs, fmt.Sprintf(format, args...)) }
+	for name, lt := range cov.LocalArguments {
+		if lt == nil || strings.TrimSpace(lt.Command) == "" {
+			add("local arguments of %s: no command", name)
+		}
+		props, ok := stdioProps[name]
+		if !ok {
+			add("local arguments of %s: the tool is not registered on stdio", name)
+			continue
+		}
+		if _, ok := http[name]; !ok {
+			add("local arguments of %s: the tool is not registered on http", name)
+		}
+		if lt == nil {
+			continue
+		}
+		if len(lt.Arguments) == 0 {
+			add("local arguments of %s: no argument", name)
+		}
+		for arg, la := range lt.Arguments {
+			if la == nil || la.Flag == "" || la.Arg != "" {
+				add("local arguments of %s: argument %s needs a flag", name, arg)
+			}
+			if _, ok := props[arg]; !ok {
+				add("local arguments of %s: argument %s is not in its stdio input schema", name, arg)
+			}
+			if hasArg(http[name], arg) {
+				add("local arguments of %s: argument %s is registered on http", name, arg)
+			}
+		}
+		for flag, reason := range lt.CLIOnly {
+			if strings.TrimSpace(reason) == "" {
+				add("local arguments of %s: cli-only flag %s has no reason", name, flag)
+			}
+		}
+	}
 	for name, lt := range cov.Local {
 		if lt == nil || strings.TrimSpace(lt.Command) == "" {
 			add("local tool %s: no command", name)
@@ -297,10 +335,14 @@ func localProblems(cov *coverageFile, stdio, http map[string]string, stdioProps 
 			continue
 		}
 		hb, ok := http[name]
+		var args []string
+		if la := cov.LocalArguments[name]; la != nil {
+			args = slices.Collect(maps.Keys(la.Arguments))
+		}
 		switch {
 		case !ok:
 			add("tool %s: registered on stdio only and not listed in [local]", name)
-		case hb != body:
+		case normalTool(body, args) != normalTool(hb, nil):
 			add("tool %s: differs between stdio and http", name)
 		}
 	}
@@ -311,6 +353,42 @@ func localProblems(cov *coverageFile, stdio, http map[string]string, stdioProps 
 	}
 	sort.Strings(probs)
 	return probs
+}
+
+// normalTool is the tools/list entry body, re-encoded with sorted keys,
+// without the input-schema properties args.
+func normalTool(body string, args []string) string {
+	var v map[string]any
+	if err := json.Unmarshal([]byte(body), &v); err != nil {
+		return body
+	}
+	if schema, ok := v["inputSchema"].(map[string]any); ok {
+		if props, ok := schema["properties"].(map[string]any); ok {
+			for _, a := range args {
+				delete(props, a)
+			}
+		}
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return body
+	}
+	return string(b)
+}
+
+// hasArg reports whether the tools/list entry body has the input-schema
+// property arg.
+func hasArg(body, arg string) bool {
+	var v struct {
+		InputSchema struct {
+			Properties map[string]any `json:"properties"`
+		} `json:"inputSchema"`
+	}
+	if json.Unmarshal([]byte(body), &v) != nil {
+		return false
+	}
+	_, ok := v.InputSchema.Properties[arg]
+	return ok
 }
 
 // stdioProps is the input-schema properties of every tool stdio lists.
@@ -366,6 +444,16 @@ func TestCoverage_TransportsServeTheSameTools(t *testing.T) {
 				t.Errorf("local tool %s registered on /mcp/{project}", name)
 			}
 		}
+		for name, la := range cov.LocalArguments {
+			for arg := range la.Arguments {
+				if hasArg(preset[name], arg) {
+					t.Errorf("local argument %s of %s registered on /mcp/{project}", arg, name)
+				}
+			}
+		}
+	}
+	if args := slices.Sorted(maps.Keys(cov.LocalArguments[mcp.ToolSubmit].Arguments)); !slices.Equal(args, slices.Sorted(slices.Values(mcp.SubmitLocalArgs))) {
+		t.Errorf("[local_arguments.%s] %v, want %v", mcp.ToolSubmit, args, mcp.SubmitLocalArgs)
 	}
 }
 
@@ -407,6 +495,18 @@ func TestCoverage_DetectsLocalDrift(t *testing.T) {
 		}},
 		{"http-only tool", "tool brand_new: registered on http only", func(_ *coverageFile, _, http map[string]string) {
 			http["brand_new"] = "{}"
+		}},
+		{"local argument entry deleted", "tool submit_feedback: differs between stdio and http", func(cov *coverageFile, _, _ map[string]string) {
+			delete(cov.LocalArguments["submit_feedback"].Arguments, "ordinal")
+		}},
+		{"stale local argument entry", "argument gone is not in its stdio input schema", func(cov *coverageFile, _, _ map[string]string) {
+			cov.LocalArguments["submit_feedback"].Arguments["gone"] = &localArg{Flag: "--gone"}
+		}},
+		{"local argument without a flag", "argument ordinal needs a flag", func(cov *coverageFile, _, _ map[string]string) {
+			cov.LocalArguments["submit_feedback"].Arguments["ordinal"] = &localArg{Arg: "<n>"}
+		}},
+		{"local argument on http", "argument context_from is registered on http", func(_ *coverageFile, stdio, http map[string]string) {
+			http["submit_feedback"] = stdio["submit_feedback"]
 		}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

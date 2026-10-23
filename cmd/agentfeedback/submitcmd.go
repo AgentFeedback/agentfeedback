@@ -512,6 +512,53 @@ func runEnvelope(kind string, args []string, stdin io.Reader, stdout, stderr io.
 		return errSummaryRequired()
 	}
 
+	if tooBig {
+		o := client.Outcome{Outcome: client.OutcomeRejected, Reason: "body_too_large",
+			Message: fmt.Sprintf("stdin is over the %d-byte limit; it was not sent", envelope.BodyLimit)}
+		s.logLocal(o)
+
+		return finish("submit", o, stdout)
+	}
+
+	obj, warnings, err := buildEnvelope(s, envelopeInput{kind: kind, str: str, given: given, ctxFlags: ctxFlags,
+		version: version, obj: obj, scrub: *scrubFlag, from: from})
+	if err != nil {
+		return err
+	}
+
+	o, err := s.send(obj.encode())
+	if err != nil {
+		return err
+	}
+	if len(warnings) > 0 {
+		o.Warnings = append(o.Warnings, warnings...)
+	}
+
+	return finish("submit", o, stdout)
+}
+
+// envelopeInput is what submit <kind> builds a body from: the kind, the
+// flags given (str and given), the --context pairs, the schema version, the
+// object read from stdin, whether to scrub, and --context-from's session.
+type envelopeInput struct {
+	kind     string
+	str      map[string]*string
+	given    map[string]bool
+	ctxFlags contextFlags
+	version  json.RawMessage
+	obj      rawObject
+	scrub    bool
+	from     *sessionContext
+}
+
+// buildEnvelope builds the body: flags over stdin over the environment and
+// the config file over collected context, --context-from's members over
+// them, and scrubbing when asked, forced by --context-from or by a
+// session-scan origin. It returns the scrub warnings, already printed.
+func buildEnvelope(s *submitter, in envelopeInput) (rawObject, []client.Warning, error) {
+	kind, str, given, ctxFlags, version, obj, from := in.kind, in.str, in.given, in.ctxFlags, in.version, in.obj, in.from
+	friction := schema.Token(kind) == "friction"
+	var err error
 	// Payload flags go into payload and drop a flat top-level spelling.
 	var payloadSet []rawMember
 	if friction {
@@ -525,10 +572,10 @@ func runEnvelope(kind string, args []string, stdin io.Reader, stdout, stderr io.
 		var payload rawObject
 		if raw, ok := obj.get("payload"); ok {
 			if !isObject(raw) {
-				return errPayloadNotObject()
+				return nil, nil, errPayloadNotObject()
 			}
 			if payload, err = parseObject(raw); err != nil {
-				return errPayloadNotObject()
+				return nil, nil, errPayloadNotObject()
 			}
 		}
 		for _, m := range payloadSet {
@@ -536,14 +583,6 @@ func runEnvelope(kind string, args []string, stdin io.Reader, stdout, stderr io.
 			obj = obj.remove(m.name)
 		}
 		obj = obj.set("payload", payload.encode())
-	}
-
-	if tooBig {
-		o := client.Outcome{Outcome: client.OutcomeRejected, Reason: "body_too_large",
-			Message: fmt.Sprintf("stdin is over the %d-byte limit; it was not sent", envelope.BodyLimit)}
-		s.logLocal(o)
-
-		return finish("submit", o, stdout)
 	}
 
 	nonCode := map[string]string{
@@ -614,10 +653,10 @@ func runEnvelope(kind string, args []string, stdin io.Reader, stdout, stderr io.
 		var ctx rawObject
 		if raw, ok := obj.get("context"); ok {
 			if !isObject(raw) {
-				return errContextNotObject()
+				return nil, nil, errContextNotObject()
 			}
 			if ctx, err = parseObject(raw); err != nil {
-				return errContextNotObject()
+				return nil, nil, errContextNotObject()
 			}
 		}
 		for _, m := range stringMap(from.context()) {
@@ -630,10 +669,10 @@ func runEnvelope(kind string, args []string, stdin io.Reader, stdout, stderr io.
 		var ctx rawObject
 		if raw, ok := obj.get("context"); ok {
 			if !isObject(raw) {
-				return errContextNotObject()
+				return nil, nil, errContextNotObject()
 			}
 			if ctx, err = parseObject(raw); err != nil {
-				return errContextNotObject()
+				return nil, nil, errContextNotObject()
 			}
 		}
 		for _, kv := range ctxFlags {
@@ -649,22 +688,14 @@ func runEnvelope(kind string, args []string, stdin io.Reader, stdout, stderr io.
 	}
 
 	var warnings []client.Warning
-	if *scrubFlag || from != nil || originSessionScan(obj) {
+	if in.scrub || from != nil || originSessionScan(obj) {
 		obj, warnings = scrubBody(obj)
 		for _, w := range warnings {
 			s.warn(w.Code + " " + w.Pointer + ": " + w.Message)
 		}
 	}
 
-	o, err := s.send(obj.encode())
-	if err != nil {
-		return err
-	}
-	if len(warnings) > 0 {
-		o.Warnings = append(o.Warnings, warnings...)
-	}
-
-	return finish("submit", o, stdout)
+	return obj, warnings, nil
 }
 
 // contextFlags are the --context key=value pairs in the order given.

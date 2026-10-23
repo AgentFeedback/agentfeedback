@@ -541,9 +541,9 @@ func TestLoadManifest_LegacyURLEntry(t *testing.T) {
 // while a switch between a URL and a stdio entry is partly applied.
 func TestStatus_TransportFromItem(t *testing.T) {
 	const bin = "/opt/af/agentfeedback"
-	stdioValue := plainStdio(bin)
+	stdioValue := plainStdio(bin, []string{"mcp"})
 	urlValue := `{"type":"http","url":"https://feedback.example.test/mcp"}`
-	stdioText := codexStdioBlock(bin)
+	stdioText := codexStdioBlock(bin, []string{"mcp"})
 	urlText := codexBlock("https://feedback.example.test")
 	for _, tc := range []struct {
 		name, recBinary, value, text, wantMCP, wantBinary string

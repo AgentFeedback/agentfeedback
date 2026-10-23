@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -42,6 +43,28 @@ func (f *fakeSessions) Mark(_ context.Context, a mcp.SessionsMarkArgs) ([]byte, 
 	return []byte(`{"tool":"mark"}`), f.err
 }
 
+// fakeContextFrom resolves context_from into a fixed key and records the
+// arguments it got, or answers with err.
+type fakeContextFrom struct {
+	args []string
+	err  error
+}
+
+func (f *fakeContextFrom) Body(_ context.Context, args json.RawMessage) (json.RawMessage, error) {
+	f.args = append(f.args, string(args))
+	if f.err != nil {
+		return nil, f.err
+	}
+	var v map[string]any
+	if err := json.Unmarshal(args, &v); err != nil {
+		return nil, err
+	}
+	delete(v, mcp.ArgContextFrom)
+	delete(v, mcp.ArgOrdinal)
+	v["key"] = "from-the-session"
+	return json.Marshal(v)
+}
+
 // connectStdio opens an SDK client session on the stdio construction (the
 // server localmode builds for agentfeedback mcp, session tools included)
 // over in-memory transports, on a fresh local database.
@@ -53,12 +76,19 @@ func connectStdio(t *testing.T) *sdk.ClientSession {
 // connectStdioWith is connectStdio with the session provider p.
 func connectStdioWith(t *testing.T, p mcp.Sessions) *sdk.ClientSession {
 	t.Helper()
+	return connectStdioFull(t, p, &fakeContextFrom{})
+}
+
+// connectStdioFull is connectStdio with the session provider p and the
+// context_from provider f.
+func connectStdioFull(t *testing.T, p mcp.Sessions, f mcp.ContextFrom) *sdk.ClientSession {
+	t.Helper()
 	target, err := localmode.Open(context.Background(), filepath.Join(t.TempDir(), "local.db"), "4.0.0", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = target.Close() })
-	srv, err := target.MCPServer(p)
+	srv, err := target.MCPServer(p, f)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,12 +128,18 @@ func toolsByName(t *testing.T, cs *sdk.ClientSession) map[string]string {
 	return out
 }
 
-// withoutSessionTools is m minus the session tools.
-func withoutSessionTools(m map[string]string) map[string]string {
+// sharedTools is the tools/list entries m, normalised (normalTool), minus
+// the session tools and the [local] arguments of submit_feedback: what
+// /mcp serves.
+func sharedTools(m map[string]string) map[string]string {
 	out := map[string]string{}
 	for k, v := range m {
+		var local []string
+		if k == mcp.ToolSubmit {
+			local = mcp.SubmitLocalArgs
+		}
 		if !slices.Contains(mcp.SessionTools, k) {
-			out[k] = v
+			out[k] = normalTool(v, local)
 		}
 	}
 	return out
@@ -120,13 +156,13 @@ func TestStdio_Conformance(t *testing.T) {
 		t.Errorf("server info %+v", init.ServerInfo)
 	}
 	want, err := mcp.Instructions("", "")
-	if err != nil || init.Instructions != want {
-		t.Errorf("instructions differ from the HTTP instructions for the empty base (%v)", err)
+	if err != nil || init.Instructions != strings.TrimRight(want, "\n")+"\n\n"+mcp.LocalGuidance {
+		t.Errorf("instructions are not the HTTP instructions for the empty base and the local guidance (%v)", err)
 	}
 
 	e := newEnv(t, api.Config{})
-	if stdio, httpTools := withoutSessionTools(toolsByName(t, cs)), toolsByName(t, e.connect(t, "/mcp", "")); !maps.Equal(stdio, httpTools) {
-		t.Fatalf("tools/list over stdio, session tools aside, differs from /mcp:\nstdio: %v\nhttp:  %v", stdio, httpTools)
+	if stdio, httpTools := sharedTools(toolsByName(t, cs)), sharedTools(toolsByName(t, e.connect(t, "/mcp", ""))); !maps.Equal(stdio, httpTools) {
+		t.Fatalf("tools/list over stdio, session tools and context_from aside, differs from /mcp:\nstdio: %v\nhttp:  %v", stdio, httpTools)
 	}
 
 	b, isErr := call(t, cs, mcp.ToolSubmit, map[string]any{"kind": "friction", "summary": "stdio works", "project": "p1",
@@ -254,6 +290,45 @@ func TestStdio_SessionTools(t *testing.T) {
 		res, err := e.connect(t, path, "").CallTool(context.Background(), &sdk.CallToolParams{Name: mcp.ToolSessionsList})
 		if err == nil && !res.IsError {
 			t.Errorf("%s callable on %s", mcp.ToolSessionsList, path)
+		}
+	}
+}
+
+// TestStdio_ContextFrom: stdio's submit_feedback lists context_from and
+// ordinal, hands a call carrying either to the provider and stores the body
+// it returns, leaves a call without them alone, and answers a provider's
+// problem as a tool error; /mcp and /mcp/{project} list neither argument.
+func TestStdio_ContextFrom(t *testing.T) {
+	f := &fakeContextFrom{}
+	cs := connectStdioFull(t, &fakeSessions{}, f)
+	if tools := toolsByName(t, cs); !hasArg(tools[mcp.ToolSubmit], mcp.ArgContextFrom) || !hasArg(tools[mcp.ToolSubmit], mcp.ArgOrdinal) {
+		t.Fatalf("stdio submit_feedback: %s", tools[mcp.ToolSubmit])
+	}
+	b, isErr := call(t, cs, mcp.ToolSubmit, map[string]any{"kind": "friction", "summary": "from a span", "context_from": "claude-code:s#3", "ordinal": 2})
+	if isErr {
+		t.Fatalf("submit with context_from: %s", b)
+	}
+	if sub := object(t, b)["submission"].(map[string]any); sub["key"] != "from-the-session" {
+		t.Errorf("stored %s", b)
+	}
+	if len(f.args) != 1 || !bytes.Contains([]byte(f.args[0]), []byte(`"context_from":"claude-code:s#3"`)) {
+		t.Fatalf("provider got %q", f.args)
+	}
+	if b, isErr = call(t, cs, mcp.ToolSubmit, map[string]any{"kind": "friction", "summary": "plain"}); isErr || len(f.args) != 1 {
+		t.Fatalf("submit without context_from: %v %s, provider calls %d", isErr, b, len(f.args))
+	}
+	f.err = mcp.InvalidArgument(mcp.ArgContextFrom, "no such span")
+	if b, isErr = call(t, cs, mcp.ToolSubmit, map[string]any{"kind": "friction", "summary": "x", "ordinal": 1}); !isErr || object(t, b)["message"] != "no such span" {
+		t.Fatalf("provider problem: %v %s", isErr, b)
+	}
+
+	e := newEnv(t, api.Config{})
+	for _, path := range []string{"/mcp", "/mcp/p"} {
+		body := toolsByName(t, e.connect(t, path, ""))[mcp.ToolSubmit]
+		for _, arg := range mcp.SubmitLocalArgs {
+			if hasArg(body, arg) {
+				t.Errorf("%s lists %s on %s", mcp.ToolSubmit, arg, path)
+			}
 		}
 	}
 }

@@ -283,7 +283,7 @@ func TestInstall_EveryAdapterRoundTrip(t *testing.T) {
 					}
 					if name == "claude-code" && mode == "mcp" {
 						log, _ := os.ReadFile(e.claudeLog)
-						want := `mcp add-json agentfeedback {"type":"http","url":"https://feedback.example.test/mcp","headers":{"Authorization":"Bearer ${AGENT_FEEDBACK_API_KEY}"}} --scope user`
+						want := `mcp add-json agentfeedback {"type":"stdio","command":` + string(mustJSONString(e.exe)) + `,"args":["mcp","--server","https://feedback.example.test"]} --scope user`
 						if strings.TrimSpace(string(log)) != want {
 							t.Fatalf("claude log %q", log)
 						}
@@ -382,7 +382,8 @@ func TestInstall_WiredContent(t *testing.T) {
 		t.Fatalf("%+v", r)
 	}
 	oc, _ := os.ReadFile(filepath.Join(e.home, ".config", "opencode", "opencode.jsonc"))
-	if !strings.Contains(string(oc), `"Authorization": "Bearer {env:AGENT_FEEDBACK_API_KEY}"`) || !strings.Contains(string(oc), "// keep") {
+	if v, err := harness.GetMember(oc, []string{"mcp"}, "agentfeedback"); err != nil || compactJSON(t, v) != stdioMember(e.exe, "mcp", "--server", "https://feedback.example.test")["opencode"].want ||
+		strings.Contains(string(oc), "AGENT_FEEDBACK_API_KEY") || !strings.Contains(string(oc), "// keep") {
 		t.Errorf("opencode.jsonc:\n%s", oc)
 	}
 	if _, err := os.Stat(filepath.Join(e.home, ".config", "opencode", "plugins")); err == nil {
@@ -478,6 +479,9 @@ func TestInstall_ForeignRefusals(t *testing.T) {
 	}
 }
 
+// TestInstall_ClaudeMCPServerChangeRemovesFirst: the entry names its
+// server, so a change of server changes the entry, which claude cannot
+// update in place: the old one is removed first.
 func TestInstall_ClaudeMCPServerChangeRemovesFirst(t *testing.T) {
 	e := newInstallEnv(t)
 	e.fakeClaude(t)
@@ -491,9 +495,9 @@ func TestInstall_ClaudeMCPServerChangeRemovesFirst(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-	if len(lines) != 3 || !strings.HasPrefix(lines[0], "mcp add-json agentfeedback") ||
+	if len(lines) != 3 || !strings.HasPrefix(lines[0], "mcp add-json agentfeedback") || !strings.Contains(lines[0], `"args":["mcp","--server","http://a.example"]`) ||
 		lines[1] != "mcp remove agentfeedback --scope user" ||
-		!strings.HasPrefix(lines[2], "mcp add-json agentfeedback") || !strings.Contains(lines[2], "http://b.example/mcp") {
+		!strings.HasPrefix(lines[2], "mcp add-json agentfeedback") || !strings.Contains(lines[2], `"args":["mcp","--server","http://b.example"]`) {
 		t.Fatalf("claude calls:\n%s", data)
 	}
 }
@@ -1041,6 +1045,29 @@ func TestInstall_FailedWriteManifestMatchesDisk(t *testing.T) {
 		mustRun(t, 0, "uninstall", "pi")
 		sameTree(t, "after uninstall", snapshot(t, e.home), before)
 	})
+	t.Run("mcp install retried after the binary moved", func(t *testing.T) {
+		e := newInstallEnv(t)
+		before := snapshot(t, e.home)
+		mustRun(t, 0, "install", "pi", "--mcp", "--server", "https://a.example.test")
+		moved := filepath.Join(e.bin, "agentfeedback-2")
+		putFile(t, moved, "#!/bin/sh\n", 0o755)
+		orig := executable
+		executable = func() (string, error) { return moved, nil }
+		t.Cleanup(func() { executable = orig })
+		restore := readOnly(t, filepath.Join(e.home, ".pi", "agent"))
+		mustRun(t, 1, "install", "pi", "--mcp", "--server", "https://b.example.test")
+		if m := readManifest(t, e); !strings.Contains(string(m.Harnesses["pi"].Items[0].Value), string(mustJSONString(e.exe))) {
+			t.Fatalf("the manifest does not match the disk: %s", m.Harnesses["pi"].Items[0].Value)
+		}
+		restore()
+		mustRun(t, 0, "install", "pi", "--mcp", "--server", "https://b.example.test")
+		data, _ := os.ReadFile(filepath.Join(e.home, ".pi", "agent", "mcp.json"))
+		if !strings.Contains(string(data), moved) || strings.Contains(string(data), string(mustJSONString(e.exe))) {
+			t.Fatalf("mcp.json:\n%s", data)
+		}
+		mustRun(t, 0, "uninstall", "pi")
+		sameTree(t, "after uninstall", snapshot(t, e.home), before)
+	})
 }
 
 func TestUninstall_EntriesRemovedByHand(t *testing.T) {
@@ -1135,7 +1162,7 @@ func TestInstall_ClaudeConfigDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeClaudeJSON(t, filepath.Join(dir, ".claude.json"), "")
-	writeClaudeJSON(t, filepath.Join(e.home, ".claude.json"), "https://feedback.example.test/mcp")
+	writeClaudeJSON(t, filepath.Join(e.home, ".claude.json"), e.exe, "mcp", "--server", "https://feedback.example.test")
 	r, out := installRun(t, "uninstall", "claude-code")
 	if r.code != 0 || !strings.Contains(notesOf(out), "already removed") {
 		t.Fatalf("%+v", r)
@@ -1215,12 +1242,20 @@ func TestUninstall_BackupMissingOrReplaced(t *testing.T) {
 }
 
 // writeClaudeJSON stands in for the state claude keeps in the .claude.json
-// at path.
-func writeClaudeJSON(t *testing.T, path, url string) {
+// at path: no entry for "", a stdio entry running entry's mcp command for
+// an absolute path (with args, default mcp), else a URL entry.
+func writeClaudeJSON(t *testing.T, path, entry string, args ...string) {
 	t.Helper()
 	servers := ""
-	if url != "" {
-		servers = `"agentfeedback": {"type": "http", "url": "` + url + `"}`
+	if len(args) == 0 {
+		args = []string{"mcp"}
+	}
+	argv, _ := json.Marshal(args)
+	switch {
+	case filepath.IsAbs(entry):
+		servers = `"agentfeedback": {"type": "stdio", "command": ` + string(mustJSONString(entry)) + `, "args": ` + string(argv) + `}`
+	case entry != "":
+		servers = `"agentfeedback": {"type": "http", "url": "` + entry + `"}`
 	}
 	putFile(t, path, `{"mcpServers": {`+servers+`}}`, 0o644)
 }
@@ -1243,7 +1278,7 @@ func TestInstall_ClaudeMCPState(t *testing.T) {
 
 	t.Run("present is unchanged", func(t *testing.T) {
 		e := setup(t)
-		writeClaudeJSON(t, filepath.Join(e.home, ".claude.json"), mcpURL)
+		writeClaudeJSON(t, filepath.Join(e.home, ".claude.json"), e.exe, "mcp", "--server", "https://feedback.example.test")
 		if r, out := installRun(t, "install", "claude-code", "--mcp"); r.code != 0 || out["status"] != "unchanged" || claudeLog(e) != "" {
 			t.Fatalf("%+v %q", r, claudeLog(e))
 		}
@@ -1322,7 +1357,7 @@ func TestInstall_ChangedJSONMember(t *testing.T) {
 	}
 	path := filepath.Join(e.home, ".cursor", "mcp.json")
 	data, _ := os.ReadFile(path)
-	edited := strings.Replace(string(data), "https://feedback.example.test/mcp", "https://mine.example.test/mcp", 1)
+	edited := strings.Replace(string(data), e.exe, "/opt/mine/agentfeedback", 1)
 	putFile(t, path, edited, 0o644)
 	r, out := installRun(t, "install", "cursor", "--mcp")
 	if r.code != 1 || !strings.Contains(fmt.Sprint(out["message"]), "mcpServers.agentfeedback was changed since install") {
@@ -1922,7 +1957,7 @@ func TestInstall_ClaudeConfigDirLocations(t *testing.T) {
 			if err := os.Remove(log); err != nil {
 				t.Fatal(err)
 			}
-			writeClaudeJSON(t, filepath.Join(e.home, tt.json), mcpURL)
+			writeClaudeJSON(t, filepath.Join(e.home, tt.json), e.exe, "mcp", "--server", "https://feedback.example.test")
 			if r, _ := installRun(t, "uninstall", "claude-code"); r.code != 0 {
 				t.Fatalf("%+v", r)
 			}
@@ -1940,7 +1975,7 @@ func TestInstall_ClaudeConfigDirLocations(t *testing.T) {
 			}
 			writeClaudeJSON(t, filepath.Join(e.home, tt.json), "")
 			for _, w := range tt.wrong {
-				writeClaudeJSON(t, filepath.Join(e.home, w), mcpURL)
+				writeClaudeJSON(t, filepath.Join(e.home, w), e.exe, "mcp", "--server", "https://feedback.example.test")
 			}
 			r, out := installRun(t, "uninstall", "claude-code")
 			if r.code != 0 || !strings.Contains(notesOf(out), "already removed") {
@@ -2021,7 +2056,7 @@ func TestInstall_ClaudeLegacyRelocatedManifest(t *testing.T) {
 				t.Setenv("CLAUDE_CONFIG_DIR", "")
 			}
 			writeClaudeJSON(t, filepath.Join(e.home, ".claude.json"), "")
-			writeClaudeJSON(t, filepath.Join(dir, ".claude.json"), "https://feedback.example.test/mcp")
+			writeClaudeJSON(t, filepath.Join(dir, ".claude.json"), e.exe, "mcp", "--server", "https://feedback.example.test")
 			r, out := installRun(t, "uninstall", "claude-code")
 			if r.code != 0 || strings.Contains(notesOf(out), "without CLAUDE_CONFIG_DIR") {
 				t.Fatalf("%+v", r)
@@ -2073,7 +2108,6 @@ func compactJSON(t *testing.T, doc []byte) string {
 }
 
 func TestInstall_SecondWaveContent(t *testing.T) {
-	const url = "https://feedback.example.test/mcp"
 	e := newInstallEnv(t)
 	h := e.home
 	hookOf := func(name, event string) string { return e.exe + " hook " + name + " " + event }
@@ -2148,27 +2182,22 @@ func TestInstall_SecondWaveContent(t *testing.T) {
 	}
 	run("uninstall", "all")
 
+	// Against a server the entry is the stdio entry running mcp --server
+	// with that server: it relays there, and no key reference is written.
 	out = run("install", "copilot", "antigravity", "devin", "kiro", "cline", "amp", "vscode", "--mcp")
-	key := `"headers":{"Authorization":"Bearer ${AGENT_FEEDBACK_API_KEY}"}`
-	member(".copilot/mcp-config.json", []string{"mcpServers"}, `{"type":"http","url":"`+url+`",`+key+`,"tools":["*"]}`)
-	member(".gemini/config/mcp_config.json", []string{"mcpServers"}, `{"serverUrl":"`+url+`",`+key+`}`)
-	member(".config/devin/mcp_config.json", []string{"mcpServers"}, `{"url":"`+url+`","transport":"http","headers":{"Authorization":"Bearer ${env:AGENT_FEEDBACK_API_KEY}"}}`)
-	member(".kiro/settings/mcp.json", []string{"mcpServers"}, `{"url":"`+url+`",`+key+`}`)
-	member(".cline/data/settings/cline_mcp_settings.json", []string{"mcpServers"}, `{"type":"streamableHttp","url":"`+url+`",`+key+`}`)
-	member(".config/amp/settings.json", []string{"amp.mcpServers"}, `{"url":"`+url+`",`+key+`}`)
-	member(".config/Code/User/mcp.json", []string{"servers"}, `{"type":"http","url":"`+url+`","headers":{"Authorization":"Bearer ${env:AGENT_FEEDBACK_API_KEY}"}}`)
-	notes = notesOf(out)
-	for _, n := range []string{"antigravity", "cline"} {
-		if !strings.Contains(notes, n+" documents no environment-variable syntax for MCP headers; check that it connects (a 401 means the key reference was not expanded)") {
-			t.Errorf("no header note for %s: %q", n, notes)
-		}
+	stdio := stdioMember(e.exe, "mcp", "--server", "https://feedback.example.test")
+	for _, n := range []string{"copilot", "antigravity", "devin", "kiro", "cline", "amp", "vscode"} {
+		member(stdio[n].file, stdio[n].path, stdio[n].want)
+	}
+	if notes = notesOf(out); strings.Contains(notes, "environment-variable syntax") {
+		t.Errorf("URL note on a stdio entry: %q", notes)
 	}
 	run("uninstall", "all")
 
 	// Amp's settings.jsonc wins when it exists.
 	putFile(t, filepath.Join(h, ".config", "amp", "settings.jsonc"), "{\n  // mine\n}\n", 0o644)
 	run("install", "amp", "--mcp")
-	member(".config/amp/settings.jsonc", []string{"amp.mcpServers"}, `{"url":"`+url+`",`+key+`}`)
+	member(".config/amp/settings.jsonc", []string{"amp.mcpServers"}, stdioMember(e.exe, "mcp", "--server", "https://feedback.example.test")["amp"].want)
 	if _, err := os.Stat(filepath.Join(h, ".config", "amp", "settings.json")); err == nil {
 		t.Error("settings.json written beside settings.jsonc")
 	}

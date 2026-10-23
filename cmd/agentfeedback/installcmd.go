@@ -254,10 +254,8 @@ func wireHarnesses(env harness.Env, pos []string, o wireOptions, resolve func() 
 	if err != nil {
 		return installOutcome{}, err
 	}
-	if o.mcp && srv != serverLocal {
-		if os.Getenv(envAPIKey) == "" {
-			fmt.Fprintf(stderr, "agentfeedback %s: warning: %s is not set here; the harnesses read the key from it, so set it in the environment they start from\n", command, envAPIKey)
-		}
+	if o.mcp && srv != serverLocal && !keyConfigured() {
+		fmt.Fprintf(stderr, "agentfeedback %s: warning: no API key is set here (%s or the config file); the MCP entry runs agentfeedback mcp, which needs it to reach the server: run agentfeedback doctor --init, or set %s in the environment the harnesses start from\n", command, envAPIKey, envAPIKey)
 	}
 
 	if afterManifestRead != nil {
@@ -291,6 +289,21 @@ func wireHarnesses(env harness.Env, pos []string, o wireOptions, resolve func() 
 	report(stderr, command, out, res.Commands, o.dryRun)
 
 	return out, nil
+}
+
+// keyConfigured reports whether an API key is set in the environment or the
+// config file, as every remote-mode command resolves it.
+func keyConfigured() bool {
+	path, err := configPath(os.Getenv)
+	if err != nil {
+		return false
+	}
+	file, _, err := loadFileConfig(path)
+	if err != nil {
+		return false
+	}
+
+	return resolveClient(flagConfig{}, os.Getenv, file).APIKey.Value != ""
 }
 
 // runUninstall removes what the manifest records for the named harnesses.

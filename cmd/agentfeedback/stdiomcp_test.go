@@ -21,15 +21,20 @@ func (e installEnv) seedLocal(t *testing.T) {
 }
 
 // stdioMember is where each JSON adapter writes its stdio entry and the
-// entry, in compact form, for the binary exe.
-func stdioMember(exe string) map[string]struct {
+// entry, in compact form, for the binary exe run with args (default mcp).
+func stdioMember(exe string, args ...string) map[string]struct {
 	file string
 	path []string
 	want string
 } {
 	bin := string(mustJSONString(exe))
-	typed := `{"type":"stdio","command":` + bin + `,"args":["mcp"]}`
-	plain := `{"command":` + bin + `,"args":["mcp"]}`
+	if len(args) == 0 {
+		args = []string{"mcp"}
+	}
+	argv, _ := json.Marshal(args)
+	list := string(argv)
+	typed := `{"type":"stdio","command":` + bin + `,"args":` + list + `}`
+	plain := `{"command":` + bin + `,"args":` + list + `}`
 	type m = struct {
 		file string
 		path []string
@@ -38,10 +43,10 @@ func stdioMember(exe string) map[string]struct {
 
 	return map[string]m{
 		"cursor":      {".cursor/mcp.json", []string{"mcpServers"}, typed},
-		"opencode":    {".config/opencode/opencode.jsonc", []string{"mcp"}, `{"type":"local","command":[` + bin + `,"mcp"],"enabled":true}`},
+		"opencode":    {".config/opencode/opencode.jsonc", []string{"mcp"}, `{"type":"local","command":[` + bin + `,` + list[1:] + `,"enabled":true}`},
 		"omp":         {".omp/agent/mcp.json", []string{"mcpServers"}, typed},
 		"pi":          {".pi/agent/mcp.json", []string{"mcpServers"}, plain},
-		"copilot":     {".copilot/mcp-config.json", []string{"mcpServers"}, `{"type":"local","command":` + bin + `,"args":["mcp"],"tools":["*"]}`},
+		"copilot":     {".copilot/mcp-config.json", []string{"mcpServers"}, `{"type":"local","command":` + bin + `,"args":` + list + `,"tools":["*"]}`},
 		"antigravity": {".gemini/config/mcp_config.json", []string{"mcpServers"}, plain},
 		"devin":       {".config/devin/mcp_config.json", []string{"mcpServers"}, plain},
 		"kiro":        {".kiro/settings/mcp.json", []string{"mcpServers"}, plain},
@@ -112,7 +117,7 @@ func TestInstall_StdioMCPEveryAdapter(t *testing.T) {
 				data, _ := os.ReadFile(filepath.Join(e.home, ".codex", "config.toml"))
 				want := "# agentfeedback:begin (written by agentfeedback install; agentfeedback uninstall removes it)\n" +
 					"[mcp_servers.agentfeedback]\ncommand = " + string(mustJSONString(e.exe)) + "\nargs = [\"mcp\"]\n" +
-					`env_vars = ["XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "AGENT_FEEDBACK_URL"]` + "\n# agentfeedback:end\n"
+					`env_vars = ["XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "AGENT_FEEDBACK_URL", "AGENT_FEEDBACK_API_KEY"]` + "\n# agentfeedback:end\n"
 				if !strings.Contains(string(data), want) || strings.Contains(string(data), "bearer_token_env_var") {
 					t.Fatalf("config.toml:\n%s", data)
 				}
@@ -154,8 +159,8 @@ func TestInstall_StdioMCPEveryAdapter(t *testing.T) {
 }
 
 // TestInstall_MCPTargetSwitch: re-installing with another target replaces
-// a URL entry with a stdio entry and back, as a change of URL does; the
-// list follows the entry's kind and reports the binary for stdio only.
+// the entry: a server target's runs mcp --server <URL>, the local one's
+// mcp; the list reports stdio with the binary throughout.
 func TestInstall_MCPTargetSwitch(t *testing.T) {
 	const srv = "https://feedback.example.test"
 	for _, name := range []string{"claude-code", "codex", "omp"} {
@@ -164,27 +169,25 @@ func TestInstall_MCPTargetSwitch(t *testing.T) {
 			e.fakeClaude(t)
 			e.seedLocal(t)
 			before := snapshot(t, e.home)
-			for _, step := range []struct{ server, kind, binary string }{
-				{srv, "url", ""}, {"local", "stdio", e.exe}, {srv, "url", ""}, {"local", "stdio", e.exe},
-			} {
-				r, out := installRun(t, "install", name, "--mcp", "--server", step.server)
-				if r.code != 0 || out["status"] != "installed" || harnessField(t, out, name, "mcp") != step.kind {
-					t.Fatalf("%s: %+v", step.server, r)
+			for _, server := range []string{srv, "local", srv, "local"} {
+				r, out := installRun(t, "install", name, "--mcp", "--server", server)
+				if r.code != 0 || out["status"] != "installed" || harnessField(t, out, name, "mcp") != "stdio" {
+					t.Fatalf("%s: %+v", server, r)
 				}
-				if h := listed(t, name); h.MCP != step.kind || h.Binary != step.binary {
-					t.Fatalf("%s: listed %+v", step.server, h)
+				if h := listed(t, name); h.MCP != "stdio" || h.Binary != e.exe {
+					t.Fatalf("%s: listed %+v", server, h)
 				}
 			}
 			if name == "claude-code" {
 				lines := strings.Split(strings.TrimSpace(readLogFile(e.claudeLog)), "\n")
-				if len(lines) != 7 || !strings.Contains(lines[0], srv+"/mcp") || lines[1] != "mcp remove agentfeedback --scope user" ||
-					!strings.Contains(lines[2], `"type":"stdio"`) || lines[3] != "mcp remove agentfeedback --scope user" {
+				if len(lines) != 7 || !strings.Contains(lines[0], `"args":["mcp","--server","`+srv+`"]`) || lines[1] != "mcp remove agentfeedback --scope user" ||
+					!strings.Contains(lines[2], `"args":["mcp"]}`) || lines[3] != "mcp remove agentfeedback --scope user" {
 					t.Fatalf("claude calls:\n%s", strings.Join(lines, "\n"))
 				}
 			}
 			if name == "omp" {
 				data, _ := os.ReadFile(filepath.Join(e.home, ".omp", "agent", "mcp.json"))
-				if strings.Contains(string(data), `"url"`) || strings.Count(string(data), `"agentfeedback":`) != 1 {
+				if strings.Contains(string(data), `"url"`) || strings.Contains(string(data), "--server") || strings.Count(string(data), `"agentfeedback":`) != 1 {
 					t.Errorf("mcp.json:\n%s", data)
 				}
 			}
@@ -228,6 +231,18 @@ func TestInstall_ClaudeStdioState(t *testing.T) {
 			t.Errorf("listed %+v", h)
 		}
 	})
+	t.Run("server recorded, local entry present", func(t *testing.T) {
+		e := newInstallEnv(t)
+		e.fakeClaude(t)
+		if r, _ := installRun(t, "install", "claude-code", "--mcp", "--server", "https://feedback.example.test"); r.code != 0 {
+			t.Fatalf("%+v", r)
+		}
+		write(t, e, ours(e))
+		r, out := installRun(t, "install", "claude-code", "--mcp", "--server", "https://feedback.example.test")
+		if r.code != 1 || !strings.Contains(fmt.Sprint(out["message"]), "runs "+e.exe+" mcp, not the entry agentfeedback install added") {
+			t.Fatalf("%+v", r)
+		}
+	})
 	for _, c := range []struct{ name, entry, says string }{
 		{"other command", `{"type": "stdio", "command": "/opt/other", "args": ["mcp"]}`, "runs /opt/other mcp, not the entry agentfeedback install added"},
 		{"a url", `{"type": "http", "url": "https://elsewhere.example.test/mcp"}`, "points at https://elsewhere.example.test/mcp, not the entry agentfeedback install added"},
@@ -248,18 +263,6 @@ func TestInstall_ClaudeStdioState(t *testing.T) {
 			}
 		})
 	}
-	t.Run("url recorded, stdio present", func(t *testing.T) {
-		e := newInstallEnv(t)
-		e.fakeClaude(t)
-		if r, _ := installRun(t, "install", "claude-code", "--mcp", "--server", "https://feedback.example.test"); r.code != 0 {
-			t.Fatalf("%+v", r)
-		}
-		write(t, e, ours(e))
-		r, out := installRun(t, "install", "claude-code", "--mcp", "--server", "https://feedback.example.test")
-		if r.code != 1 || !strings.Contains(fmt.Sprint(out["message"]), "runs "+e.exe+" mcp, not at the URL agentfeedback install added") {
-			t.Fatalf("%+v", r)
-		}
-	})
 }
 
 // TestWindows_ManualStdioEntries: the manual steps for local carry the
@@ -273,7 +276,7 @@ func TestWindows_ManualStdioEntries(t *testing.T) {
 	}
 	codex, cursor, opencode := out.Manual[0].MCP, out.Manual[1].MCP, out.Manual[2].MCP
 	if codex == nil || !strings.Contains(codex.Text, "command = "+string(mustJSONString(e.exe))+"\nargs = [\"mcp\"]\n"+
-		`env_vars = ["XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "AGENT_FEEDBACK_URL"]`+"\n") {
+		`env_vars = ["XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "AGENT_FEEDBACK_URL", "AGENT_FEEDBACK_API_KEY"]`+"\n") {
 		t.Fatalf("codex %+v", codex)
 	}
 	want := stdioMember(e.exe)
@@ -285,8 +288,9 @@ func TestWindows_ManualStdioEntries(t *testing.T) {
 	}
 }
 
-// TestWindows_ManualStdioPathWarnings: manual steps carrying a stdio entry
-// flag a binary that is not the agentfeedback on PATH; URL entries do not.
+// TestWindows_ManualStdioPathWarnings: manual steps carrying a stdio entry,
+// for local or a server, flag a binary that is not the agentfeedback on
+// PATH.
 func TestWindows_ManualStdioPathWarnings(t *testing.T) {
 	e := newInstallEnv(t)
 	stubWindows(t)
@@ -296,7 +300,7 @@ func TestWindows_ManualStdioPathWarnings(t *testing.T) {
 		t.Fatalf("%+v %q", out, r.stderr)
 	}
 	r, out = windowsInstall(t, "install", "cursor", "--server", "https://feedback.example.test")
-	if len(out.Warnings) != 0 || strings.Contains(r.stderr, "warning:") {
-		t.Fatalf("%+v %q", out, r.stderr)
+	if len(out.Warnings) != 1 || out.Warnings[0] != want || !strings.Contains(r.stderr, "agentfeedback install: warning: "+want) {
+		t.Fatalf("a server target writes the stdio entry too: %+v %q", out, r.stderr)
 	}
 }

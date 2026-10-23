@@ -214,8 +214,9 @@ it knows: `claude-code`, `codex`, `cursor`, `opencode`, `omp`, `pi`,
 human agrees. It does not run on Windows (it refuses and lists the steps to
 wire each harness by hand under `manual`): there, and for a harness not in
 that list, go to step 2.5 instead. `vscode` takes only the MCP entry (add
-`--mcp`): a stdio entry running `agentfeedback mcp` on the local database,
-or with the server URL of step 2.2 an entry pointing at it. With `"server":
+`--mcp`): a stdio entry running `agentfeedback mcp`, which serves the local
+database, or with the server URL of step 2.2 `agentfeedback mcp --server
+<URL>`, which relays to that server with the configured key. With `"server":
 "local"` from step 1, add `--local` at the end: `init` then refuses, rather
 than reporting to it, a server already configured on this machine (in
 `config.toml` or `AGENT_FEEDBACK_URL`); show the human the refusal and ask

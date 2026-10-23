@@ -287,7 +287,7 @@ agentfeedback install claude-code --no-hooks     # no hooks at all, the session-
 agentfeedback install --check                    # is the rule section current in each detected or recorded harness? changes nothing; exit 3 when one is missing or stale
 agentfeedback install --project --yes            # the pointer section in this repository's AGENTS.md (or CLAUDE.md); --uninstall removes it
 agentfeedback prime                              # the short guidance the session-start hook prints (--format cursor: Cursor's JSON; --full: the whole guidance)
-agentfeedback install opencode --mcp             # an MCP entry instead of the skill and the hook: stdio (agentfeedback mcp) for local, a URL for a server
+agentfeedback install opencode --mcp             # an MCP entry instead of the skill and the hook: stdio, agentfeedback mcp for local, agentfeedback mcp --server URL for a server
 agentfeedback install claude-code --docs         # also the agentfeedback-docs skill: the reference docs, schemas and OpenAPI document for integrators and operators
 agentfeedback install all --dry-run              # print every file that would change, change nothing
 agentfeedback uninstall all                      # remove exactly what install added
@@ -357,7 +357,7 @@ On Windows `install` and `uninstall` refuse (exit 2). `install` (`--list`
 included) prints the manual steps for each detected harness, or each named
 one, on stderr and in the outcome's `manual` list: the skill path and a
 PowerShell command that writes it (`agentfeedback skill render skill-md`, as
-UTF-8; none for `vscode`, which has no skill path), the MCP entry (file, key and value): the stdio entry for local, the URL entry when a server URL is configured,
+UTF-8; none for `vscode`, which has no skill path), the MCP entry (file, key and value): the stdio entry (`mcp` for local, `mcp --server <URL>` for a server; the URL entry for a server only when the binary's path cannot be resolved),
 and the instruction-file text (`agentfeedback skill render agents-md`). Hooks
 are not wired on Windows; undo the steps by hand.
 
@@ -371,10 +371,10 @@ are not wired on Windows; undo the steps by hand.
 | `omp` | `omp`, `~/.omp` | `~/.omp/agent/skills/agentfeedback/SKILL.md` | extension `~/.omp/agent/extensions/agentfeedback.ts` (on `tool_result` errors, with the note, and `agent_end`, not for subagents) | not supported | `~/.omp/agent/AGENTS.md` | `~/.omp/agent/mcp.json` `mcpServers.agentfeedback` | documented 2026-10-07 |
 | `pi` | `pi`, `~/.pi` | `~/.pi/agent/skills/agentfeedback/SKILL.md` | extension `~/.pi/agent/extensions/agentfeedback.ts` (on `tool_result` errors, with the note as a next-turn message, and `agent_settled`) | not supported | `~/.pi/agent/AGENTS.md` | `~/.pi/agent/mcp.json` `mcpServers.agentfeedback`; needs pi 0.99.0 or later | documented 2026-10-07 |
 | `copilot` | `copilot`, `~/.copilot` | `~/.copilot/skills/agentfeedback/SKILL.md` | file `~/.copilot/hooks/agentfeedback.json` (`postToolUseFailure`, with the note on exit 2, and `agentStop`) | not supported | `~/.copilot/copilot-instructions.md` | `~/.copilot/mcp-config.json` `mcpServers.agentfeedback` | documented 2026-10-07 |
-| `antigravity` | `agy`, `~/.gemini/antigravity-cli` or `~/.gemini/antigravity` | `~/.gemini/config/skills/agentfeedback/SKILL.md` and `~/.gemini/antigravity-cli/skills/agentfeedback/SKILL.md` | `~/.gemini/config/hooks.json` `agentfeedback` (on `PostToolUse`, `PreInvocation`, which delivers the note, and `Stop`) | not supported | `~/.gemini/GEMINI.md` (shared with gemini-cli unless `$GEMINI_CLI_HOME` is set) | `~/.gemini/config/mcp_config.json` `mcpServers.agentfeedback`; the key reference in the header may not be expanded | documented 2026-10-07 |
+| `antigravity` | `agy`, `~/.gemini/antigravity-cli` or `~/.gemini/antigravity` | `~/.gemini/config/skills/agentfeedback/SKILL.md` and `~/.gemini/antigravity-cli/skills/agentfeedback/SKILL.md` | `~/.gemini/config/hooks.json` `agentfeedback` (on `PostToolUse`, `PreInvocation`, which delivers the note, and `Stop`) | not supported | `~/.gemini/GEMINI.md` (shared with gemini-cli unless `$GEMINI_CLI_HOME` is set) | `~/.gemini/config/mcp_config.json` `mcpServers.agentfeedback`; a URL entry's key reference in the header may not be expanded | documented 2026-10-07 |
 | `devin` | `devin`, `~/.config/devin` | `~/.config/devin/skills/agentfeedback/SKILL.md` | `~/.config/devin/config.json` `hooks.Stop` (flush only) | not supported | `~/.config/devin/AGENTS.md` | `~/.config/devin/mcp_config.json` `mcpServers.agentfeedback` | documented 2026-10-07 |
 | `kiro` | `kiro-cli`, `~/.kiro` | `~/.kiro/skills/agentfeedback/SKILL.md` | none | not supported | `~/.kiro/steering/AGENTS.md` | `~/.kiro/settings/mcp.json` `mcpServers.agentfeedback` | documented 2026-10-07 |
-| `cline` | `cline`, `~/.cline` | `~/.cline/skills/agentfeedback/SKILL.md` | none | not supported | `~/.cline/rules/agentfeedback.md` | `~/.cline/data/settings/cline_mcp_settings.json` `mcpServers.agentfeedback`; the key reference in the header may not be expanded | documented 2026-10-07 |
+| `cline` | `cline`, `~/.cline` | `~/.cline/skills/agentfeedback/SKILL.md` | none | not supported | `~/.cline/rules/agentfeedback.md` | `~/.cline/data/settings/cline_mcp_settings.json` `mcpServers.agentfeedback`; a URL entry's key reference in the header may not be expanded | documented 2026-10-07 |
 | `amp` | `amp`, `<xdg>/amp` (`<xdg>` is `${XDG_CONFIG_HOME:-~/.config}`) | `<xdg>/amp/skills/agentfeedback/SKILL.md` | none | not supported | `<xdg>/amp/AGENTS.md` | `amp.mcpServers` member `agentfeedback` in `<xdg>/amp/settings.jsonc` when it exists, else `settings.json` | documented 2026-10-07 |
 | `vscode` | `code`, `<Code/User>`: `<xdg>/Code/User` on Linux, `~/Library/Application Support/Code/User` on macOS | none: VS Code reads the skill the `copilot` or `claude-code` adapter installs | none | not supported | none: VS Code has no CLI mode | `<Code/User>/mcp.json` `servers.agentfeedback` | documented 2026-10-07 |
 | `gemini-cli` | `gemini` (`~/.gemini` is shared with antigravity unless `$GEMINI_CLI_HOME` is set) | `$GEMINI_CLI_HOME/.gemini/skills/agentfeedback/SKILL.md` (default `~/.gemini/skills/agentfeedback/SKILL.md`) | none | not supported | `$GEMINI_CLI_HOME/.gemini/GEMINI.md` (default `~/.gemini/GEMINI.md`) | none | documented 2026-10-07 |
@@ -402,8 +402,9 @@ are not wired on Windows; undo the steps by hand.
   so `install gemini-cli --mcp` is refused. `install all` leaves such a
   harness out with a note instead of refusing.
 - **MCP header variables.** Antigravity and Cline document no
-  environment-variable syntax for MCP headers. Their URL entries reference
-  `${AGENT_FEEDBACK_API_KEY}`, and install notes to check the connection: a
+  environment-variable syntax for MCP headers. A URL entry (only the manual
+  steps write one, when the binary's path cannot be resolved) references
+  `${AGENT_FEEDBACK_API_KEY}`, and a note says to check the connection: a
   401 means the reference was not expanded.
 - **The registry.** Install also records, per harness, the instruction
   files, hook events, MCP entry forms, session store locations and caveats.
@@ -480,13 +481,17 @@ are not wired on Windows; undo the steps by hand.
   it too unless given `--no-triage` (on a terminal it asks first).
 - **`--mcp`.** The MCP entry replaces the skill and the hook for that
   harness: the server's MCP instructions teach the agent, and nothing is
-  spooled without the CLI. The entry follows the server: for local it is a
-  stdio entry that runs the binary's resolved absolute path with the argument
-  `mcp` (`agentfeedback mcp`, the same tools on the local database, no key);
-  for a server it points at `<server>/mcp` and reads the key from
-  `AGENT_FEEDBACK_API_KEY` in the harness's environment, and install warns
-  when that is not set. Rerun install after moving the binary or changing
-  the server: the entry is replaced. `--with-reminder` does not apply with
+  spooled without the CLI. The entry is a stdio entry that runs the binary's
+  resolved absolute path: with the argument `mcp` for local
+  (`agentfeedback mcp`, the tools on the local database), and with
+  `mcp --server <URL>` for a server, which relays the tools to that server
+  and never falls back to the local database. The key comes from
+  `AGENT_FEEDBACK_API_KEY` or `config.toml` when the entry runs, so no key or
+  key reference is written into a harness file; install warns when neither
+  holds a key, and without one the entry fails to start. The Codex block
+  forwards `AGENT_FEEDBACK_URL` and `AGENT_FEEDBACK_API_KEY` by name
+  (`env_vars`). Rerun install after moving the binary or changing the
+  server: the entry is replaced. `--with-reminder` does not apply with
   `--mcp` (noted when given explicitly).
 - **The server.** `--server local|cloud|URL`, else `url` in `config.toml`,
   else the server the last install recorded, else a prompt on a terminal
@@ -727,9 +732,18 @@ Compose-level variables (`infra/agentfeedback/.env`): `API_KEY`,
   `X-Api-Key: <key>`) and checks it before anything else. Six tools:
   `submit_feedback`, `list_submissions`, `get_submission`, `stats`,
   `mark_processed`, `get_schema`, each answering with the REST body of its
-  route. `agentfeedback mcp` serves the same tools over stdio on the local
-  database, with no key; it refuses when a server URL is configured (pass
-  `--local`, or point the harness at `<server>/mcp`).
+  route. `agentfeedback mcp` serves the same tools over stdio: on the local
+  database with no key in local mode; with a server URL configured, it
+  relays them to `<server>/mcp` with the configured key (it connects at
+  start and exits 1 on stderr when the server, the key or the endpoint does
+  not answer). Either way it adds the session tools and `submit_feedback`'s
+  `context_from` argument, answered on this machine
+  ([sessions.md](sessions.md#mcp-tools)), and the server instructions say
+  so. `--local` forces the local database, `--server URL` that server (the
+  entry install writes for a server passes it). A forwarded call has 60
+  seconds; a call whose upstream session is gone reconnects and is retried
+  once; a remote tool without an object input schema is not served (one
+  warning on stderr).
 - `POST /mcp/{project}`: the same, with `project` preset for the
   connection; `submit_feedback`, `list_submissions` and `stats` then take no
   `project` argument. `get_submission` and `mark_processed` take ids and are

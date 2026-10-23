@@ -44,7 +44,10 @@ Its ```bash commands run one line at a time, so the gate can play the model's
 part between them: it picks the batch, reads the digest and writes the report.
 Afterwards the filed friction, the marked session and the untouched others
 are checked. The MCP-only route's ```json tool calls run the same way, per
-harness, against `agentfeedback mcp` in local mode, spoken to over stdio.
+harness, against `agentfeedback mcp` in local mode, spoken to over stdio;
+its submit_feedback files with context_from, under the key the CLI computes,
+and the same report filed afterwards with submit --context-from is a
+duplicate.
 The structure check of fix-it-session.md also requires the session start's
 commands in order (list, status, selection, list, digest, submit, get,
 mark), the rules a digest is evidence, never widening the selection, the
@@ -74,6 +77,7 @@ Placeholders of the session start and the MCP-only route:
 Usage: python3 tests/skill/triage-playbooks.py   (after `just check`)
 """
 import datetime
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -651,6 +655,14 @@ class Stdio:
         return self.proc.stderr.read()
 
 
+def span_key(event_ref, ordinal, detector_version):
+    """The key submit --context-from computes for event_ref (internal/sessions Key)."""
+    ref, span = event_ref.rsplit("#", 1)
+    harness, session_id = ref.split(":", 1)
+    joined = "\x00".join([harness, session_id, span, str(ordinal), detector_version])
+    return "session-scan-" + hashlib.sha256(joined.encode()).hexdigest()
+
+
 def run_mcp_route(name, text, harness):
     """Run the MCP-only route's tool calls over harness's golden store, in local mode."""
     work = Path(tempfile.mkdtemp(prefix="triage-playbooks-"))
@@ -699,8 +711,14 @@ def run_mcp_route(name, text, harness):
         mcp.proc.stdin.close()
         mcp.proc.wait(10)
         stderr = mcp.stop()
-        key = f"session-scan-{values['event-ref']}/1/v{values['detector-version']}"
-        problems = session_effects(env, work, harness, values, before, key=key)
+        problems = session_effects(env, work, harness, values, before, key=span_key(values["event-ref"], 1, values["detector-version"]))
+        # The same report filed through the CLI from the same span is the same row.
+        report = json.dumps({"summary": values["summary"],
+                             "payload": {"category": "tooling", "details": values["details"]}})
+        replay = json.loads(run([BIN, "submit", "friction", "--stdin", "--context-from", values["event-ref"]],
+                                env, work, report).splitlines()[-1])
+        if replay.get("outcome") != "duplicate":
+            problems.append(f"the CLI filing of the same span answered {replay}, want outcome duplicate")
         if problems:
             raise RuntimeError("\n  ".join(problems))
         print(f"PASS  {label}")

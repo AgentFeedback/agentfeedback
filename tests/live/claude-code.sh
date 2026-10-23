@@ -3,9 +3,10 @@
 # image with no network. A server on loopback; then, with CLAUDE_CONFIG_DIR
 # unset and set to ~/.claude, each in a fresh HOME holding an unrelated MCP
 # entry and a settings.json with an unrelated key and Stop hook: install
-# --mcp with the server's URL, `claude mcp list` connects to it, a second
-# install changes nothing, uninstall removes only it; the same with --server
-# local, whose stdio entry runs `agentfeedback mcp`; the skill and the
+# --mcp with the server's URL writes the stdio entry running `agentfeedback
+# mcp --server <URL>` without the key (no URL configured anywhere else), `claude mcp list` connects through the relay to the
+# server, a second install changes nothing, uninstall removes only it; the
+# same with --server local; the skill and the
 # PostToolUseFailure, Stop and SessionStart hooks and the rule section in
 # CLAUDE.md install, reinstall unchanged; the SessionStart command prints the
 # guidance; the installed
@@ -47,7 +48,7 @@ claude_() { timeout 60 claude "$@"; }
 
 check() {
   mode=$1
-  local home dir json list hook fhook shook bin payload out session
+  local home dir json list hook fhook shook bin payload out session relayed
   home=/tmp/home-$mode
   dir="$home/.claude"
   mkdir -p "$dir"
@@ -63,12 +64,17 @@ check() {
   printf '%s\n' "$SETTINGS" >"$dir/settings.json"
   cp "$dir/settings.json" /tmp/settings.before
 
+  bin=$(command -v agentfeedback)
   expect installed install claude-code --mcp --server "$URL"
-  jq -e --arg u "$URL/mcp" '.mcpServers.agentfeedback.url == $u' "$json" >/dev/null || fail "$mode: no agentfeedback entry in $json"
+  jq -e --arg b "$bin" --arg u "$URL" '.mcpServers.agentfeedback | .type == "stdio" and .command == $b and .args == ["mcp", "--server", $u]' "$json" >/dev/null ||
+    fail "$mode: no stdio agentfeedback entry for $URL in $json: $(jq -c .mcpServers "$json")"
+  if grep -qF "$KEY" "$json"; then fail "$mode: the key is in $json"; fi
+  relayed=$(grep -c '"path":"/mcp"' /tmp/server/log || true)
   list=$(claude_ mcp list 2>&1)
-  grep -F "agentfeedback: $URL/mcp (HTTP) - " <<<"$list" | grep -q ' Connected$' || fail "$mode: claude mcp list does not connect to agentfeedback: $list"
+  grep -F "agentfeedback: $bin mcp --server $URL - " <<<"$list" | grep -q ' Connected$' || fail "$mode: claude mcp list does not connect to agentfeedback: $list"
   grep -qF "other: $OTHER" <<<"$list" || fail "$mode: the unrelated entry is gone: $list"
-  pass "$mode: install --mcp writes $json and claude mcp list connects"
+  [ "$(grep -c '"path":"/mcp"' /tmp/server/log || true)" -gt "$relayed" ] || fail "$mode: agentfeedback mcp did not relay to $URL/mcp: $(tail -n 5 /tmp/server/log)"
+  pass "$mode: install --mcp --server URL writes the stdio entry to $json, without the key, and claude mcp list connects through the relay"
   expect unchanged install claude-code --mcp --server "$URL"
   pass "$mode: a second install --mcp changes nothing"
   expect uninstalled uninstall claude-code
@@ -78,7 +84,6 @@ check() {
   if [ "$mode" = set ] && [ -e "$home/.claude.json" ]; then fail "set: ~/.claude.json was written"; fi
   pass "$mode: uninstall removes only the agentfeedback entry"
 
-  bin=$(command -v agentfeedback)
   expect installed install claude-code --mcp --server local
   jq -e --arg b "$bin" '.mcpServers.agentfeedback | .type == "stdio" and .command == $b and .args == ["mcp"]' "$json" >/dev/null ||
     fail "$mode: no stdio agentfeedback entry in $json: $(jq -c .mcpServers "$json")"

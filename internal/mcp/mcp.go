@@ -6,7 +6,9 @@
 // where authentication, the body limit and the error shape of transport
 // failures belong to the HTTP layer that mounts the handler. The CLI's
 // agentfeedback mcp serves it over stdio on the local database, with the
-// session tools added (Config.Sessions).
+// session tools (Config.Sessions) and submit_feedback's context_from
+// (Config.ContextFrom) added; in remote mode NewRelay serves a server's
+// /mcp tools over stdio with the same additions.
 package mcp
 
 import (
@@ -45,6 +47,10 @@ type Config struct {
 	// sessions_digest, sessions_mark). Only the stdio transport sets it:
 	// they read the session logs of the machine the server runs on.
 	Sessions Sessions
+	// ContextFrom, when set, adds the [local] arguments context_from and
+	// ordinal to submit_feedback. Only the stdio transport sets it: they
+	// read a session log of the machine the server runs on.
+	ContextFrom ContextFrom
 }
 
 // Handler serves MCP for any base URL and project preset.
@@ -152,22 +158,32 @@ func NewServer(cfg Config, base, preset, version string) (*sdk.Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	if cfg.Sessions != nil || cfg.ContextFrom != nil {
+		instructions = strings.TrimRight(instructions, "\n") + "\n\n" + LocalGuidance
+	}
 	s := sdk.NewServer(&sdk.Implementation{Name: "agentfeedback", Version: version},
 		&sdk.ServerOptions{Instructions: instructions})
-	if cfg.CallContext != nil {
-		derive := cfg.CallContext
-		s.AddReceivingMiddleware(func(next sdk.MethodHandler) sdk.MethodHandler {
-			return func(ctx context.Context, method string, req sdk.Request) (sdk.Result, error) {
-				if method == "tools/call" {
-					ctx = derive(ctx)
-				}
-				return next(ctx, method, req)
-			}
-		})
-	}
-	t := &tools{svc: cfg.Service, preset: preset, errorBody: cfg.ErrorBody, observeCreate: cfg.ObserveCreate, sessions: cfg.Sessions}
+	deriveCallContext(s, cfg.CallContext)
+	t := &tools{svc: cfg.Service, preset: preset, errorBody: cfg.ErrorBody, observeCreate: cfg.ObserveCreate,
+		sessions: cfg.Sessions, contextFrom: cfg.ContextFrom}
 	t.register(s)
 	return s, nil
+}
+
+// deriveCallContext makes derive, when set, derive the context of every
+// tools/call s answers.
+func deriveCallContext(s *sdk.Server, derive func(ctx context.Context) context.Context) {
+	if derive == nil {
+		return
+	}
+	s.AddReceivingMiddleware(func(next sdk.MethodHandler) sdk.MethodHandler {
+		return func(ctx context.Context, method string, req sdk.Request) (sdk.Result, error) {
+			if method == "tools/call" {
+				ctx = derive(ctx)
+			}
+			return next(ctx, method, req)
+		}
+	})
 }
 
 // Preset normalises a /mcp/{project} path segment exactly as the envelope's

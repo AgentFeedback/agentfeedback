@@ -275,6 +275,13 @@ type mcpLocal struct {
 		} `toml:"arguments"`
 		CLIOnly map[string]string `toml:"cli_only"`
 	} `toml:"local"`
+	LocalArguments map[string]*struct {
+		Command   string `toml:"command"`
+		Arguments map[string]*struct {
+			Flag string `toml:"flag"`
+		} `toml:"arguments"`
+		CLIOnly map[string]string `toml:"cli_only"`
+	} `toml:"local_arguments"`
 }
 
 func loadMCPLocal(t *testing.T) *mcpLocal {
@@ -365,6 +372,32 @@ func localCLIProblems(cov *coverageFile, tools *mcpLocal) []string {
 			}
 		}
 	}
+	for tool, la := range tools.LocalArguments {
+		if la == nil {
+			continue
+		}
+		args := append(strings.Fields(la.Command), "-h")
+		var buf bytes.Buffer
+		if rc := run(args, strings.NewReader(""), &buf, &buf); rc != 0 || buf.Len() == 0 {
+			add("mcp local arguments of %s: %s exited %d with %d bytes of output", tool, strings.Join(args, " "), rc, buf.Len())
+
+			continue
+		}
+		have := map[string]bool{}
+		for _, m := range helpFlagLine.FindAllStringSubmatch(buf.String(), -1) {
+			have["--"+m[1]] = true
+		}
+		for arg, a := range la.Arguments {
+			if a != nil && !have[a.Flag] {
+				add("mcp local arguments of %s: argument %s maps to %s, which %s does not take", tool, arg, a.Flag, la.Command)
+			}
+		}
+		for flag := range la.CLIOnly {
+			if !have[flag] {
+				add("mcp local arguments of %s: cli-only flag %s, which %s does not take", tool, flag, la.Command)
+			}
+		}
+	}
 	sort.Strings(probs)
 
 	return probs
@@ -403,6 +436,12 @@ func TestCoverage_DetectsLocalDrift(t *testing.T) {
 		}},
 		{"tool flag missing", "argument uids maps to --uid, which sessions mark does not take", func(_ *coverageFile, tools *mcpLocal) {
 			tools.Local["sessions_mark"].Arguments["uids"].Flag = "--uid"
+		}},
+		{"local argument flag missing", "argument ordinal maps to --ordinals, which submit friction does not take", func(_ *coverageFile, tools *mcpLocal) {
+			tools.LocalArguments["submit_feedback"].Arguments["ordinal"].Flag = "--ordinals"
+		}},
+		{"local argument cli-only flag missing", "cli-only flag --nope, which submit friction does not take", func(_ *coverageFile, tools *mcpLocal) {
+			tools.LocalArguments["submit_feedback"].CLIOnly["--nope"] = "gone"
 		}},
 	}
 	for _, tt := range tests {
