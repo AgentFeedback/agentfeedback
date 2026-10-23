@@ -67,6 +67,7 @@ preview, speaks the same API.
 | File a report over HTTP without the binary, from a shell | [`docs/recipes/http-curl.md`](docs/recipes/http-curl.md), [`docs/recipes/http-powershell.md`](docs/recipes/http-powershell.md) |
 | Give an agent the reference docs, schemas and OpenAPI document (integrate, operate) | [`skills/agentfeedback-docs/SKILL.md`](skills/agentfeedback-docs/SKILL.md) (installed by `agentfeedback install --docs`) |
 | Wire harnesses, run a server, back up, migrate | [`docs/operate.md`](docs/operate.md) |
+| Know what differs between local mode and a server | [`docs/operate.md#local-mode-or-a-server-what-differs`](docs/operate.md#local-mode-or-a-server-what-differs) |
 | Uninstall the skills or the service | [`docs/operate.md#uninstall`](docs/operate.md#uninstall) |
 | Change the code | [`AGENTS.md`](AGENTS.md) then [`docs/develop.md`](docs/develop.md) |
 | Trust boundary and credentials | [`docs/security.md`](docs/security.md) |

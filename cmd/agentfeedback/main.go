@@ -5,8 +5,8 @@
 // processing commands (list, get, stats, done, undo, redact, rekind, export,
 // digest), ingest and migrate are client commands; hook is what the
 // harnesses' hooks run; sessions lists, digests and marks the harness
-// session logs on this machine; mcp serves the MCP tools
-// over stdio on the local database; ui serves a read-only page over the
+// session logs on this machine; mcp serves the MCP tools over stdio, on
+// the local database or relayed from a server; ui serves a read-only page over the
 // queue on loopback; install and uninstall wire the
 // client into the coding-agent harnesses. A bare invocation prints help.
 package main
@@ -51,7 +51,7 @@ var commands = []command{
 	{"submit", "submit friction --summary S [...] | submit <kind> --stdin [...] | submit review <run_dir> [--include-outputs] | submit review --sweep [<base>...]; --dry-run sends nothing, --scrub redacts known secret formats in the body's string values: file a submission, the outcome is the last line", runSubmit},
 	{"flush", "flush [--hook]: send the spooled submissions that are due and print the counts; --hook (what older installs wired) prints nothing, stops within 4.5 s, always exits 0 and in local mode does nothing", runFlush},
 	{"hook", hookSynopsis + ": run as a harness hook on the event's payload from stdin: count tool failures per session, print a short note when they pile up, send the spool at the end of a turn", runHook},
-	{"ingest", ingestSynopsis + ": submit the envelope files in the inbox (every local-mode command that opens the database, doctor aside, does this first) and print the counts", runIngest},
+	{"ingest", ingestSynopsis + ": submit the envelope files in the inbox (every local-mode command that opens the database but doctor and sessions does this first) and print the counts", runIngest},
 	{"list", "list [filters] [--limit N] [--before-id N | --after-id N] [--include payload] [--all] [--json | --tsv]: list submissions, newest first", runList},
 	{"get", "get <id> [--json]: print one submission", runGet},
 	{"stats", "stats [filters] [--by a,b] [--top N] [--bucket day|week] [--json]: print aggregates", runStats},
@@ -70,7 +70,7 @@ var commands = []command{
 	{"prime", primeSynopsis + ": print the short submission guidance a session starts with (what the session-start hooks run); --full prints all of it", runPrime},
 	{"uninstall", uninstallSynopsis + ": remove exactly what install added, restoring untouched files from their backups", runUninstall},
 	{"sessions", sessionsSynopsis + ": list, digest and mark the coding-agent session logs on this machine (read on demand, never sent anywhere; the watermarks live in the data-directory database)", runSessions},
-	{"mcp", mcpSynopsis + ": serve the MCP tools over stdio on the local database until stdin closes; stdout carries only the protocol", runMcp},
+	{"mcp", mcpSynopsis + ": serve the MCP tools over stdio until stdin closes: over the local database, or relayed from the configured server with this machine's session tools; stdout carries only the protocol", runMcp},
 	{"ui", uiSynopsis + ": serve a read-only web page over the queue on loopback until Ctrl-C", runUI},
 	{"help", "print this help", nil},
 }

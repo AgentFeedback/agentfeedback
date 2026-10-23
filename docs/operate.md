@@ -67,8 +67,9 @@ never on a network share, where SQLite's locking does not hold.
 
 A local write that fails (the database busy past its 5 s timeout, a full
 disk) is spooled like a failed send to a server: outcome `spooled`, exit 0,
-and the next client command delivers it at start, before its own work, as
-does `agentfeedback flush`. When the spool cannot be written either, the body
+and the next client command that runs the start-up pass (every
+local-mode command that opens the database but `doctor`, `sessions` and
+`ingest`) delivers it, before its own work, as does `agentfeedback flush`. When the spool cannot be written either, the body
 is echoed on stderr and the command exits 1. `submit` spools the same way,
 with one stderr line naming the cause, when the local database does not open
 because it is busy or locked past the busy timeout (reason
@@ -82,6 +83,34 @@ entry only to that destination and leaves the others in place, naming each
 with the command that sends it (`flush --server URL`, or `flush --local`), so
 a `url` that changes never carries pending reports to the new server and
 local reports never reach a server.
+
+### Local mode or a server: what differs
+
+The client commands, `init` and `install` work in both modes; the skill,
+the rule, the hooks and the triage skill they wire are the same, and the
+stdio MCP entry differs only in its argument (`mcp`, or `mcp --server
+<URL>`). What differs, with the section that holds the detail:
+
+- **Where the reports are**: the data-directory database, or the server.
+  When `init` or `doctor --init` writes a new server, they name the local
+  reports and the `migrate --local --to <URL> --to-key-from-stdin` command
+  that copies them ([Restore and migration](#restore-and-migration));
+  nothing copies reports back from a server on its own.
+- **Session state** (`sessions`) stays in the data-directory database in
+  both modes and never reaches a server ([sessions.md](sessions.md)).
+- **The file inbox** is delivered by local-mode commands only, and with a
+  server by `agentfeedback ingest` alone ([File inbox](#file-inbox)).
+- **Delivering the spool**: with a server the end-of-turn hook sends due
+  submissions; in local mode the hooks send nothing and the next command
+  that runs the start-up pass delivers them (see the spool paragraphs
+  above).
+- **MCP**: both modes serve the same tools, the session tools included; with
+  a server `mcp` relays the server's tools. No MCP call is spooled in either
+  mode ([MCP and discovery](#mcp-and-discovery)).
+- **No binary**: a harness or chat app that cannot run the binary files to
+  a server (its `/mcp`, `/skill?format=prompt` or the HTTP recipes), or
+  drops a file into the inbox, which the binary delivers later on that
+  machine.
 
 ### Data directory
 
@@ -122,7 +151,7 @@ An agent that cannot run the binary writes one envelope, a JSON object as
 `POST /api/v1/submissions` takes it, into `inbox/<name>.json` under the data
 directory; the recipe is in the skill. Every local-mode command that
 opens the database (`submit`, the read and processing commands, `ui`,
-`mcp`, `init`'s check; not `doctor` and never the hooks) delivers the inbox
+`mcp`, `init`'s check; not `doctor`, `sessions` or the hooks) delivers the inbox
 at start, after the due spool entries, and prints nothing about it. In remote mode only
 `agentfeedback ingest` delivers it, on demand and with the counts
 (`--json` for one JSON object); `ingest` works in local mode too. Nothing
