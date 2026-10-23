@@ -98,8 +98,7 @@ KEY = "playbook-check-key"
 TARGET_KEY = "playbook-target-key"
 PAGES = ("close-the-loop.md", "export-handoff.md", "fix-it-session.md",
          "model-struggles.md", "recurring-by-project.md", "weekly-digest.md")
-SECTIONS = ("Purpose", "Commands", "Reading the output", "What to do with it",
-            "What the hosted version adds")
+SECTIONS = ("Purpose", "Commands", "Reading the output", "What to do with it")
 PLACEHOLDERS = {"project", "model", "text", "id", "duplicate-id", "uid", "commit", "checkout",
                 "previous-triage-date", "resolution", "skill-dir", "file", "increment-file",
                 "db", "target-url", "remote", "harness", "since", "limit", "session-refs",

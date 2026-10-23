@@ -42,7 +42,3 @@ checkout rule in [`SKILL.md`](../SKILL.md). `<commit>` is the commit the
   after the user agrees. Relay each outcome JSON verbatim.
 - `gh` can confirm a pull request was merged when it is installed; without
   it, the `git` check above is enough.
-
-## What the hosted version adds
-
-Automatic verification against the repository.

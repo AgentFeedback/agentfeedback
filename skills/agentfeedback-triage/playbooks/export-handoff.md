@@ -58,7 +58,3 @@ printf '%s' "$TARGET_KEY" | agentfeedback migrate --to <target-url> --to-key-fro
   private data: hand it only to someone the user names.
 - After a migration, point clients at the new server and run
   `agentfeedback doctor` on one of them.
-
-## What the hosted version adds
-
-Receives a migration through the same import route.

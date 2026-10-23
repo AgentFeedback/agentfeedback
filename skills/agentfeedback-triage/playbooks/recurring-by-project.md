@@ -40,7 +40,3 @@ widens the `recurring` list from its default of 10.
 - To file the finding in a tracker, use a Linear or Jira MCP server, or `gh`
   for GitHub issues, only if one is available and the user asks; without one,
   give the user the text to file.
-
-## What the hosted version adds
-
-Root-cause clustering across wordings.

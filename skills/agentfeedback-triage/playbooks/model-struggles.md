@@ -33,7 +33,3 @@ harness, use `--by harness,category` and `--harness <harness>` instead.
 - Propose the guidance change to the user with the ids it rests on; edit
   nothing before the user agrees.
 - To act on the rows themselves, run [`fix-it-session.md`](fix-it-session.md).
-
-## What the hosted version adds
-
-Per-model guidance generation.

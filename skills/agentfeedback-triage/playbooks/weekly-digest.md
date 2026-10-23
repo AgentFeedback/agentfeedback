@@ -38,7 +38,3 @@ agentfeedback list --processed --all --tsv
 - For a growing open count, offer a [`fix-it-session.md`](fix-it-session.md).
 - To post the digest to a team channel, use a Slack CLI or MCP server only if
   one is configured; without one, give the user the text to post.
-
-## What the hosted version adds
-
-Trend detection across weeks and teams.

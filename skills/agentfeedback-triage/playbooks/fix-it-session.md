@@ -367,7 +367,3 @@ re-validating.
 
 Final report: processed and total, per-cluster outcome, commits made, TODOs
 created, new frictions filed, ids left open and why.
-
-## What the hosted version adds
-
-Proposed patches and pull requests.
