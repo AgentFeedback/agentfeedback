@@ -196,6 +196,63 @@ that version. Rewrite the section's relative links to repo-root paths
 repository root, not `docs/`. Corrections to source
 need a new version; corrections to release prose need no new tag.
 
+## v4.2.0 — The skill sets itself up; triage ships with the binary
+
+Compatible with 4.0.0 and 4.1.0 clients and servers; the HTTP API stays
+`1.0` and the server is unchanged. Everything here is in the client, the
+installer and the skills.
+
+- **The `agentfeedback` skill sets itself up.** A skill installed on its own
+  (the `skills` CLI, a plugin marketplace, a hub) now carries a Setup
+  section: with no binary, or the harness not wired, the agent asks the
+  human, runs the bundled checksum-verifying `scripts/install.sh`, then
+  `agentfeedback init --yes --harnesses <harness> --json`. `init` and
+  `install` leave a skill they did not write as it is and report it
+  `external`, wiring the rule and the hooks around it; a Claude Code or
+  Codex plugin that provides the skill means no second copy. An install
+  interrupted between a file write and the manifest update is adopted on
+  the next run instead of refused.
+- **The triage skill ships in the binary.** `init` installs
+  `agentfeedback-triage` by default (`--no-triage` skips it), `install`
+  keeps it (`--with-triage=false` removes it), and its version is always
+  the binary's; the `npx skills` route remains for machines without the
+  binary. Its playbooks no longer describe a hosted version.
+- **A shorter session start.** `agentfeedback prime`, which the
+  session-start hooks of Claude Code, Codex and Cursor run, prints about
+  900 bytes (the triggers, the one command and where the rest is) instead
+  of the whole guide; `prime --full` prints the whole guide.
+- **Switching to a server names the local reports.** `init --server` and
+  `doctor --init` count the reports in the local database and print the
+  `migrate --local --to <URL> --to-key-from-stdin` command; `init` offers
+  the copy on a terminal. Nothing leaves the machine without that yes.
+- **`agentfeedback mcp` serves a server too.** With a server configured it
+  relays the server's tools and adds this machine's session tools, and
+  `install --mcp` writes a stdio entry for a server as well
+  (`mcp --server <URL>`), so the API key stays out of harness files. The
+  stdio `submit_feedback` tool takes `context_from` and `ordinal`, like
+  `submit --context-from`.
+- **Local mode is sturdier.** A database path containing `?`, `#` or `%`
+  opens the file it names. `submit` keeps a report in the spool when the
+  local database is busy or was written by a newer binary, and delivers it
+  later. Spool entries bound to the local database keep 30 days. The
+  legacy `flush --hook` does nothing in local mode.
+- The docs state once what still differs between local mode and a server
+  ([operate.md](operate.md#local-mode-or-a-server-what-differs)). The
+  skills' versions stay `5.0`: their command contract is unchanged.
+
+**Upgrade:** install the new binary, then run `agentfeedback init` (or
+`agentfeedback install <harness>`) once: it installs the triage skill,
+wires the short `prime`, rewrites a URL MCP entry as the stdio entry, and
+adopts or leaves alone a skill another tool installed.
+
+Verify the release as a downloader:
+
+```bash
+gh release download v4.2.0 --repo AgentFeedback/agentfeedback --pattern 'agentfeedback_*' --pattern SHA256SUMS --pattern install.sh
+sha256sum -c SHA256SUMS                                      # shasum -a 256 -c on macOS
+docker run --rm ghcr.io/agentfeedback/agentfeedback:4.2.0 version   # prints 4.2.0
+```
+
 ## v4.1.0 — Bounded warnings
 
 Compatible with 4.0.0 clients and servers; the HTTP API stays `1.0`. One
