@@ -174,7 +174,9 @@ command. Run `install -m 600 /dev/null "$HOME/.agentfeedback-key" && echo "$HOME
 write the key with your file tool into the absolute path it printed, then run
 `"<binary>" doctor --init --url '<URL>' --key-from-stdin < "$HOME/.agentfeedback-key"; rm -f "$HOME/.agentfeedback-key"`.
 
-**Verify:** the human (or you) sees `{"status":"written","path":"…"}`. A
+**Verify:** the human (or you) sees `{"status":"written","path":"…"}`, with
+`"local_reports"` when this machine's local database holds reports (step
+2.3 handles them). A
 `config already exists` error means this machine is already configured:
 show the human the path, run step 3.1 to see where it points, and ask
 whether to keep it (go on) or replace it (the same command with `--force`
@@ -237,7 +239,11 @@ three entries, `"step": "submit"`, `"list"` and `"mark"`, each with
 means the client found no API key for the server: go back to step 2.2. A
 refusal names the path in the way (a foreign entry, a symlinked skill) or
 the configuration in the way: report it to the human and stop; never delete
-or edit it yourself.
+or edit it yourself. On a switch to a server, a `"local_reports"` member
+names the reports this machine's local database holds (`count`) and the
+command that copies them to the server (`command`); `init` copies nothing
+with `--yes`. Report both to the human, and run that command only after
+the human says yes (the human pipes the server's key to it, as in step 2.2).
 
 **Outcome:**
 

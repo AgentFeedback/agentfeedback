@@ -83,7 +83,7 @@ under the home directory, on every operating system):
 
 | Location | Access | What |
 |---|---|---|
-| `${XDG_DATA_HOME:-~/.local/share}/agentfeedback/` | owned, `0700`, files `0600` | the database (local mode; session watermarks in both modes), `spool/`, `rejected/`, `inbox/` ([operate.md](operate.md#data-directory)) |
+| `${XDG_DATA_HOME:-~/.local/share}/agentfeedback/` | owned, `0700`, files `0600` | the database (local mode; session watermarks in both modes; when `init` or `doctor --init` switches to a server, read only to count its reports, which leave the machine only through `migrate` or init's copy after a yes), `spool/`, `rejected/`, `inbox/` ([operate.md](operate.md#data-directory)) |
 | `${XDG_CACHE_HOME:-~/.cache}/agentfeedback/` | owned, `0700`, files `0600` | `log/client.jsonl`, the hooks' per-session counters (`sessions/`, deleted after 7 days) and last-run records (`hooks/`), `filed/` markers, `digest/` output |
 | `${XDG_CONFIG_HOME:-~/.config}/agentfeedback/` | owned, `0700`, files `0600` | `config.toml`, the install manifest `install.json`, and `server/` (`api-key`, `serve.env`) from `serve --init` |
 | the working tree's `.git` metadata and `.agentfeedback.toml` | read | the project context and the repository's narrowing rules |

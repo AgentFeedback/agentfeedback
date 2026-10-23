@@ -35,12 +35,15 @@ type initResult struct {
 	Hooks []string `json:"hooks,omitempty"`
 	// Restart names the wired harnesses, which load the wiring at their
 	// next start.
-	Restart  []string     `json:"restart,omitempty"`
-	E2E      []e2eStep    `json:"e2e,omitempty"`
-	Next     []initNext   `json:"next,omitempty"`
-	Warnings []string     `json:"warnings,omitempty"`
-	Manual   []manualStep `json:"manual,omitempty"`
-	Message  string       `json:"message,omitempty"`
+	Restart []string  `json:"restart,omitempty"`
+	E2E     []e2eStep `json:"e2e,omitempty"`
+	// LocalReports names the reports in the local database when this run
+	// switched the machine to a server; omitted when there are none.
+	LocalReports *localReports `json:"local_reports,omitempty"`
+	Next         []initNext    `json:"next,omitempty"`
+	Warnings     []string      `json:"warnings,omitempty"`
+	Manual       []manualStep  `json:"manual,omitempty"`
+	Message      string        `json:"message,omitempty"`
 }
 
 // initNext is one command init suggests, with what it is for.
@@ -199,14 +202,32 @@ func runInit(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		}
 	}
 
+	// A switch to a server never silently leaves the local reports behind:
+	// it names them on every exit path, and after a passing check offers on
+	// a terminal to copy them.
+	if t.write {
+		n, err := countLocalReports(os.Getenv)
+		if err != nil {
+			w := "the local reports could not be counted: " + oneLine(err.Error())
+			res.Warnings = append(res.Warnings, w)
+			fmt.Fprintf(stderr, "agentfeedback init: warning: %s\n", w)
+		} else if n > 0 {
+			res.LocalReports = &localReports{Count: n, Command: migrateLocalCommand(t.server)}
+		}
+	}
+
 	mf := modeFlags{local: t.server == serverLocal}
 	noKey := false
+	// clientKey is the key the client resolves for the server (env over
+	// config): the one the check uses and the copy uses.
+	clientKey := ""
 	if t.server != serverLocal {
 		m, err := resolveMode(mf, os.Getenv)
 		if err != nil {
 			return finishInit(stdout, res, *asJSON, err)
 		}
-		noKey = m.Settings.APIKey.Value == ""
+		clientKey = m.Settings.APIKey.Value
+		noKey = clientKey == ""
 	}
 	if noKey {
 		res.E2E = []e2eStep{{Step: "e2e", Outcome: "skipped", Message: "no API key for " + t.server + "; the check runs once the key is set"}}
@@ -221,6 +242,20 @@ func runInit(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		}
 
 		return finishInit(stdout, res, *asJSON, err)
+	}
+	if lr := res.LocalReports; lr != nil && ask && !*asJSON && !noKey {
+		copyNow, err := askCopyLocal(lr.Count, t.server, in, stderr)
+		if err != nil {
+			return finishInit(stdout, res, *asJSON, err)
+		}
+		if copyNow {
+			lr.Migrated = migrateLocalTo(t.server, clientKey, stderr)
+			if o := lr.Migrated; o.Outcome != "migrated" {
+				w := "copying the local reports to " + t.server + " failed: " + o.Message + "; they stay in the local database, copy them with " + lr.Command
+				res.Warnings = append(res.Warnings, w)
+				fmt.Fprintf(stderr, "agentfeedback init: warning: %s\n", w)
+			}
+		}
 	}
 	res.Next = initNextSteps(res, t, noKey)
 	res.Status = "ok"
@@ -457,6 +492,9 @@ func initNextSteps(res initResult, t initTargetChoice, noKey bool) []initNext {
 	if noKey {
 		next = append(next, keyStep(res, t))
 	}
+	if lr := res.LocalReports; lr != nil && (lr.Migrated == nil || lr.Migrated.Outcome != "migrated") {
+		next = append(next, initNext{Command: lr.Command, Does: "copy the reports of the local database to the server (pipe its API key on stdin)"})
+	}
 	next = append(next,
 		initNext{Command: "agentfeedback ui", Does: "browse the reports in a read-only page on this machine"},
 		initNext{Command: "agentfeedback list --open", Does: "list the reports not yet processed"},
@@ -555,6 +593,13 @@ func printInitSummary(w io.Writer, res initResult) {
 	for _, s := range res.E2E {
 		fmt.Fprint(w, "check:    ")
 		printE2EStep(w, s)
+	}
+	if lr := res.LocalReports; lr != nil {
+		if o := lr.Migrated; o != nil && o.Outcome == "migrated" {
+			fmt.Fprintf(w, "local:    %d report(s) copied from the local database: sent %d, imported %d, skipped %d, conflicts %d\n", lr.Count, o.Sent, o.Imported, o.Skipped, o.Conflicts)
+		} else {
+			fmt.Fprintf(w, "local:    %d report(s) in the local database stay there; copy them with %s\n", lr.Count, lr.Command)
+		}
 	}
 	if len(res.Restart) > 0 {
 		fmt.Fprintf(w, "restart:  %s (a running harness loads the wiring at its next start)\n", strings.Join(res.Restart, ", "))

@@ -247,7 +247,9 @@ on stdin, so nobody types it:
 "<binary>" doctor --init --url '<URL>' --key-from-stdin < '<key_file>'
 ```
 
-**Verify:** the output is `{"status":"written","path":"…"}`. A `config already
+**Verify:** the output is `{"status":"written","path":"…"}`, with
+`"local_reports"` when this machine's local database holds reports (client
+step 2.3 handles them). A `config already
 exists` error is handled as in client step 2.2: ask the human whether to keep
 the existing configuration or replace it with `--force` after
 `--key-from-stdin`.

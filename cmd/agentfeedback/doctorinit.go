@@ -19,13 +19,21 @@ type initOutcome struct {
 	Status  string `json:"status"`
 	Path    string `json:"path,omitempty"`
 	Message string `json:"message,omitempty"`
+	// LocalReports names the reports in the local database, which stay
+	// there; doctor --init never copies them.
+	LocalReports *localReports `json:"local_reports,omitempty"`
 }
 
 // printInitOutcome prints the outcome of doctor --init and returns err marked
 // as already reported, so run adds nothing to stderr.
 func printInitOutcome(stdout io.Writer, path string, err error) error {
+	return printInitOutcomeLocal(stdout, path, nil, err)
+}
+
+// printInitOutcomeLocal is printInitOutcome naming the local reports.
+func printInitOutcomeLocal(stdout io.Writer, path string, lr *localReports, err error) error {
 	if err == nil {
-		return writeJSON(stdout, initOutcome{Status: "written", Path: path})
+		return writeJSON(stdout, initOutcome{Status: "written", Path: path, LocalReports: lr})
 	}
 	if werr := writeJSON(stdout, initOutcome{Status: "error", Message: err.Error()}); werr != nil {
 		return werr

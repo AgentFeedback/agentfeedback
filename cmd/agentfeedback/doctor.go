@@ -179,8 +179,12 @@ func runDoctor(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 			return printInitOutcome(stdout, "", errArgs("doctor", "doctor --init --url URL --key-from-stdin [--force]"))
 		}
 		path, err := runDoctorInit(os.Getenv, *urlFlag, *keyFromStdin, *force, stdin)
+		var lr *localReports
+		if err == nil {
+			lr = doctorInitLocalReports(*urlFlag, stderr)
+		}
 
-		return printInitOutcome(stdout, path, err)
+		return printInitOutcomeLocal(stdout, path, lr, err)
 	}
 	if fs.NArg() != 0 {
 		return errArgs("doctor", "doctor [--url URL] [--json]")

@@ -838,7 +838,11 @@ stops at the first failure and says how many records landed. `--dry-run`
 sends no record (it still reads the target's metadata and tombstones): it prints the count per kind, the first record of each, and
 the source tombstones the target still holds unredacted; redact those on the
 target by hand. `--to cloud` targets the hosted service at
-`https://api.agentfeedback.dev` (a private preview).
+`https://api.agentfeedback.dev` (a private preview). `--local` reads the
+data-directory database instead of the configured server: a switch from
+local mode to a server never forwards the local reports by itself, so `init
+--server` and `doctor --init` name them under `local_reports` with this
+command (`init` offers to run it on a terminal).
 
 ## Upgrading and downgrading
 
