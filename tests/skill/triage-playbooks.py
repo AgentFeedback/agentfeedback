@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the agentfeedback-triage playbooks against a throwaway server.
+"""Run the agentfeedback-triage playbooks against a throwaway server and in local mode.
 
 Checks the structure of skills/agentfeedback-triage/playbooks/*.md, then, per
 page, starts `agentfeedback serve` on a temp database and a free port, seeds
@@ -9,12 +9,15 @@ in order, as one `bash -euo pipefail` script. SKILL.md's ```bash blocks, if
 any, are checked and run the same way, and so are reference/clustering.md's,
 after the prelude `DIGEST=$(agentfeedback digest --kind friction)`, with
 TYPESAFE_API_KEY empty so cluster.py stops at missing_key and sends nothing.
-After a page runs, its effects are checked: the verdicts it marked, and for
-clustering that the digest holds only frictions.
+After a page runs, its effects are checked: the verdicts it marked, the
+seeded rows the report pages print, the export, restore and migrate of
+export-handoff, and for clustering that the digest holds only frictions.
 
-Every child process gets an environment built from scratch: a throwaway URL,
-key, HOME and XDG directories, so an inherited AGENT_FEEDBACK_API_KEY is
-never used.
+Every page and every session start runs twice: against a throwaway server,
+and in local mode (no URL and no key, the database in a temporary data
+directory, which the checks then find non-empty). Every child process gets
+an environment built from scratch: the server's URL and key or none, HOME
+and XDG directories, so an inherited AGENT_FEEDBACK_API_KEY is never used.
 
 Placeholders in ```bash blocks are replaced before the run:
 
@@ -32,7 +35,7 @@ Placeholders in ```bash blocks are replaced before the run:
   <file>                  export.ndjson in the page's temp directory
   <increment-file>        export-increment.ndjson in the page's temp directory
   <db>                    a database path that does not exist yet
-  <target-url>            a second throwaway server (TARGET_KEY holds its key)
+  <target-url>            the migrate target, a throwaway server (TARGET_KEY holds its key)
   <remote>                the context.git_remote of the p-alpha frictions
 
 fix-it-session.md is split at its `**Phase 0: pull.**` line: the queue run
@@ -76,6 +79,7 @@ Placeholders of the session start and the MCP-only route:
 
 Usage: python3 tests/skill/triage-playbooks.py   (after `just check`)
 """
+import contextlib
 import datetime
 import hashlib
 import json
@@ -328,9 +332,42 @@ def seed(env, work):
             "db": str(work / "restored.db"), "remote": REMOTE}
 
 
-def effects(name, env, work, values):
-    """Return the problems with what the page left behind."""
+def db_rows(path):
+    """The number of submissions in the database at path, 0 when absent."""
+    if not path.is_file():
+        return 0
+    with contextlib.closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True)) as db:
+        return db.execute("SELECT count(*) FROM submissions").fetchone()[0]
+
+
+def target_rows(url):
+    """The number of submissions the target server lists."""
+    request = urllib.request.Request(url + "/api/v1/submissions?limit=100", headers={"X-Api-Key": TARGET_KEY})
+    with urllib.request.urlopen(request, timeout=5) as response:
+        return len(json.loads(response.read())["submissions"])
+
+
+def effects(name, env, work, values, stdout="", local=False):
+    """Return the problems with what the page left behind; stdout is what
+    the page's commands printed."""
     problems = []
+    if local:
+        db = work / "data" / "agentfeedback" / "agentfeedback.db"
+        if not db.is_file() or db_rows(db) == 0:
+            problems.append(f"local mode: {db} is missing or empty, so the page did not use the local database")
+    for page, want in (("playbooks/weekly-digest.md", "tooling flag crash"),
+                       ("playbooks/recurring-by-project.md", "broken flag in deploy"),
+                       ("playbooks/model-struggles.md", "broken flag in deploy")):
+        if name == page and want not in stdout:
+            problems.append(f"the page's output lacks the seeded row {want!r}")
+    if name == "playbooks/export-handoff.md":
+        exported = [line for line in Path(values["file"]).read_text().splitlines() if line.strip()]
+        if len(exported) < 8:
+            problems.append(f"export holds {len(exported)} lines, want the seeded rows and a trailer")
+        if db_rows(Path(values["db"])) == 0:
+            problems.append(f"import restored no row into {values['db']}")
+        if target_rows(values["target-url"]) == 0:
+            problems.append(f"migrate sent no row to the target {values['target-url']}")
 
     def verdict(row_id, want, ref=None):
         row = get(env, work, row_id)
@@ -353,33 +390,42 @@ def effects(name, env, work, values):
     return problems
 
 
-def run_page(name, text, prelude="", postlude=""):
+def run_page(name, text, prelude="", postlude="", local=False):
+    """Run a page's bash blocks against a throwaway server, or with local
+    true in local mode: no URL configured, the database in the data
+    directory under work."""
     blocks = bash_blocks(text)
     if not blocks:
         return True
+    label = f"{name} (local mode)" if local else name
     work = Path(tempfile.mkdtemp(prefix="triage-playbooks-"))
     servers = []
     try:
-        servers.append(Server(work, "source", KEY))
-        env = client_env(work, servers[0].url)
+        if local:
+            env = client_env(work, "")
+            del env["AGENT_FEEDBACK_URL"], env["AGENT_FEEDBACK_API_KEY"]
+            env["XDG_DATA_HOME"] = str(work / "data")
+        else:
+            servers.append(Server(work, "source", KEY))
+            env = client_env(work, servers[0].url)
         values = seed(env, work)
         script = prelude + "\n".join(blocks) + postlude
         if "<target-url>" in script:
             servers.append(Server(work, "target", TARGET_KEY))
-            values["target-url"] = servers[1].url
+            values["target-url"] = servers[-1].url
         script = PLACEHOLDER.sub(lambda match: values[match.group(1)], script)
         proc = subprocess.run(["bash", "-euo", "pipefail", "-c", script], env=env, cwd=work,
                               capture_output=True, text=True, timeout=120)
         if proc.returncode:
-            print(f"FAIL  {name} (exit {proc.returncode})\n--- page\n{text}\n--- script\n{script}\n"
+            print(f"FAIL  {label} (exit {proc.returncode})\n--- page\n{text}\n--- script\n{script}\n"
                   f"--- stdout\n{proc.stdout}\n--- stderr\n{proc.stderr}")
             return False
-        problems = effects(name, env, work, values)
+        problems = effects(name, env, work, values, proc.stdout, local)
         if problems:
-            print(f"FAIL  {name}\n" + "\n".join(f"  {problem}" for problem in problems)
+            print(f"FAIL  {label}\n" + "\n".join(f"  {problem}" for problem in problems)
                   + f"\n--- stdout\n{proc.stdout}\n--- stderr\n{proc.stderr}")
             return False
-        print(f"PASS  {name}")
+        print(f"PASS  {label}")
         return True
     finally:
         for server in servers:
@@ -539,15 +585,18 @@ def session_effects(env, work, harness, values, before, key=None):
     return problems
 
 
-def run_session_start(name, text, harness):
+def run_session_start(name, text, harness, local=False):
     """Run the session start's commands one line at a time over harness's golden store."""
     lines = start_lines(split_session(text)[0])
     work = Path(tempfile.mkdtemp(prefix="triage-playbooks-"))
     server, steps = None, []
-    label = f"{name} session start ({harness})"
+    label = f"{name} session start ({harness}{', local mode' if local else ''})"
     try:
-        server = Server(work, "source", KEY)
-        env = session_env(work, server.url)
+        if local:
+            env = session_env(work)
+        else:
+            server = Server(work, "source", KEY)
+            env = session_env(work, server.url)
         SESSION_STORES[harness](work)
         before = {s["ref"]: s["state"] for s in json.loads(run([BIN, "sessions", "list", "--json"], env, work))["sessions"]}
         values = {"harness": harness, "since": SINCE, "limit": "1"}
@@ -757,10 +806,12 @@ def main():
     print(f"PASS  structure of {len(texts)} playbooks, SKILL.md and reference/clustering.md")
     session = "playbooks/fix-it-session.md"
     queue_part = dict(texts, **{session: split_session(texts[session])[1]})
-    ok = all([run_page(name, text) for name, text in [("SKILL.md", skill), *queue_part.items()]])
-    ok = run_page("reference/clustering.md", clustering,
-                  prelude="DIGEST=$(agentfeedback digest --kind friction)\n",
-                  postlude="\nprintf '%s\\n' \"$DIGEST\" > digest-dir\n") and ok
+    ok = True
+    for local in (False, True):
+        ok = all([run_page(name, text, local=local) for name, text in [("SKILL.md", skill), *queue_part.items()]]) and ok
+        ok = run_page("reference/clustering.md", clustering,
+                      prelude="DIGEST=$(agentfeedback digest --kind friction)\n",
+                      postlude="\nprintf '%s\\n' \"$DIGEST\" > digest-dir\n", local=local) and ok
     harnesses = session_harnesses()
     for harness in harnesses:
         if harness not in SESSION_STORES:
@@ -768,6 +819,7 @@ def main():
             ok = False
             continue
         ok = run_session_start(session, texts[session], harness) and ok
+        ok = run_session_start(session, texts[session], harness, local=True) and ok
         ok = run_mcp_route(session, texts[session], harness) and ok
     return 0 if ok else 1
 
