@@ -197,6 +197,23 @@ that version. Rewrite the section's relative links to repo-root paths
 repository root, not `docs/`. Corrections to source
 need a new version; corrections to release prose need no new tag.
 
+## v4.2.1 — Go 1.27.3 and current dependencies
+
+Compatible with every 4.x client and server; the HTTP API stays `1.0` and
+nothing changes in behaviour. The binaries are built with Go 1.27.3 and the
+current stable releases of their modules (among them `modernc.org/sqlite`
+v1.61.0 and `prometheus/client_golang` v1.25.0), and the image's runtime
+base is refreshed. Releases are now cut with GoReleaser 2.19.0. Nothing to
+do on upgrade beyond installing the new binary.
+
+Verify the release as a downloader:
+
+```bash
+gh release download v4.2.1 --repo AgentFeedback/agentfeedback --pattern 'agentfeedback_*' --pattern SHA256SUMS --pattern install.sh
+sha256sum -c SHA256SUMS                                      # shasum -a 256 -c on macOS
+docker run --rm ghcr.io/agentfeedback/agentfeedback:4.2.1 version   # prints 4.2.1
+```
+
 ## v4.2.0 — The skill sets itself up; triage ships with the binary
 
 Compatible with 4.0.0 and 4.1.0 clients and servers; the HTTP API stays
