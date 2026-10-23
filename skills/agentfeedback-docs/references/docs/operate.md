@@ -69,7 +69,14 @@ A local write that fails (the database busy past its 5 s timeout, a full
 disk) is spooled like a failed send to a server: outcome `spooled`, exit 0,
 and the next client command delivers it at start, before its own work, as
 does `agentfeedback flush`. When the spool cannot be written either, the body
-is echoed on stderr and the command exits 1. Every spool entry records the
+is echoed on stderr and the command exits 1. `submit` spools the same way,
+with one stderr line naming the cause, when the local database does not open
+because it is busy or locked past the busy timeout (reason
+`local_database_busy`) or was written by a newer binary (reason
+`local_database_newer`: upgrade this binary and the next command delivers
+it). Any other open failure (a database without the AgentFeedback stamp, an
+unwritable data directory) is an `error` outcome with the body echoed on
+stderr, and the read commands report every open failure. Every spool entry records the
 destination it was written for, the server URL or `local`: `flush` sends an
 entry only to that destination and leaves the others in place, naming each
 with the command that sends it (`flush --server URL`, or `flush --local`), so
@@ -851,7 +858,8 @@ opens it (`serve` at startup, a local-mode command on its first request), and
 a binary older than the database's schema refuses it rather than writing rows
 the schema no longer expects: the command exits 1 with `database schema is
 newer than this binary supports`, and `client.jsonl` gets an `error` line
-whose reason starts with `schema_too_new`. Harness hooks log the same line and
+whose reason starts with `schema_too_new`; `submit` spools its report instead
+([Local mode](#local-mode-no-server)). Harness hooks log the same line and
 still exit 0, so a stale hook binary shows up only there and in
 `agentfeedback doctor`, which lists the binary each harness's hook runs, its
 version, and the `agentfeedback` on `PATH`, and reports a hook binary that is

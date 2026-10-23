@@ -338,3 +338,49 @@ func (c *Client) echoBody(why string, body []byte) {
 	_, _ = c.stderr.Write(body)
 	fmt.Fprintln(c.stderr)
 }
+
+// SpoolLocal keeps body in the spool bound to LocalDestination without a
+// Transport, for a submission the local database could not take because it
+// would not open. cfg needs DataDir and CacheDir; URL, APIKey and Transport
+// are not used. reason is the outcome's reason. The entry is due at once,
+// so the next local-mode command whose database opens delivers it. When
+// the spool cannot be written, the body is echoed on stderr and the outcome
+// is error spool_unwritable. Every outcome is appended to the client log.
+func SpoolLocal(cfg Config, body []byte, reason string) Outcome {
+	c := &Client{
+		dataDir: cfg.DataDir, cacheDir: cfg.CacheDir, now: cfg.Now, stderr: cfg.Stderr, version: cfg.Version,
+		destination: LocalDestination, local: true,
+	}
+	if c.now == nil {
+		c.now = time.Now
+	}
+	if c.stderr == nil {
+		c.stderr = io.Discard
+	}
+	prepared, kind, key, err := PrepareBody(body)
+	if err != nil {
+		o := Outcome{Outcome: OutcomeRejected, Reason: "invalid_body", Message: err.Error()}
+		c.echoBody(err.Error()+"; it was not sent", body)
+		c.Log(o)
+
+		return o
+	}
+	now := c.now()
+	o := Outcome{Outcome: OutcomeSpooled, Kind: kind, Key: key, Reason: reason, SessionID: SessionIDOf(prepared)}
+	e := c.newEntry(kind, key, prepared, now)
+	e.Attempts = 1
+	e.LastError = reason
+	if cfg.DataDir == "" {
+		err = errors.New("the data directory is not set")
+	} else {
+		err = c.writeEntry(SpoolDir(c.dataDir), newEntryName(now), e)
+	}
+	if err != nil {
+		o.Outcome, o.Reason = OutcomeError, "spool_unwritable"
+		o.Message = fmt.Sprintf("the spool directory %s is not writable (%v); fix its permissions and submit again", SpoolDir(c.dataDir), err)
+		c.echoBody(o.Message, prepared)
+	}
+	c.Log(o)
+
+	return o
+}

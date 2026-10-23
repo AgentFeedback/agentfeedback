@@ -225,7 +225,44 @@ func errLocalOpen(path string, err error) error {
 			"run agentfeedback export > records.ndjson with the newest binary, then the older binary's import records.ndjson into a new database"
 	}
 	e := failErr(fmt.Sprintf("the local database %s cannot be opened: %s", path, oneLine(err.Error())), next)
-	e.cause = err
+	e.cause = &localOpenError{path: path, err: err}
 
 	return e
+}
+
+// localOpenError marks the cause of errLocalOpen, so submit can tell a local
+// database that would not open from any other setup failure.
+type localOpenError struct {
+	path string
+	err  error
+}
+
+func (e *localOpenError) Error() string { return e.err.Error() }
+func (e *localOpenError) Unwrap() error { return e.err }
+
+// Reasons of a submission spooled because the local database would not open.
+const (
+	reasonLocalBusy  = "local_database_busy"
+	reasonLocalNewer = "local_database_newer"
+)
+
+// localOpenSpoolReason is the spool reason for err when it is a local
+// database that would not open because it was busy or locked past the busy
+// timeout (the driver's result code, never the message), or written by a
+// newer binary; "" for every other failure, a foreign database first.
+func localOpenSpoolReason(err error) (reason, path string) {
+	var lo *localOpenError
+	if !errors.As(err, &lo) {
+		return "", ""
+	}
+	switch {
+	case errors.Is(lo.err, store.ErrForeignDatabase):
+		return "", ""
+	case errors.Is(lo.err, store.ErrSchemaTooNew):
+		return reasonLocalNewer, lo.path
+	case store.IsBusyCode(lo.err):
+		return reasonLocalBusy, lo.path
+	}
+
+	return "", ""
 }

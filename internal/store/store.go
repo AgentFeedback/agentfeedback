@@ -106,7 +106,7 @@ func dsn(path string, immediate bool) string {
 		q.Set("_txlock", "immediate")
 	}
 
-	return "file:" + path + "?" + q.Encode()
+	return FileURI(path, q)
 }
 
 // Open opens (creating if needed) the database at path and migrates it forward
@@ -243,6 +243,16 @@ func sqliteCode(err error) (primary, full int, ok bool) {
 	code := serr.Code()
 
 	return code & 0xff, code, true
+}
+
+// IsBusyCode reports whether err carries the driver's SQLITE_BUSY or
+// SQLITE_LOCKED result code (extended codes included), found through
+// errors.As. Unlike IsBusy it never reads the message, so a path or other
+// text quoted in the error cannot make it true.
+func IsBusyCode(err error) bool {
+	primary, _, ok := sqliteCode(err)
+
+	return ok && (primary == sqlite3.SQLITE_BUSY || primary == sqlite3.SQLITE_LOCKED)
 }
 
 // IsBusy reports whether err is SQLite's "database is locked" failure: the

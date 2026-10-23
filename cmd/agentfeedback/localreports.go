@@ -12,6 +12,8 @@ import (
 	"net/url"
 	"os"
 	"strings"
+
+	"github.com/agentfeedback/agentfeedback/v4/internal/store"
 )
 
 // localReports is what a switch to a server found in the local database:
@@ -48,7 +50,7 @@ func readOnlyDSN(path string) string {
 	q.Set("mode", "ro")
 	q.Add("_pragma", "busy_timeout(5000)")
 
-	return (&url.URL{Scheme: "file", OmitHost: true, Path: path, RawQuery: q.Encode()}).String()
+	return store.FileURI(path, q)
 }
 
 // countLocalReports counts the reports in the data-directory database,

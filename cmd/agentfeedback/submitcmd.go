@@ -338,6 +338,11 @@ func (s *submitter) send(body []byte) (client.Outcome, error) {
 		return client.Valid(kind, key), nil
 	}
 	c, err := s.client()
+	if reason, path := localOpenSpoolReason(err); reason != "" {
+		if o, ok := s.spoolLocal(prepared, reason, path, err); ok {
+			return o, nil
+		}
+	}
 	if err != nil {
 		// The body may have come from stdin and is gone with this process:
 		// echo it for recovery, and keep the one-outcome-line contract.
@@ -351,6 +356,36 @@ func (s *submitter) send(body []byte) (client.Outcome, error) {
 	}
 
 	return c.Submit(context.Background(), prepared), nil
+}
+
+// spoolLocal keeps a submission the local database could not take because
+// it would not open (busy, or written by a newer binary) in the spool bound
+// to the local database, and names the cause on stderr; the next local-mode
+// command whose database opens delivers it. ok is false when the data or
+// cache directory cannot be resolved: the caller then reports err as before.
+func (s *submitter) spoolLocal(prepared []byte, reason, path string, err error) (client.Outcome, bool) {
+	data, derr := dataDir(os.Getenv)
+	if derr != nil {
+		return client.Outcome{}, false
+	}
+	cache, cerr := cacheDir(os.Getenv)
+	if cerr != nil {
+		return client.Outcome{}, false
+	}
+	if reason == reasonLocalNewer {
+		logSchemaTooNew(cache, err)
+	}
+	o := client.SpoolLocal(client.Config{DataDir: data, CacheDir: cache, Now: nowFunc, Stderr: s.stderr, Version: clientVersion().Version}, prepared, reason)
+	if o.Outcome != client.OutcomeSpooled {
+		return o, true
+	}
+	if reason == reasonLocalNewer {
+		fmt.Fprintf(s.stderr, "agentfeedback %s: the local database %s was written by a newer agentfeedback; upgrade this binary: the report is kept in the spool and delivered then\n", s.name, path)
+	} else {
+		fmt.Fprintf(s.stderr, "agentfeedback %s: the local database %s is busy (locked by another process past the busy timeout); the report is kept in the spool and delivered by the next command\n", s.name, path)
+	}
+
+	return o, true
 }
 
 // finish prints the outcome as the last stdout line and maps it to the exit

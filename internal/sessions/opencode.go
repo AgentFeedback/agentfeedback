@@ -17,6 +17,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agentfeedback/agentfeedback/v4/internal/store"
+
 	_ "modernc.org/sqlite" // database/sql driver "sqlite"
 )
 
@@ -168,11 +170,9 @@ func checkSchema(db *sql.DB) error {
 
 // opencodeDSN is the immutable DSN of the database at path, so no lock is
 // taken and no -wal or -shm file is opened or created. The path is
-// percent-encoded.
+// percent-encoded (store.FileURI).
 func opencodeDSN(path string) string {
-	p := (&url.URL{Path: filepath.ToSlash(path)}).EscapedPath()
-
-	return "file:" + p + "?immutable=1"
+	return store.FileURI(path, url.Values{"immutable": {"1"}})
 }
 
 // opencodeStat stats the database file and its -wal file; tests replace it.

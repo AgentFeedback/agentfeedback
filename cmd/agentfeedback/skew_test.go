@@ -101,14 +101,20 @@ func countSchemaTooNew(t *testing.T, cache string) int {
 	return n
 }
 
-// TestSchemaTooNew_Submit: submit keeps its client_setup outcome on stdout
-// and logs exactly one schema_too_new line instead of the generic one.
+// TestSchemaTooNew_Submit: submit spools the report for the local database
+// (outcome spooled, exit 0, a stderr line asking for an upgrade, nothing
+// echoed) and logs exactly one schema_too_new line besides the spooled one.
 func TestSchemaTooNew_Submit(t *testing.T) {
 	_, cache := isolate(t)
 	newerSchemaDB(t)
 	r := runCLI(t, "", "submit", "friction", "--summary", "skewed")
-	if !strings.Contains(r.stdout, `"reason":"client_setup"`) {
+	o := outcomeOf(t, r)
+	if r.code != 0 || o["outcome"] != "spooled" || o["reason"] != reasonLocalNewer ||
+		!strings.Contains(r.stderr, "written by a newer agentfeedback; upgrade this binary") || strings.Contains(r.stderr, "NOT persisted") {
 		t.Fatalf("%+v", r)
+	}
+	if d := spoolDestination(t); d != client.LocalDestination {
+		t.Fatalf("destination %q", d)
 	}
 	if n := countSchemaTooNew(t, cache); n != 1 {
 		t.Fatalf("%d schema_too_new lines: %v", n, hookLogLines(t, cache))
