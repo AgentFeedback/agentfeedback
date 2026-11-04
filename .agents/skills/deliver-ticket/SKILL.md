@@ -890,8 +890,8 @@ across template upgrades by the `adopt-deliver-ticket` skill.
 - **Deploy means release, then deploy.** The fleet host only runs published
   images, so Phase 11 cuts the release (`just release`, which runs the heavy
   gates in `just ci-full`) and then runs `scripts/deploy.sh <version>`. It
-  happens only when the owner says yes to the Phase 3 deploy question, which
-  names the version; that yes is the maintainer's release request that
+  happens only when the invocation asks for a deploy and the owner says yes to
+  the Phase 3 deploy question, which names the version; that yes is the maintainer's release request that
   `docs/releases.md` requires. Without it, the wrap-up states the release
   class the change needs (patch, minor or major) and that `main` is
   unreleased since the last tag. Never tag, publish or deploy otherwise.

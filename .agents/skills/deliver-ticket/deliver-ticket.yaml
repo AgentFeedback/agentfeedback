@@ -129,8 +129,8 @@ deploy:
   state: adopted               # release + deploy to the fleet host, only when the owner approves it for the run
   shape: container             # docker compose on the host over SSH (scripts/deploy.sh)
   target_class: prod           # the live service the whole fleet reports friction to
-  auto: false                  # Phase 3 asks every run; the yes names the version and is the maintainer's release request (docs/releases.md)
-  on_request: false            # a batch asks once at its interview either way; true would stop single-ticket runs from asking
+  auto: false                  # never automatic; a requested release asks in Phase 3, and the yes names the version and is the maintainer's release request (docs/releases.md)
+  on_request: true             # a single-ticket run defers unless the invocation says "deploy"; a batch asks once at its interview. A requested release still asks the Phase 3 deploy question, which names the version
   merge_deploys: false
   # .private/deploy.env (DEPLOY_REMOTE, DEPLOY_DIR) is sourced exactly as scripts/deploy.sh does, never printed
   previous_ref_command: "bash -c '[ -f .private/deploy.env ] && . .private/deploy.env; ssh -- \"$DEPLOY_REMOTE\" \"cd ${DEPLOY_DIR:-agentfeedback} && docker compose ps --format {{.Image}}\"'"
@@ -140,15 +140,15 @@ deploy:
     - "just release v<version> '<title>' <notes>"
     - "bash scripts/deploy.sh <version>"
   watch:
-    duration_minutes: 3
+    duration_minutes: 0         # one immediate verification pass, no timed watch
     health: "bash -c '[ -f .private/deploy.env ] && . .private/deploy.env; ssh -- \"$DEPLOY_REMOTE\" curl -fsS --max-time 5 http://127.0.0.1:8090/ready'"
-    logs: "bash -c '[ -f .private/deploy.env ] && . .private/deploy.env; ssh -- \"$DEPLOY_REMOTE\" \"cd ${DEPLOY_DIR:-agentfeedback} && docker compose logs --since <duration>m\"'"   # JSON lines (slog); errors carry \"level\":\"ERROR\"
+    logs: "bash -c '[ -f .private/deploy.env ] && . .private/deploy.env; ssh -- \"$DEPLOY_REMOTE\" \"cd ${DEPLOY_DIR:-agentfeedback} && docker compose logs --since 3m\"'"   # fixed 3m lookback (a zero-minute watch has no window); JSON lines (slog); errors carry \"level\":\"ERROR\"
     smoke: "bash -c '[ -f .private/deploy.env ] && . .private/deploy.env; ssh -- \"$DEPLOY_REMOTE\" \"cd ${DEPLOY_DIR:-agentfeedback} && docker compose ps --format {{.Image}}\"' | grep -qx '.*:<version>'"   # the host runs the released version
   rollback:
     - "bash scripts/deploy.sh <previous tag>"   # the tag of the image previous_ref_command recorded before the deploy
   cleanup: []                  # container shape: nothing local to clean up
   notes:
-    - "Phase 3 deploy question: propose the version from the release class of everything on main since the last tag (`git describe --tags --abbrev=0`; patch, minor or major per docs/releases.md) and a descriptive title, and ask whether to release and deploy it this run. A yes authorises exactly that version for this run; a no lands the change unreleased and the wrap-up names the release class it needs"
+    - "Deploys are on request: a single run defers (the ticket still reaches done and the wrap-up names the release class) unless the invocation says \"deploy\"; a batch asks once at its interview. A requested deploy asks the Phase 3 deploy question: propose the version from the release class of everything on main since the last tag (`git describe --tags --abbrev=0`; patch, minor or major per docs/releases.md) and a descriptive title, and ask whether to release and deploy it this run. A yes authorises exactly that version for this run; a no lands the change unreleased and the wrap-up names the release class it needs"
     - "Before the commands, follow docs/releases.md 'Cutting a release' steps 1 to 3: README stable link and the notes section in docs/releases.md, committed with `just ci` green and pushed; the notes file goes to a fresh `mktemp -d` directory outside the checkout (never .private/). Check `goreleaser --version` is the pinned one and `gh auth status` succeeds before starting; a missing prerequisite records the deploy as declined with the reason, it never improvises a release path"
     - "`just release` runs `just ci-full` (the heavy gates) on the tagged commit and builds, publishes and smoke-tests the image; a failure before the tag is pushed publishes nothing: stop, fix through the normal flow, ask again. Never delete or move a published tag or release"
     - "Release tags are immutable by policy, so the previous image tag is a safe rollback target; deploy.sh takes a tag, not a digest. Rollback redeploys the previous release on the host and leaves the bad release published; the fix ships as the next patch release"
@@ -158,6 +158,6 @@ deploy:
 policy:
   interview: always            # retain the standing plan interview
   merge: auto                  # auto | pause  (pause makes merge a stop for this project)
-  fix_forward: false           # a fix-forward would be another release; roll the host back to the previous release instead
+  fix_forward: true            # one fix-forward round with shortened gates; it ships as the next patch release, and failing that the host rolls back to the previous release
   notes:
     - "Review panel (owner's decision 2026-09-29): `fast` runs without a question. Ask in Phase 3 (recommend `default`; `pro` for auth, key or storage changes) ONLY when the change touches a high-blast-radius class: schemas/, docs/openapi.yaml, conformance/; internal/store/ or a migration; API-key or auth handling; scripts/release.sh, the justfile release or image recipes, Dockerfile; the CLI's collection and safety rules (pkg/collect, config narrowing, spool, hooks); the installer's writes into harness files. Docs-only and ticketless changes: one harness reviewer subagent, no panel. State the chosen panel in the plan either way"
