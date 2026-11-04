@@ -96,8 +96,8 @@ dockers_v2:
       "index,manifest:org.opencontainers.image.revision": "{{ .FullCommit }}"
       "index,manifest:org.opencontainers.image.licenses": MIT
 
-changelog:
-  disable: true
+# Keep changelog processing enabled: disabling it also discards --release-notes.
+# scripts/release.sh supplies the curated notes instead of a commit log.
 
 snapshot:
   version_template: "{{ .Version }}-snapshot"
@@ -106,7 +106,7 @@ release:
   github:
     owner: AgentFeedback
     name: agentfeedback
-  name_template: "{{ .Tag }}: {{ .Env.RELEASE_TITLE }}"
+  name_template: "{{ .Tag }} — {{ .Env.RELEASE_TITLE }}"
   prerelease: auto
   make_latest: "{{ not .Prerelease }}"
   mode: keep-existing

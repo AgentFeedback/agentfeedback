@@ -95,6 +95,9 @@ fi
 prerelease=false
 if [[ $tag == *-rc.* ]]; then prerelease=true; fi
 [ -n "${title//[[:space:]]/}" ] || die "a release title is required"
+[[ ! $title =~ ^[[:space:]]*v[0-9]+\.[0-9]+\.[0-9]+ ]] ||
+    die "pass the release title without a version prefix; the tag is added automatically"
+[[ $title != *$'\n'* && $title != *$'\r'* ]] || die "the release title must be one line"
 if [ ! -f "$notes" ] || ! grep -q '[^[:space:]]' "$notes"; then die "the notes file '$notes' is missing or empty"; fi
 notes=$(cd "$(dirname "$notes")" && pwd)/$(basename "$notes")
 
@@ -178,7 +181,7 @@ trap finish EXIT
 # or the archives stops here, and the local tag is removed on the way out.
 git tag -a "$tag" "$sha" -m "$tag: $title"
 tag_created=true
-goreleaser release --clean --skip=publish
+goreleaser release --clean --skip=publish --release-notes "$notes"
 check_sums dist/release "$version"
 cp dist/release/SHA256SUMS "$work/SHA256SUMS.local"
 # Both install playbooks, run in a clean container against the local build:
@@ -202,6 +205,10 @@ GITHUB_TOKEN=$token goreleaser release --clean --release-notes "$notes"
 state=$(gh release view "$tag" --repo "$repo" --json tagName,isDraft,isPrerelease --jq '"\(.tagName) \(.isDraft) \(.isPrerelease)"')
 [ "$state" = "$tag false $prerelease" ] ||
     die "release verification failed (tag draft prerelease: $state); inspect GitHub without moving the tag"
+[ "$(gh release view "$tag" --repo "$repo" --json name --jq .name)" = "$tag — $title" ] ||
+    die "the published release title differs from the requested title"
+[ "$(gh release view "$tag" --repo "$repo" --json body --jq .body)" = "$(cat "$notes")" ] ||
+    die "the published release notes differ from $notes"
 latest=$(gh api "repos/$repo/releases/latest" --jq .tag_name 2>/dev/null) || latest="(none)"
 if [ "$prerelease" = true ] && [ "$latest" = "$tag" ]; then die "pre-release $tag is marked latest; unmark it on GitHub"; fi
 if [ "$prerelease" = false ] && [ "$latest" != "$tag" ]; then die "$tag is not marked latest (latest is $latest)"; fi

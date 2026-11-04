@@ -75,13 +75,21 @@ flags.
    in the code holds it.
 2. Run `just ci`, commit, push `main`.
 3. Write the release notes to a file outside the checkout or under the
-   gitignored `.private/`.
+   gitignored `.private/`. Start with a short summary, then describe the
+   user-visible changes, compatibility and upgrade steps. Do not repeat the
+   release title in the body. Use absolute links to documents at the release
+   tag so older notes keep pointing to the matching documentation.
 4. Run the preflight, then publish:
 
    ```bash
    just release-check vX.Y.Z 'Release name' /path/to/notes.md
    just release vX.Y.Z 'Release name' /path/to/notes.md
    ```
+
+   Pass only the descriptive title, without `vX.Y.Z`: the command adds the
+   tag once, producing `vX.Y.Z — Release name`. A version-prefixed title is
+   rejected. GoReleaser's changelog processing must stay enabled: setting
+   `changelog.disable: true` discards even the supplied `--release-notes`.
 
    Both check the tag form, the GoReleaser version, that `install.sh`
    exists, that `origin` is this repository, a clean `main` equal to
@@ -107,8 +115,9 @@ flags.
    image (one multi-platform index under every tag above) and uploads the
    release, which stays a draft until every asset is up. The script
    verifies it as a downloader sees it: not a draft, flagged pre-release
-   exactly when the tag is one, `latest` exactly when it is stable, exactly
-   the assets above, `SHA256SUMS` byte-identical to the local build's,
+   exactly when the tag is one, `latest` exactly when it is stable, the
+   title and notes matching the supplied prose, exactly the assets above,
+   `SHA256SUMS` byte-identical to the local build's,
    `install.sh` identical to the committed one, and every downloaded archive
    and `install.sh` matching its `SHA256SUMS` line; then the image as a puller sees it: every tag names
    the same index, which holds `linux/amd64` and `linux/arm64`, and each
@@ -159,9 +168,10 @@ force-move or delete the published tag:
 - **No release, or a draft** (GoReleaser failed before publishing, the
   image push included; it runs before the release is created): on a
   clean checkout of the tagged commit, rerun GoReleaser with the same title.
-  It finds the draft by its name, `vX.Y.Z: <title>`, keeps its notes and
+  It finds the draft by its name, `vX.Y.Z — <title>`, keeps its notes and
   replaces any asset already uploaded with its byte-identical rebuild, and
-  pushes the image tags again:
+  pushes the image tags again. Use the name template from the tagged
+  configuration when recovering an older release:
 
   ```bash
   export GOTOOLCHAIN=$(awk '$1 == "toolchain" { print $2 }' go.mod) GORELEASER_CURRENT_TAG=vX.Y.Z RELEASE_TITLE='Release name'
@@ -192,10 +202,12 @@ force-move or delete the published tag:
 
 The notes file from step 3 is uncommitted, so it does not exist on another
 machine: recovering there means rebuilding it from this file's section for
-that version. Rewrite the section's relative links to repo-root paths
-(`api.md` to `docs/api.md`) — a release body resolves them against the
-repository root, not `docs/`. Corrections to source
-need a new version; corrections to release prose need no new tag.
+that version. Rewrite relative document links as absolute URLs under
+`https://github.com/AgentFeedback/agentfeedback/blob/vX.Y.Z/docs/`
+(including links to sections of this file). Corrections to source need a new
+version; corrections to release prose need no new tag. For prose-only repairs,
+use `gh release edit <tag> --repo AgentFeedback/agentfeedback --title '<tag> — <title>' --notes-file /path/to/notes.md`;
+leave tags, assets, pre-release status and the latest release unchanged.
 
 ## v4.2.1 — Go 1.27.3 and current dependencies
 
