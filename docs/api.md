@@ -6,6 +6,9 @@ remote MCP and discovery. This page is the narrative. The contract is
 [openapi.yaml](openapi.yaml), the JSON Schemas under [`schemas/`](../schemas)
 and the conformance kit under `conformance/` in the repository; they
 win wherever this page disagrees, and they hold the field-by-field tables.
+Hosted issue extensions are described [separately below](#hosted-issue-operations);
+the selected backend's served OpenAPI advertises their availability, not the
+bundled base contract.
 
 API version: **1.0**. Changes since 1.0 are listed under [Changes](#changes).
 
@@ -13,7 +16,7 @@ Contents:
 
 1. [Who needs HTTP](#who-needs-http)
 2. [Base URL, auth, common rules](#base-url-auth-common-rules)
-3. [Submissions](#submissions): envelope, identity, warnings
+3. [Submissions](#submissions): envelope, identity, warnings; [hosted issue operations](#hosted-issue-operations)
 4. Routes: [create](#create), [list](#list), [get](#get),
    [mark one](#mark-one), [mark a batch](#mark-a-batch), [redact](#redact),
    [stats](#stats), [export](#export), [import](#import),
@@ -26,7 +29,7 @@ Contents:
 ## Who needs HTTP
 
 The `agentfeedback` CLI and its stdio MCP tools (`agentfeedback mcp`) are the
-normal clients, and they need no server: in local mode they run the same
+normal base-API clients, and they need no server: in local mode they run the same
 handler in-process on the data-directory database
 ([operate.md](operate.md#local-mode-no-server)). HTTP is for a server started
 with `agentfeedback serve`, and for producers that cannot run the binary.
@@ -93,6 +96,47 @@ Example error, a key missing:
   "request_id": "02c20310252d79435a7d839aa39802e3"
 }
 ```
+
+## Hosted issue operations
+
+`agentfeedback issues` is a client of the hosted canonical issue service,
+not a new local grouping engine or an extension to the base six MCP tools.
+The base API 1.0 submission envelope, immutable source content, processing
+marks and import/export remain unchanged. For command syntax, bounded read
+filters, paging, mutation bodies and evidence rules, use
+[Canonical issues](operate.md#canonical-issues).
+
+| CLI operation | Required advertised HTTP operation |
+|---|---|
+| `issues list` | `GET /api/v1/issues` |
+| `issues rank` | `GET /api/v1/issues/rank` |
+| `issues detail <UUID>` | `GET /api/v1/issues/{issue_id}` |
+| `issues source-reports <UUID>` | `GET /api/v1/issues/{issue_id}/source-reports` |
+| `issues prompt <UUID>` | `GET /api/v1/issues/{issue_id}/prompt` |
+| `issues correct <UUID>` | `PATCH /api/v1/issues/{issue_id}` |
+| `issues merge <UUID>` | `POST /api/v1/issues/{issue_id}/merge` |
+| `issues split <UUID>` | `POST /api/v1/issues/{issue_id}/split` |
+| `issues record-outcome <UUID>` | `POST /api/v1/issues/{issue_id}/outcomes` |
+| `issues recheck <UUID>` | `POST /api/v1/issues/{issue_id}/recheck` |
+
+Before an issue operation, the CLI makes an authenticated
+`GET /api/v1/meta` using the selected destination and key, then reads
+`GET /api/v1/openapi.json`. Authentication, authorization, transport,
+service and discovery-document failures (including a missing OpenAPI
+document) remain those failures; they are never evidence that issues are
+unsupported. After successful discovery the exact path structure **and
+verb** must be advertised; path parameter names such as `{id}` and
+`{issue_id}` are equivalent. Recheck is gated independently of the other
+issue operations and is pending on the hosted service; support for prompt,
+correction or outcomes does not imply support for recheck.
+
+Local mode and the bundled self-hosted server advertise no issue routes
+and therefore report unsupported, not an empty issue set. The client never
+switches backends or synthesizes results from base submissions. An
+advertised route's `404 not_found` remains a not-found response, including
+unknown or foreign issue/source/evidence IDs; it does not revoke the
+capability. Hosted reads require a `read`-scoped key and mutations require
+`process`; the base self-hosted key model is unchanged.
 
 ## Submissions
 

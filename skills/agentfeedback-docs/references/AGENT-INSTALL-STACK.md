@@ -16,6 +16,12 @@ systemd user unit) or macOS (a launchd agent), or in Docker Compose on
 either; not on Windows. The server and the client end up on this machine;
 other machines join later with the client playbook.
 
+This stack serves the base API, not hosted canonical issue aggregation.
+Installing a newer client does not add those server routes. For that
+separate, capability-gated workflow, use
+[Canonical issues](docs/operate.md#canonical-issues); do not change the stack
+or select another destination to make an unsupported operation succeed.
+
 Placeholders, beyond the client playbook's: `<key_file>`,
 `<env_file>` and `<listen>` come from step S1's outcome, `<port>` is the
 port of `<listen>`, `<path>` and `next` come from step S2's outcome, and

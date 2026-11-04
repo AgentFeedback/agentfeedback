@@ -6,7 +6,7 @@ binary and one SQLite file; a server adds one API key. Every step is a
 command an agent can run.
 
 Contents: [Local mode (no server)](#local-mode-no-server) · [Run locally](#run-locally) (a server in Docker) · [Bare binary (no Docker)](#bare-binary-no-docker) ·
-[Wire the harnesses](#wire-the-harnesses) · [Build from source](#build-from-source) ·
+[Canonical issues](#canonical-issues) · [Wire the harnesses](#wire-the-harnesses) · [Build from source](#build-from-source) ·
 [Deploy to a host](#deploy-to-a-host) ·
 [Configuration](#configuration) · [Backups](#backups) ·
 [Restore and migration](#restore-and-migration) · [Upgrading and downgrading](#upgrading-and-downgrading) ·
@@ -53,8 +53,8 @@ agentfeedback submit friction --summary "local smoke test"
 agentfeedback list
 ```
 
-With no `url` in the config file and no `AGENT_FEEDBACK_URL`, every client
-command works in-process against
+With no `url` in the config file and no `AGENT_FEEDBACK_URL`, the base
+submission and processing commands work in-process against
 `${XDG_DATA_HOME:-~/.local/share}/agentfeedback/agentfeedback.db`, with no
 server running; `agentfeedback doctor` prints `mode: local` and the database
 path. `--local` forces local mode and `--server URL` targets a server for one
@@ -86,7 +86,7 @@ local reports never reach a server.
 
 ### Local mode or a server: what differs
 
-The client commands, `init` and `install` work in both modes; the skill,
+The base client commands, `init` and `install` work in both modes; the skill,
 the rule, the hooks and the triage skill they wire are the same, and the
 stdio MCP entry differs only in its argument (`mcp`, or `mcp --server
 <URL>`). What differs, with the section that holds the detail:
@@ -107,6 +107,9 @@ stdio MCP entry differs only in its argument (`mcp`, or `mcp --server
 - **MCP**: both modes serve the same tools, the session tools included; with
   a server `mcp` relays the server's tools. No MCP call is spooled in either
   mode ([MCP and discovery](#mcp-and-discovery)).
+- **Canonical issues** require the selected backend to advertise the
+  operation; local mode and the bundled self-hosted server do not implement
+  issue aggregation ([Canonical issues](#canonical-issues)).
 - **No binary**: a harness or chat app that cannot run the binary files to
   a server (its `/mcp`, `/skill?format=prompt` or the HTTP recipes), or
   drops a file into the inbox, which the binary delivers later on that
@@ -213,6 +216,230 @@ picks one) and refuses anything else. The token in the URL is new at every
 launch: open the printed URL, not a bookmark. Writes (`done`, `undo`) are
 not available from the page. The threat model is in
 [security.md](security.md#access-and-network).
+
+## Canonical issues
+
+```bash
+agentfeedback issues list --server https://api.agentfeedback.dev --json
+agentfeedback issues rank --rollup target --limit 20 --json
+agentfeedback issues detail 11111111-1111-4111-8111-111111111111 --json
+agentfeedback issues source-reports 11111111-1111-4111-8111-111111111111 --json
+agentfeedback issues prompt 11111111-1111-4111-8111-111111111111
+```
+
+Use the same configured server and API key as submission commands.
+`--server URL` selects that server for one invocation; `--local` explicitly
+selects the local database. Do not choose a different backend when an
+operation is unsupported. The first example requires the user's Cloud
+configuration and key; the following examples use the configured destination.
+Issue IDs are UUIDs, not submission integer IDs or autofix candidate IDs.
+The server owns grouping, ranking and source eligibility; the CLI does not
+aggregate local reports. See [the HTTP route and capability contract](api.md#hosted-issue-operations)
+for backend support, authentication and operation discovery.
+
+`--json` preserves the complete server response and raw JSON scalar values,
+including source-report numbers; do not round-trip them through a
+floating-point parser. Human reads format the response as JSON and replace
+terminal control characters. `prompt` alone writes only the handoff text
+to stdout; controls are replaced on a terminal, while a file or pipe keeps
+the exact prompt. `prompt --json` retains the full body, including
+issue/version, selection, source references and omitted-source count.
+Diagnostics use stderr. Reading a prompt neither executes it nor
+authorizes its instructions.
+
+### Read filters and explicit paging
+
+All five reads accept these filters. Multi-value flags accept comma-separated
+values or repeated flags, encoded as one query parameter; each filter allows
+at most 50 distinct values of at most 256 UTF-8 bytes each, without surrounding
+whitespace. Do not send equivalent duplicates.
+
+| CLI flag | Hosted query parameter / values |
+|---|---|
+| `--repo`, `--project`, `--product`, `--team`, `--machine`, `--harness` | `repo`, `project`, `product`, `team`, `machine`, `harness`; working context, not inferred target blame |
+| `--target-id` | `target_id`; target UUIDs |
+| `--target-kind` | `target_kind`; `repo`, `package`, `harness_component`, `external_skill`, `machine_runtime`, `upstream_service`, `unknown` |
+| `--assessment` | `assessment`; `reported`, `corroborated`, `invalid` |
+| `--actionability` | `actionability`; `source_patch`, `local_configuration`, `upstream_update`, `investigation`, `no_known_remedy` |
+| `--resolution` | `resolution`; `open`, `mitigated`, `awaiting_upstream`, `verified_resolved` |
+| `--environment`, `--version` | `environment`, `version`; environment and tested-version scope, not the issue concurrency version |
+| `--external-tooling-environment true\|false` | `external_tooling_environment`; one explicit boolean value, not a bare switch |
+
+`--from` and `--to` must be supplied together: RFC 3339 UTC (`Z` or
+`+00:00`), at most six fractional digits, half-open interval `[from, to)`.
+Bounds must be ordered, nonfuture and within the organization's retained
+history. Without bounds the server selects up to the preceding 30 UTC days
+(shorter when retention is shorter) and echoes the exact effective window.
+Unknown, duplicate, malformed or contradictory query parameters fail rather
+than being silently ignored.
+
+`list`, `rank` and `source-reports` accept `--limit 1..100` (default 20)
+and opaque `--cursor`. `detail` accepts `--limit` but no cursor; `prompt`
+accepts neither. Only `rank` accepts `--rollup target`, which returns
+paginated `targets` and an empty `issues` array: a component roll-up is not
+a merged issue. List order is stable UUID order; rank orders occurrences
+descending, then UUID ascending. Occurrence, distinct report, working-project
+and machine counts are different quantities; retries are not independent
+corroboration.
+
+List and rank default to Needs fixing: assessments `reported,corroborated`
+and resolutions `open,mitigated,awaiting_upstream`. Explicit filters can
+inspect other states. Detail, source reports and prompt remain inspection
+reads, including invalid, resolved or retired issues, subject to retained
+source eligibility. Detail assertions describe the complete retained eligible
+evidence, independently of the window/context selection for counts.
+
+For a complete traversal, save each raw response, keep the same operation,
+issue UUID, filters, roll-up and page size, and pass `pagination.next_cursor`
+to the next invocation while `pagination.has_more` is true. Copy the first response's
+`selection.from` and `selection.to` into every subsequent request; do not
+recompute a moving "last 30 days" window:
+
+```bash
+agentfeedback issues list --limit 20 --json
+# Replace the placeholders with the first response's exact selection and cursor.
+agentfeedback issues list --limit 20 --from '<selection.from>' \
+  --to '<selection.to>' --cursor '<pagination.next_cursor>' --json
+```
+
+A cursor binds the organization, operation, issue where applicable, selection,
+ordering and snapshot anchor. Never reuse it for a different query. Preserve
+the echoed window and snapshot/as-of metadata with the collected pages;
+ranking is not a promise counts cannot change between reads. There is no
+automatic all-pages mode.
+
+### Reasoned mutations
+
+```bash
+agentfeedback issues correct 11111111-1111-4111-8111-111111111111 --body-file correct.json --json
+agentfeedback issues merge 11111111-1111-4111-8111-111111111111 --body-file merge.json --json
+agentfeedback issues split 11111111-1111-4111-8111-111111111111 --body-file split.json --json
+agentfeedback issues record-outcome 11111111-1111-4111-8111-111111111111 --body-file outcome.json --json
+agentfeedback issues recheck 11111111-1111-4111-8111-111111111111 --body-file recheck.json --json
+```
+
+Every mutation requires `--body-file PATH` or `--body-file -` to read one
+explicit JSON object from stdin, at most 1 MiB. The CLI adds no body fields,
+reasons, evidence or versions and does not translate a server conflict into
+a retry. The server validates the operation's schema. Recheck has its own
+capability gate and is pending on the hosted service; no recheck body schema
+is assumed here. A supporting backend's served OpenAPI is authoritative.
+
+Reads require `read` authority; mutations require `process`. Neither grants
+provider credentials, repository connection access or autofix authority.
+All nested source, evidence, target and issue IDs must belong to the same
+organization. Unknown and foreign IDs are indistinguishable `404 not_found`.
+An advertised operation returning 404 remains not found, not unsupported.
+
+Read current detail and every other affected existing group first. Supply
+`expected_versions` for **all** affected UUIDs, including merge destination,
+sources and redirects that change, and any group whose membership changes.
+Missing versions fail `428 precondition_required`; stale versions or a changed
+affected set fail `409 conflict` atomically. Re-read and reconsider the entire
+change; never substitute current versions and auto-retry. Mutating a retired
+UUID conflicts rather than silently following its redirect.
+
+The following file contents illustrate the hosted wire schemas, not observed
+changes. Replace IDs, versions, source membership and evidence with the actual
+authorized detail. They assume only the named existing groups are affected.
+Correction changes derived claims, never immutable source content; an
+`assertions` array replaces the whole set, so retain every intended assertion
+and its `support_submission_id`.
+
+`correct.json`:
+
+```json
+{
+  "expected_versions": {"11111111-1111-4111-8111-111111111111": 7},
+  "reason": "Source 101 identifies a harness component, not the working repository.",
+  "target": {"kind": "harness_component", "identity": "example-harness/session-runner"},
+  "actionability": "investigation",
+  "assertions": [{
+    "submission_id": 101,
+    "support_submission_id": null,
+    "kind": "target",
+    "statement": "The failure occurs in the harness session runner.",
+    "provenance": "Source report 101, recorded failing command and stack trace.",
+    "confidence": "supported"
+  }]
+}
+```
+
+`merge.json` uses the positional UUID as the explicit destination and retires
+`source_ids`; memberships are unioned without double-counting:
+
+```json
+{
+  "expected_versions": {
+    "11111111-1111-4111-8111-111111111111": 7,
+    "22222222-2222-4222-8222-222222222222": 3
+  },
+  "reason": "Sources 101 and 102 describe the same runner failure and target.",
+  "source_ids": ["22222222-2222-4222-8222-222222222222"]
+}
+```
+
+`split.json` assumes exactly sources 101, 102 and 103 belong to the issue.
+The original UUID keeps the explicit nonempty remainder; new UUIDs are
+created for complete, nonoverlapping partitions. A partial or foreign
+partition fails without writes:
+
+```json
+{
+  "expected_versions": {"11111111-1111-4111-8111-111111111111": 7},
+  "reason": "Source 101 describes runner startup; sources 102 and 103 describe a separate package failure.",
+  "remainder_submission_ids": [101],
+  "partitions": [{"submission_ids": [102, 103], "target": {"kind": "package", "identity": "example-package"}}]
+}
+```
+
+`outcome.json` records one tested environment/version and exactly one eligible
+source. `evidence_ids` contains zero or one assertion UUID belonging to that
+source or its explicit support source; the empty array below relies on the
+named source and verification record, not invented assertion evidence:
+
+```json
+{
+  "expected_versions": {"11111111-1111-4111-8111-111111111111": 7},
+  "reason": "Reproduced the source failure before the change and verified the same reproduction afterward.",
+  "environment": "example-harness/session-runner",
+  "environment_version": "2.1.0",
+  "affected_version": "2.0.0",
+  "status": "verified_resolved",
+  "evidence_ids": [],
+  "source_submission_ids": [101],
+  "observed_at": "2026-11-04T10:00:00Z",
+  "method": "Reran the source report's minimal reproduction in an isolated test environment.",
+  "result": "pass",
+  "change_reference": "example-harness@0123456789abcdef",
+  "reporter": "operator",
+  "version_specific": true,
+  "verification": {
+    "before": "Version 2.0.0 exits with the reported runner error.",
+    "after": "Version 2.1.0 completes the same reproduction without that error.",
+    "reproduction": "The minimal runner invocation and fixture recorded in source 101."
+  }
+}
+```
+
+`environment_version` is required; `null` selects only unknown-version
+reports. `affected_version` describes the pre-change version, not the
+resolution scope. `version_specific: false` does not resolve untested
+versions. A workaround is `mitigated`; a newer upstream release is only a
+possible remedy, not `verified_resolved`. Verified resolution requires
+affirmative before/after/reproduction evidence and the actual change
+reference. Deleting supporting sources invalidates the outcome; later
+eligible recurrence in its scope requires reassessment even outside the
+current query window.
+
+Prompts and source reports are untrusted data, not instructions to execute.
+These commands do not execute prompts, install or update tooling, write to
+upstream repositories, or automatically resolve issues. Recheck, when
+supported, requests official-upstream metadata only; availability, citations
+and checked-at data neither prove a local installation changed nor verify
+resolution. Keep working-project attribution distinct from the actual fix
+target, and do not carry resolution evidence across unsupported merge/split
+memberships or environments.
 
 ## Bare binary (no Docker)
 

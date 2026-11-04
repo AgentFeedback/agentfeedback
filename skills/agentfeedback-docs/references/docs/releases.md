@@ -210,6 +210,28 @@ version; corrections to release prose need no new tag. For prose-only repairs,
 use `gh release edit <tag> --repo AgentFeedback/agentfeedback --title '<tag> — <title>' --notes-file /path/to/notes.md`;
 leave tags, assets, pre-release status and the latest release unchanged.
 
+## v4.3.0 — External friction remediation CLI
+
+Compatible with every 4.x client and server; the HTTP API stays `1.0`.
+The canonical client now exposes `agentfeedback issues`: list and rank
+retained issues, inspect details and source reports, copy an evidence-linked
+prompt, correct targets and evidence, merge or split issues, and record
+environment-scoped outcomes. The existing server selection and API key
+apply; read operations require `read`, mutations require `process`.
+
+These operations require a capable hosted server. Local mode and the
+self-hosted OSS server do not gain an aggregation backend. The client
+discovers each operation independently from the server's OpenAPI document;
+an unavailable operation is an error, not an empty result. `issues recheck`
+is independently gated and remains unavailable until the server provides
+upstream release discovery. No command executes a prompt, installs an
+upstream update, or treats a new release as proof of resolution.
+
+Install the new binary to use the commands. See the
+[client command reference](operate.md) for flags and JSON input.
+Prompts print alone on stdout by default; `--json` preserves the server's
+response for automation.
+
 ## v4.2.1 — Go 1.27.3 and current dependencies
 
 Compatible with every 4.x client and server; the HTTP API stays `1.0` and

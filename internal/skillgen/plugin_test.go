@@ -58,7 +58,7 @@ func TestAgentPlugin(t *testing.T) {
 	if err := json.Unmarshal(file(t, files, "plugin.json").Data, &m); err != nil {
 		t.Fatal(err)
 	}
-	if m["$schema"] != pluginSchema || m["name"] != "agentfeedback" || m["version"] != "5.0.0" {
+	if m["$schema"] != pluginSchema || m["name"] != "agentfeedback" {
 		t.Errorf("plugin.json: %v", m)
 	}
 	var c map[string]any

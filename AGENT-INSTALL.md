@@ -13,6 +13,11 @@ The client works locally by default: reports go to a database on this
 machine, with no server and no key. A server is used only when the human
 names one in step 1.
 
+Installing the client does not enable every backend operation or authorize
+issue processing. For the optional `agentfeedback issues` workflow after
+installation, use [Canonical issues](docs/operate.md#canonical-issues);
+it is not an installation step.
+
 Placeholders: `<URL>` is the server base URL the human gives you in step 1
 (none in local mode), `<binary>` is the binary's absolute path from step 2.1, `<harness>` is a name
 from step 2.3's list. Replace them before you run a command. Without `curl`,

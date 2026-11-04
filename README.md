@@ -68,6 +68,7 @@ preview, speaks the same API.
 | Give an agent the reference docs, schemas and OpenAPI document (integrate, operate) | [`skills/agentfeedback-docs/SKILL.md`](skills/agentfeedback-docs/SKILL.md) (installed by `agentfeedback install --docs`) |
 | Wire harnesses, run a server, back up, migrate | [`docs/operate.md`](docs/operate.md) |
 | Know what differs between local mode and a server | [`docs/operate.md#local-mode-or-a-server-what-differs`](docs/operate.md#local-mode-or-a-server-what-differs) |
+| Rank and remediate retained issues on a capable hosted server | [`docs/operate.md#canonical-issues`](docs/operate.md#canonical-issues) |
 | Uninstall the skills or the service | [`docs/operate.md#uninstall`](docs/operate.md#uninstall) |
 | Change the code | [`AGENTS.md`](AGENTS.md) then [`docs/develop.md`](docs/develop.md) |
 | Trust boundary and credentials | [`docs/security.md`](docs/security.md) |
@@ -82,7 +83,7 @@ AgentFeedback. A package of that name anywhere else, including the unrelated
 
 | Channel | Name | Status |
 |---|---|---|
-| GitHub Releases | [`AgentFeedback/agentfeedback` releases](https://github.com/AgentFeedback/agentfeedback/releases), assets in [`docs/releases.md`](docs/releases.md#assets) | from release 4.0.0 |
+| GitHub Releases | [`v4.3.0`](https://github.com/AgentFeedback/agentfeedback/releases/tag/v4.3.0), assets in [`docs/releases.md`](docs/releases.md#assets) | from release 4.0.0 |
 | Container image | `ghcr.io/agentfeedback/agentfeedback`, see [`docs/operate.md`](docs/operate.md#deploy-to-a-host) | from release 4.0.0 |
 | Go module | `github.com/agentfeedback/agentfeedback/v4`, built with `go install` ([`docs/operate.md`](docs/operate.md#build-from-source)) | from release 4.0.0 |
 | Homebrew | tap `agentfeedback/tap` (repository `AgentFeedback/homebrew-tap`) | planned |

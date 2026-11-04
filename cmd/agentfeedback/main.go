@@ -55,6 +55,7 @@ var commands = []command{
 	{"list", "list [filters] [--limit N] [--before-id N | --after-id N] [--include payload] [--all] [--json | --tsv]: list submissions, newest first", runList},
 	{"get", "get <id> [--json]: print one submission", runGet},
 	{"stats", "stats [filters] [--by a,b] [--top N] [--bucket day|week] [--json]: print aggregates", runStats},
+	{"issues", issuesSynopsis + ": read and triage canonical issues advertised by the selected server", runIssues},
 	{"done", "done <id>... --verdict V [--resolution R] [--ref REF] [--processed-by P]: mark submissions processed", runDone},
 	{"undo", "undo <id>...: clear the processing mark", runUndo},
 	{"redact", "redact <id>: replace a submission with its tombstone (not reversible)", runRedact},
