@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run the live HTTP contract suite (scripts/e2e.sh) against a fresh server on a
-# temporary database. Part of `just ci`; needs bin/agentfeedback from `just build`.
+# temporary database. Part of `just ci-full`; needs bin/agentfeedback from `just build`.
 #
 # Optional: E2E_ADDR   listen address, default 127.0.0.1:18080
 #           E2E_API_KEY key for the throwaway server, default gate-e2e-key

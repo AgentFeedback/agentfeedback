@@ -16,7 +16,7 @@ ready; landed changes never trigger one. An agent pushes a `v*` tag, creates a
 GitHub release or pushes an image (the steps below, recovery included) only
 when a maintainer asks for that version.
 
-Maintainers need Git, the tools `just ci` needs ([develop.md](develop.md)),
+Maintainers need Git, the tools `just ci-full` needs ([develop.md](develop.md)),
 GoReleaser 2.19.0 exactly (the `v2.19.0` archive from
 github.com/goreleaser/goreleaser/releases, or `brew install goreleaser` while
 2.19.0 is Homebrew's version; `just release` refuses any other version,
@@ -94,7 +94,8 @@ flags.
    Both check the tag form, the GoReleaser version, that `install.sh`
    exists, that `origin` is this repository, a clean `main` equal to
    `origin/main`, that the tag exists neither locally nor on `origin`, that
-   `gh` can push, `goreleaser check`, and `just ci`. The preflight then builds
+   `gh` can push, `goreleaser check`, and `just ci-full` (the release gate:
+   e2e, fuzz, contract and the live harness on top of the merge gate). The preflight then builds
    a snapshot of all six targets into `dist/release/`, checks that its
    `SHA256SUMS` lists exactly the six archives and `install.sh` and that
    every line matches (the `install.sh` line against the committed file),

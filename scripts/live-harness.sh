@@ -3,7 +3,7 @@
 # tests/ci/Dockerfile) against the agentfeedback binary built from this tree,
 # in a container with no network, a tmpfs HOME and nothing of the repository
 # mounted but the binary and tests/live/. tests/live/claude-code.sh holds the
-# assertions. Part of `just ci`; also `just live-harness`. Times out after
+# assertions. Part of `just ci-full`; also `just live-harness`. Times out after
 # AF_LIVE_TIMEOUT seconds (default 600).
 set -euo pipefail
 

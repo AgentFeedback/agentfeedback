@@ -147,8 +147,8 @@ export GOTOOLCHAIN GORELEASER_CURRENT_TAG=$tag RELEASE_TITLE=$title
 goreleaser check
 
 # There is no hosted CI: the gates run here, on the exact commit that is tagged.
-just ci
-[ -z "$(git status --porcelain)" ] || die "just ci left changes in the tree"
+just ci-full
+[ -z "$(git status --porcelain)" ] || die "just ci-full left changes in the tree"
 
 if [ "$check" = true ]; then
     trap remove_smoke EXIT

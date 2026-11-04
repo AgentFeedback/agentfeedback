@@ -53,21 +53,23 @@ conformance/                    the executable contract: decode fixtures, hash v
 
 Go toolchain and module versions are pinned in `go.mod`. Tools: `just`, `git`,
 `python3` and Docker on Linux, rootful and without user-namespace remapping
-(the gates run in containers as your uid, and the uid mapping assumes
-container uid equals host uid; `scripts/in-container.sh` refuses anything
-else; buildx for the image); everything else the gates call is in the
-toolchain image (`tests/ci/Dockerfile`). `just ci-host` and the bare recipes also need `go`,
-`shellcheck`, `uv`, `npx` and `jq` on the host. GoReleaser at the version
+(`just ci-full` and `just box` run in containers as your uid, and the uid
+mapping assumes container uid equals host uid; `scripts/in-container.sh`
+refuses anything else; buildx for the image); everything else those call is
+in the toolchain image (`tests/ci/Dockerfile`). `just ci` runs on the host
+and needs `go`, `shellcheck` and `jq` there; `just ci-host` and the other
+bare recipes also need `uv` and `npx`. GoReleaser at the version
 [releases.md](releases.md) pins, for the release step only, which also builds
 and pushes the image.
 
 ## Commands
 
 ```bash
-just ci             # the merge gate: ci-host inside the toolchain container, then just live-harness; there is no hosted CI
+just ci             # the merge gate, on the host: build, lint, unit tests, renders, docs; there is no hosted CI
+just ci-full        # the release gate: ci-host inside the toolchain container, then just live-harness; just release runs it
 just box <recipe|command> [args]  # run a recipe or a command inside the toolchain container: just box test, just box go test ./pkg/client; just box -- <command> for a command named like a recipe
 just live-harness   # the real Claude Code CLI against this tree's binary in a network-less container (tests/live/claude-code.sh)
-just ci-host        # every gate of "Verification before you are done", in order, on the host: for debugging, never the merge gate
+just ci-host        # just ci, then the heavy gates, on the machine it runs on (ci-full runs it in the container): bare on the host for debugging only
 just check          # gofmt, go vet, go mod tidy, build — the pre-commit gate
 just staticcheck    # staticcheck at the version pinned in the justfile
 just build-all      # CGO_ENABLED=0 cross-compile for linux, darwin, windows × amd64, arm64 into dist/<os>-<arch>/
@@ -201,9 +203,15 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
   only lists what would be sent.
 - **Triage is user-invoked only.** Keep `disable-model-invocation: true` and
   a description that forbids loading it from phrasing about the queue.
-- **Gates touch nothing outside the repository and Docker.** Run every
-  check as `just ci` or `just box <recipe>`, never as a bare recipe: `just
-  ci` and `just box` run in the toolchain container
+- **Two gate tiers.** `just ci` is the fast merge gate and runs on the host,
+  by the maintainer's choice: agents get feedback in seconds rather than
+  minutes, at the cost that it runs with the host's tools and can read the
+  host's files. `just ci-full` is the release gate (`just release` runs it;
+  run it before a deploy). Everything else that starts a server, a client
+  or a harness is in `ci-full`.
+- **The heavy gates touch nothing outside the repository and Docker.** Run
+  them as `just ci-full` or `just box <recipe>`, never as a bare recipe:
+  `just ci-full` and `just box` run in the toolchain container
   (`scripts/in-container.sh`), with the repository mounted read-write at its
   own path, the git directories read-only, `.private/`, `.kitchen/`,
   `.claude/` and `.env` files hidden, HOME and `/tmp` a tmpfs, caches in the
@@ -214,8 +222,8 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
   gate that runs a client or a harness gives it a fresh HOME and XDG
   directories and an empty environment (`env -i`). A check against a real
   harness runs in a network-less container from the same image, as `just
-  live-harness` does. Exceptions that run on the host: `just ci-host` and the
-  bare recipes (debugging only), `just playbooks`, which drives a privileged
+  live-harness` does. Exceptions that run on the host: `just ci`, `just
+  ci-host` and the bare recipes (debugging only), `just playbooks`, which drives a privileged
   systemd container (not a boundary that protects the host) and stages the
   release in a host temporary directory, and the release step
   ([releases.md](releases.md)), which publishes with the maintainer's
@@ -230,48 +238,57 @@ python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remo
 
 ## Verification before you are done
 
-`just ci` is the merge gate. It runs every step below, in this order,
-inside the toolchain container (items 1 to 15, the `ci-host` recipe), then
-item 16 in a network-less container, and stops at the first failure. Run a
+`just ci` is the merge gate: items 1 to 11 below, in this order, on the
+host, stopping at the first failure. `just ci-full` is the release gate: all
+of `just ci`, then items 12 to 16 (the `ci-host` recipe, items 1 to 15, inside
+the toolchain container, then item 16 in a network-less container). Run a
 single step with `just box <recipe|command>`. There is no hosted CI: `just
-ci` green on the tree that is merged is the gate, and the image is built
-and published by the release step ([releases.md](releases.md)).
+ci` green on the tree that is merged is the merge gate, `just ci-full` green
+on the tagged commit is the release gate, and the image is built and
+published by the release step ([releases.md](releases.md)).
 
-1. The container's Go is the `toolchain` line of `go.mod`.
+`just ci`:
+
+1. The Go toolchain is the `toolchain` line of `go.mod`.
 2. `just check` (gofmt, go vet, go mod tidy, build) clean, and it rewrote
    no file: commit what it changed.
 3. `just staticcheck` clean.
-4. `just build-all` builds every platform.
-5. No generated render has uncommitted edits, `just skills` leaves every
+4. No generated render has uncommitted edits, `just skills` leaves every
    checked-in render unchanged (the skills, the plugin bundle, both
    marketplace manifests, `docs/recipes/`), and `claude plugin validate
-   --strict` passes on `plugins/agentfeedback` and the repository root.
-6. `go test -race -count=1 ./...` green, which includes the CLI and MCP
+   --strict` passes on `plugins/agentfeedback` and the repository root
+   (skipped with a note when `claude` is not on the host's PATH).
+5. `go test -race -count=1 ./...` green, which includes the CLI and MCP
    coverage checks (`cmd/agentfeedback/coverage.toml`,
    `internal/mcp/coverage.toml`): an API change that leaves either stale
    fails here; and the root integration tests (`integrations.json`, the
    README table, the hub artifacts).
-7. `just fuzz`: the decoder on its seed corpus for 30 s. A crash it finds
-   is committed under `pkg/envelope/testdata/fuzz/FuzzDecode/` as a
-   regression seed beside the fix.
-8. `just e2e`: builds, serves on a temporary database, runs
-   `scripts/e2e.sh`, which fails on an `openapi.yaml` operation it does not
-   exercise and runs the curl recipe's bash blocks.
-9. `just e2e-local`: the client commands in local mode against a temporary
-   data directory, no server process.
-10. `shellcheck -x -P SCRIPTDIR skills/*/scripts/*.sh tests/skill/*.sh`.
-11. The skill tests: `bash tests/skill/run-tests.sh`,
-    `python3 tests/skill/test_cluster.py`,
-    `python3 tests/skill/triage-playbooks.py`.
-12. The playbook extractor and structure: `python3
-    tests/playbooks/test_playbooks.py` and `python3 scripts/playbooks.py
-    check`.
-13. `shellcheck -x scripts/*.sh tests/live/*.sh`.
-14. `just docs-check`: every relative link and `#anchor` in every Markdown
+6. `shellcheck -x -P SCRIPTDIR skills/*/scripts/*.sh tests/skill/*.sh`.
+7. The skill tests: `bash tests/skill/run-tests.sh`,
+   `python3 tests/skill/test_cluster.py`,
+   `python3 tests/skill/triage-playbooks.py`.
+8. The playbook extractor and structure: `python3
+   tests/playbooks/test_playbooks.py` and `python3 scripts/playbooks.py
+   check`.
+9. `shellcheck -x scripts/*.sh tests/live/*.sh`.
+10. `just docs-check`: every relative link and `#anchor` in every Markdown
     file resolves, rendered copies included, and the `README.md` and
     `AGENTS.md` route tables name every document
     (`docs/*.md`, `docs/recipes/*.md`, `docs/openapi.yaml`, both install
     playbooks, `llms.txt`) (`scripts/check-docs.py` and its tests).
+11. No gate changed the tree.
+
+`just ci-full` adds:
+
+12. `just build-all` builds every platform.
+13. `just fuzz`: the decoder on its seed corpus for 30 s. A crash it finds
+    is committed under `pkg/envelope/testdata/fuzz/FuzzDecode/` as a
+    regression seed beside the fix.
+14. `just e2e`: builds, serves on a temporary database, runs
+    `scripts/e2e.sh`, which fails on an `openapi.yaml` operation it does not
+    exercise and runs the curl recipe's bash blocks; then `just e2e-local`:
+    the client commands in local mode against a temporary data directory,
+    no server process.
 15. `just contract`: the schemas are valid 2020-12, every example in them,
     in `docs/openapi.yaml` and in [api.md](api.md) validates (an api.md
     example is the fenced block after an `<!-- example: <operationId> ... -->`
@@ -288,6 +305,9 @@ and published by the release step ([releases.md](releases.md)).
 
 Outside `just ci`, run before landing when the change calls for it:
 
+- `schemas/`, `docs/openapi.yaml`, `conformance/`, an api.md example or the
+  plugin manifest changed: `just box contract`.
+
 - A playbook command, the CLI or `install.sh` changed: the playbook gate,
   `just playbooks <tag> tree` (any release tag at or above the client's
   minimum version, built from the working tree; Docker), which runs every
@@ -303,8 +323,10 @@ Outside `just ci`, run before landing when the change calls for it:
 - A `go:embed` added or moved, or `Dockerfile` or `.dockerignore` changed:
   `just docker-build`.
 
-A change that adds a gate adds it to the `ci-host` recipe in the `justfile`
-and to the list above, in the same commit.
+A change that adds a gate adds it to the `ci` recipe (fast checks) or the
+`ci-host` recipe (anything that starts a server, a client or a harness, or
+takes more than a few seconds) in the `justfile`, and to the list above, in
+the same commit.
 
 ## Release
 

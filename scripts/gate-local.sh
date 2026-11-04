@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run the client commands in local mode: no url configured, every command
 # in-process against the data-directory database of a temporary XDG tree, no
-# server process. Part of `just ci`; needs bin/agentfeedback from `just build`.
+# server process. Part of `just ci-full`; needs bin/agentfeedback from `just build`.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

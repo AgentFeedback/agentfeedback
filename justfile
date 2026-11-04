@@ -108,35 +108,8 @@ e2e-local: build
 playbooks tag source="github" *flags:
     python3 scripts/playbooks.py run "$@"
 
-# The merge gate: every gate of ci-host inside the toolchain container, then the live Claude Code check. There is no hosted CI: this runs on the tree that merges, and touches nothing on the machine but the repository and Docker.
+# The merge gate: the fast checks (build, lint, unit tests, renders, docs) on the machine it runs on. Agents run it per change; it needs go, shellcheck, python3 and jq on PATH. The heavy gates are in ci-full.
 ci:
-    bash scripts/in-container.sh just ci-host
-    bash scripts/live-harness.sh
-
-# Run a recipe or a command inside the toolchain container: `just box test`, `just box go test ./pkg/client`; `just box -- <command>` when the command shares a recipe's name. Recipes that start containers themselves run on the host instead.
-[positional-arguments]
-box +args:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    case "$1" in
-        --) shift; exec bash scripts/in-container.sh "$@" ;;
-        ci|live-harness|playbooks|docker-build|release|release-check|box)
-            echo "just box: $1 starts its own containers; run just $1 on the host" >&2
-            exit 2 ;;
-    esac
-    for recipe in $(just --summary); do
-        if [ "$recipe" = "$1" ]; then
-            exec bash scripts/in-container.sh just "$@"
-        fi
-    done
-    exec bash scripts/in-container.sh "$@"
-
-# Install, list and uninstall the agentfeedback MCP entry, skill and hooks with the real Claude Code CLI in a network-less container, against a server on its loopback.
-live-harness:
-    bash scripts/live-harness.sh
-
-# Every gate in order on the host itself. For debugging only: `just ci` runs this inside the toolchain container and is the merge gate.
-ci-host:
     #!/usr/bin/env bash
     set -euo pipefail
     want=$(sed -n 's/^toolchain //p' go.mod)
@@ -159,7 +132,6 @@ ci-host:
         exit 1
     fi
     just staticcheck
-    just build-all
     if [ -n "$(git status --porcelain -- {{skill_renders}})" ]; then
         echo "just ci: a generated skill render has uncommitted edits; renders are never edited by hand: move the change into internal/skillgen/source" >&2
         git status --short -- {{skill_renders}} >&2
@@ -181,9 +153,6 @@ ci-host:
         echo "just ci: claude is not on PATH; claude plugin validate skipped (validate plugins/agentfeedback and the repository root by hand)" >&2
     fi
     go test -race -count=1 ./...
-    just fuzz
-    just e2e
-    just e2e-local
     shellcheck -x -P SCRIPTDIR skills/*/scripts/*.sh tests/skill/*.sh
     bash tests/skill/run-tests.sh
     python3 tests/skill/test_cluster.py
@@ -192,9 +161,53 @@ ci-host:
     python3 scripts/playbooks.py check
     shellcheck -x scripts/*.sh tests/live/*.sh
     just docs-check
-    just contract
     if [ "$(snapshot)" != "$before" ]; then
         echo "just ci: a gate changed the tree" >&2
+        git status --short >&2
+        exit 1
+    fi
+
+# The release gate: ci-host inside the toolchain container, then the live Claude Code check. `just release` runs it; run it before a deploy. Touches nothing on the machine but the repository and Docker.
+ci-full:
+    bash scripts/in-container.sh just ci-host
+    bash scripts/live-harness.sh
+
+# Run a recipe or a command inside the toolchain container: `just box test`, `just box go test ./pkg/client`; `just box -- <command>` when the command shares a recipe's name. Recipes that start containers themselves run on the host instead.
+[positional-arguments]
+box +args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "$1" in
+        --) shift; exec bash scripts/in-container.sh "$@" ;;
+        ci-full|live-harness|playbooks|docker-build|release|release-check|box)
+            echo "just box: $1 starts its own containers; run just $1 on the host" >&2
+            exit 2 ;;
+    esac
+    for recipe in $(just --summary); do
+        if [ "$recipe" = "$1" ]; then
+            exec bash scripts/in-container.sh just "$@"
+        fi
+    done
+    exec bash scripts/in-container.sh "$@"
+
+# Install, list and uninstall the agentfeedback MCP entry, skill and hooks with the real Claude Code CLI in a network-less container, against a server on its loopback.
+live-harness:
+    bash scripts/live-harness.sh
+
+# Every gate of ci-full but the live harness, on the machine it runs on: just ci, then the heavy gates. ci-full runs it in the toolchain container; bare on the host it is for debugging.
+ci-host:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    snapshot() { { git diff HEAD --; git ls-files --others --exclude-standard -z | { grep -zv '/$' || true; } | xargs -0 -r sha256sum; } | sha256sum; }
+    before=$(snapshot)
+    just ci
+    just build-all
+    just fuzz
+    just e2e
+    just e2e-local
+    just contract
+    if [ "$(snapshot)" != "$before" ]; then
+        echo "just ci-host: a gate changed the tree" >&2
         git status --short >&2
         exit 1
     fi

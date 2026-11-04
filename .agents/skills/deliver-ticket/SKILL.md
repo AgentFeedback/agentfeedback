@@ -711,16 +711,16 @@ across template upgrades by the `adopt-deliver-ticket` skill.
   to be one of those, stop and ask for a ticket to be filed.
 - **Unrefined ideas live in Kaneo's Backlog** (status `planned`). They are
   never delivered; ask the owner to refine one and move it to `to-do` first.
-- **Releases are not part of this flow.** Every delivered change must land
-  in a `vMAJOR.MINOR.PATCH` release (`docs/releases.md`), but cutting one is
-  the owner's call. The wrap-up states the release class the change needs
-  (patch, minor or major) and that `main` is unreleased since the last tag.
-  Never tag or publish a release unless the owner explicitly requests it.
-- **No live deployment from this skill.** Phase 11 builds and runs a local
-  verification container only. The real host is deployed by hand with
-  `scripts/deploy.sh`; that host is the service the fleet reports friction
-  to, so never run the script, never ssh to its target, and never read
-  `.private/`.
+- **Deploy means release, then deploy.** The fleet host only runs published
+  images, so Phase 11 cuts the release (`just release`, which runs the heavy
+  gates in `just ci-full`) and then runs `scripts/deploy.sh <version>`. It
+  happens only when the owner says yes to the Phase 3 deploy question, which
+  names the version; that yes is the maintainer's release request that
+  `docs/releases.md` requires. Without it, the wrap-up states the release
+  class the change needs (patch, minor or major) and that `main` is
+  unreleased since the last tag. Never tag, publish or deploy otherwise.
+  `.private/deploy.env` is only ever sourced by the sidecar's commands,
+  never read or printed.
 - **Live credential in the environment**: `AGENT_FEEDBACK_API_KEY` is the
   fleet service's key. Never echo it, never print the environment
   unfiltered, and use throwaway keys (`gate-e2e-key`, `verify-local-key`)
@@ -728,13 +728,13 @@ across template upgrades by the `adopt-deliver-ticket` skill.
 - **Skill discovery.** Canonical skills and the sidecar live under
   `.agents/skills/`; tracked relative links under `.claude/skills/` expose
   the same files to Claude Code without a machine-local installation.
-- **Deploy and watch are conditional.** Phases 11 and 12 run only when the
-  landed diff touches the server or the image (the path list in
-  `deploy.notes`); every other change skips them and the wrap-up says so.
-
+- **Fast merge gate, heavy release gate.** `just ci` (host) is the only
+  per-ticket gate, plus the conditional checks in `gates.notes`. E2E,
+  fuzz, contract and the live harness run in `just ci-full` at release time;
+  a ticket's own tests use fakes and test servers, per the repo's pattern.
 - **Local squash landing.** In Phase 10, follow `pr.notes`: squash-merge
-  the reviewed branch into main in the main checkout, then push main, not
-  the feature HEAD directly. Keep the template's merge/deploy gates and
+  the reviewed branch into main (in-place, so in the main checkout), then
+  push main, not the feature HEAD directly. Keep the template's merge/deploy gates and
   rulesets check. Verify the exact landing tree with `just ci`; re-run it
   after the squash when main moved. Record the pushed squash SHA as the
   delivery. Recovery uses the same configured landing path.

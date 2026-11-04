@@ -64,13 +64,13 @@ tracker:
     - "A comment body is capped at 10000 characters (createTaskComment 400 'Too big'). Plan and summary comments longer than that are posted in parts, split at a section heading and labelled (part N of M)"
 
 workspace:
-  mode: worktree               # worktree | in-place
+  mode: in-place               # worktree | in-place. Owner's choice: tickets run one at a time, so a branch in the main checkout; no worktrees
   remote: origin               # git@github.com:AgentFeedback/agentfeedback.git (PUBLIC)
   base_ref: origin/main
-  worktree_dir: .worktrees     # repository-ignored local worktrees
+  worktree_dir: null           # in-place mode
   branch_pattern: "<type>/<ticket>-<slug>"   # e.g. feat/AFDEV-12-envelope-schema; ticketless: <type>/<slug>. Types as in commit subjects: feat, fix, docs, refactor, test, chore
   setup:
-    - "just box go mod download"   # inside the toolchain container: nothing on the host but the repo and Docker
+    - "go mod download"        # just ci runs on the host, so the host's module cache is the one that matters
 
 plan:
   local_dir: "/tmp/agentfeedback-delivery-<unix_ts>" # create a unique directory; never commit plans
@@ -78,19 +78,20 @@ plan:
 
 gates:
   state: adopted
-  source: "justfile recipe `ci` (the only definition of the gates; there is no hosted CI since 2026-09-29); docs/develop.md#verification-before-you-are-done lists the same steps"
-  commands:                    # one command: the justfile ci recipe owns the complete gate sequence
+  source: "justfile recipes `ci` (merge gate, host) and `ci-host`/`ci-full` (release gate, container); there is no hosted CI. docs/develop.md#verification-before-you-are-done lists the same steps"
+  commands:                    # the fast merge gate only; the heavy gates run in `just release` (ci-full), see notes
     - "just ci"
   autofix:
-    - "just box fmt"
-    - "just box tidy"
+    - "just fmt"
+    - "just tidy"
   notes:
     - "`just ci` fails when `just check` rewrote a file (formatting, go.mod, go.sum). Apply the autofixers, then `git status --short` must show only files you intend to commit, including any rewrite just check made"
     - "Before `just ci`, when a change affects generated skill renders, edit the sources, run `just skills`, review and commit the source and render changes together using explicit paths. The render staleness gate rejects uncommitted renders. Apply this preparation to initial work, gate fixes and review fixes alike; it permits a local commit, never a push or merge before gates pass"
-    - "Every gate runs in Docker: `just ci` is ci-host inside the toolchain container (scripts/in-container.sh, image tests/ci/Dockerfile) then `just live-harness`; run single recipes or commands with `just box <recipe|command>`, never bare on the host (bare recipes and `just ci-host` are for debugging only). Gates bind no host port, so two deliveries' `just ci` may run at once in separate worktrees; never two runs in one tree. A gate failing only in the container on a tool version: pin the tool in tests/ci/Dockerfile, never fall back to ci-host. Live acceptance checks against a real harness use a network-less container like `just live-harness` (scripts/live-harness.sh, tests/live/), never the host's harness config"
+    - "`just ci` is the fast merge gate and runs on the host by the owner's choice (build, staticcheck, renders, unit tests, shellcheck, skill and playbook static tests, docs-check). The heavy gates (build-all, fuzz, e2e, e2e-local, contract, live-harness) run only in `just ci-full`, which `just release` runs: do not run them per ticket unless a conditional note below asks for one. Tests for a ticket follow the repo's pattern: unit tests with fakes and httptest servers; no new live end-to-end harness for a ticket"
     - "Docs touched: every relative link resolves (the develop.md docs gate; no command, check by reading)"
-    - "A ticket that adds a gate adds it to the justfile `ci` recipe and to docs/develop.md in the same change; this list stays `just ci`. Staticcheck and CLI/MCP coverage checks are already included (coverage checks run under `just test`)"
-    - "staticcheck and the six-target cross-build run inside `just ci` (`just staticcheck`, `just build-all`, since AFDEV-24); the staticcheck version is pinned in the justfile. Never use a locally installed staticcheck binary: one built with an older Go fails on the current toolchain's standard library"
+    - "A ticket that adds a gate adds it to the justfile `ci` recipe (fast) or `ci-host` (heavy) and to docs/develop.md in the same change; this list stays `just ci`. Staticcheck and CLI/MCP coverage checks are already in `just ci`"
+    - "A change to schemas/, docs/openapi.yaml, conformance/, an api.md example or the plugin manifest also runs `just box contract` before landing (needs uv and npx; the container has them)"
+    - "staticcheck runs inside `just ci` as `go run` at the version pinned in the justfile. Never use a locally installed staticcheck binary: one built with an older Go fails on the current toolchain's standard library"
     - "`just ci` runs only the static half of the playbook gate (extractor tests and `playbooks.py check`). A change to a playbook command, the CLI or install.sh also runs `just playbooks <tag> tree` before landing (Docker, privileged systemd container). With `tree` the tag only stamps the version into the build, and it must be at or above core.ClientMinVersion (4.0.0-rc.0 since v4): use `just playbooks v4.0.0-rc.0 tree`; `v3.0.0 tree` fails client step 3.1 with `too_old`"
     - "`just ci` never builds the Dockerfile (the release image uses prebuilt binaries). A change that adds a go:embed, moves an embedded file, or touches .dockerignore or Dockerfile also runs `just docker-build` before landing. Check .dockerignore's exclusions AND negated exceptions: docs/embed.go, docs/openapi.yaml, docs/*.md, docs/recipes/*.md and skills/agentfeedback/scripts/install.sh are currently re-included; other embedded files under excluded paths need their own exception"
     - "just contract pins @redocly/cli by version; npm's min-release-age on this machine refuses versions younger than 3 days, so bump the pin only to a release at least 3 days old"
@@ -106,9 +107,9 @@ pr:
   reviewers: []
   bots: []                     # nothing runs server-side
   notes:
-    - "Landing a change: with `just ci` green on the final tree of the worktree, in the MAIN checkout run `git checkout main && git pull --ff-only`, then `git merge --squash <branch>` and commit with the subject per title_pattern and a body that says what changed and why (no kitchen content, no Kaneo ids or URLs beyond the AFDEV label), then `git push origin main`. Record the pushed SHA as the delivery"
-    - "Nothing enforces anything server-side and there is no hosted CI: `just ci` green on the exact tree that is pushed is the only gate. Re-run it in the main checkout after the squash if main moved since the branch was cut"
-    - "Merging publishes nothing: the image is built and pushed only by the release step (docs/releases.md)"
+    - "Landing a change (in-place: the branch lives in the main checkout): with `just ci` green on the branch's final tree, run `git checkout main && git pull --ff-only`, then `git merge --squash <branch>` and commit with the subject per title_pattern and a body that says what changed and why (no kitchen content, no Kaneo ids or URLs beyond the AFDEV label), then `git push origin main`. Record the pushed SHA as the delivery"
+    - "Nothing enforces anything server-side and there is no hosted CI: `just ci` green on the exact tree that is pushed is the only merge gate. Re-run it after the squash if main moved since the branch was cut"
+    - "Merging publishes nothing: the image is built and pushed only by the release step, which Phase 11 runs when the deploy was approved (docs/releases.md)"
     - "The repository is public. Never publish private notes, credentials or ticket bodies"
     - "Commit messages must not use closing keywords against GitHub issues; the tracker is Kaneo"
 
@@ -125,34 +126,36 @@ review:
     - "Changes to the installer's writes into harness files"
 
 deploy:
-  state: substituted           # the real deployment (scripts/deploy.sh to the fleet service) is manual and out of scope; see notes
-  shape: pseudo-container
-  target_class: local
-  auto: true                   # local verification container only; nothing leaves this machine, so no deploy question
+  state: adopted               # release + deploy to the fleet host, only when the owner approves it for the run
+  shape: container             # docker compose on the host over SSH (scripts/deploy.sh)
+  target_class: prod           # the live service the whole fleet reports friction to
+  auto: false                  # Phase 3 asks every run; the yes names the version and is the maintainer's release request (docs/releases.md)
   merge_deploys: false
-  previous_ref_command: null   # pseudo-container: nothing to record, the code rollback is a revert commit on main
-  commands:                    # run from the main checkout on the updated main (the merged code); <sha> is the merge SHA
-    - "docker build -t agentfeedback:<sha> ."
-    - "docker rm -fv agentfeedback-verify 2>/dev/null; docker run -d --name agentfeedback-verify -e API_KEY=verify-local-key -p 127.0.0.1:18090:8080 agentfeedback:<sha>"
+  # .private/deploy.env (DEPLOY_REMOTE, DEPLOY_DIR) is sourced exactly as scripts/deploy.sh does, never printed
+  previous_ref_command: "bash -c '[ -f .private/deploy.env ] && . .private/deploy.env; ssh -- \"$DEPLOY_REMOTE\" \"cd ${DEPLOY_DIR:-agentfeedback} && docker compose ps --format {{.Image}}\"'"
+  commands:                    # from the main checkout on the updated main; <version> X.Y.Z, <title> and <notes> as agreed in Phase 3 (see notes)
+    - "just release-check v<version> '<title>' <notes>"
+    - "just release v<version> '<title>' <notes>"
+    - "bash scripts/deploy.sh <version>"
   watch:
-    duration_minutes: 1        # owner's decision 2026-09-29; the e2e gate already exercised the binary
-    health: "curl -fsS http://127.0.0.1:18090/ready && docker ps -q -f name=^agentfeedback-verify$ -f status=running | grep -q ."
-    logs: "docker logs --since <duration>m agentfeedback-verify"   # JSON lines (slog); errors carry \"level\":\"ERROR\"
-    smoke: "bash scripts/e2e.sh verify-local-key http://127.0.0.1:18090"   # the live contract suite against the built image
-  rollback: []                 # pseudo-container rollback uses cleanup below
-  cleanup:                     # ordered; partial failure, rollback and Phase 13
-    - "docker rm -fv agentfeedback-verify"
-    - "docker rmi agentfeedback:<sha>"
+    duration_minutes: 3
+    health: "bash -c '[ -f .private/deploy.env ] && . .private/deploy.env; ssh -- \"$DEPLOY_REMOTE\" curl -fsS --max-time 5 http://127.0.0.1:8090/ready'"
+    logs: "bash -c '[ -f .private/deploy.env ] && . .private/deploy.env; ssh -- \"$DEPLOY_REMOTE\" \"cd ${DEPLOY_DIR:-agentfeedback} && docker compose logs --since <duration>m\"'"   # JSON lines (slog); errors carry \"level\":\"ERROR\"
+    smoke: "bash -c '[ -f .private/deploy.env ] && . .private/deploy.env; ssh -- \"$DEPLOY_REMOTE\" \"cd ${DEPLOY_DIR:-agentfeedback} && docker compose ps --format {{.Image}}\"' | grep -qx '.*:<version>'"   # the host runs the released version
+  rollback:
+    - "bash scripts/deploy.sh <previous tag>"   # the tag of the image previous_ref_command recorded before the deploy
+  cleanup: []                  # container shape: nothing local to clean up
   notes:
-    - "CONDITIONAL (owner's decision 2026-09-29): run Phases 11 and 12 only for changes affecting the server or its image. Dockerfile, .dockerignore, cmd/, internal/, infra/, go.mod and go.sum are screening hints, not unconditional triggers or an exhaustive list: inspect the landed diff and shared dependencies or embedded assets for server impact. CLI-only changes skip both phases even under cmd/ or internal/; docs, skills, schemas and conformance changes skip only when they do not affect the server or image. Any server/image impact takes precedence in a mixed diff. Record why the phases ran or were skipped in the wrap-up; the separate pre-landing gates in gates.notes still apply"
-    - "Cleanup is `docker rm -fv agentfeedback-verify` (-v drops the anonymous /data volume) and `docker rmi agentfeedback:<sha>`. Read the logs before removing"
-    - "The image's binary is /opt/agentfeedback (the ENTRYPOINT), not on PATH: a client smoke inside the container is `docker exec -e AGENT_FEEDBACK_URL=http://127.0.0.1:8080 -e AGENT_FEEDBACK_API_KEY=verify-local-key -e XDG_CACHE_HOME=/tmp/c -e XDG_CONFIG_HOME=/tmp/cfg -w /tmp agentfeedback-verify /opt/agentfeedback submit friction --summary smoke`"
-    - "The container listens on 8080 inside (HTTP_LISTEN_ADDR default 0.0.0.0:8080); published on 127.0.0.1:18090 only. Port 18090 and the name are fixed: one deploy verification at a time per machine (the gates themselves bind no host port)"
-    - "NEVER run scripts/deploy.sh, and never ssh to DEPLOY_REMOTE. It deploys the live AgentFeedback service the whole fleet reports to; the v4 packages land incrementally and replace its API, so deploying mid-build would break every agent's reporting. Deploying is a manual release step for the owner"
+    - "Phase 3 deploy question: propose the version from the release class of everything on main since the last tag (`git describe --tags --abbrev=0`; patch, minor or major per docs/releases.md) and a descriptive title, and ask whether to release and deploy it this run. A yes authorises exactly that version for this run; a no lands the change unreleased and the wrap-up names the release class it needs"
+    - "Before the commands, follow docs/releases.md 'Cutting a release' steps 1 to 3: README stable link and the notes section in docs/releases.md, committed with `just ci` green and pushed; the notes file goes to a fresh `mktemp -d` directory outside the checkout (never .private/). Check `goreleaser --version` is the pinned one and `gh auth status` succeeds before starting; a missing prerequisite records the deploy as declined with the reason, it never improvises a release path"
+    - "`just release` runs `just ci-full` (the heavy gates) on the tagged commit and builds, publishes and smoke-tests the image; a failure before the tag is pushed publishes nothing: stop, fix through the normal flow, ask again. Never delete or move a published tag or release"
+    - "Release tags are immutable by policy, so the previous image tag is a safe rollback target; deploy.sh takes a tag, not a digest. Rollback redeploys the previous release on the host and leaves the bad release published; the fix ships as the next patch release"
+    - "Never print DEPLOY_REMOTE, the remote .env (it holds the fleet API_KEY) or the environment. Never run any other command on the host than the ones above"
+    - "AGENT_FEEDBACK_API_KEY in the environment is the fleet service's key: never echo it; local servers use throwaway keys (gate-e2e-key)"
 
 policy:
   interview: always            # retain the standing plan interview
   merge: auto                  # auto | pause  (pause makes merge a stop for this project)
-  fix_forward: true            # one fix-forward round with shortened gates before rolling back
+  fix_forward: false           # a fix-forward would be another release; roll the host back to the previous release instead
   notes:
     - "Review panel (owner's decision 2026-09-29): `fast` runs without a question. Ask in Phase 3 (recommend `default`; `pro` for auth, key or storage changes) ONLY when the change touches a high-blast-radius class: schemas/, docs/openapi.yaml, conformance/; internal/store/ or a migration; API-key or auth handling; scripts/release.sh, the justfile release or image recipes, Dockerfile; the CLI's collection and safety rules (pkg/collect, config narrowing, spool, hooks); the installer's writes into harness files. Docs-only and ticketless changes: one harness reviewer subagent, no panel. State the chosen panel in the plan either way"
