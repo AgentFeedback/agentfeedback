@@ -15,6 +15,16 @@ Harness-neutral: this is the only agent instructions file (no `CLAUDE.md` or
 Design records live in a private location; if `.kitchen/` is present in this
 checkout, read `.kitchen/AGENTS.md` first.
 
+Contributor skills are versioned under `.agents/skills/kaneo-cli/` and
+`.agents/skills/deliver-ticket/` (including its project sidecar); relative
+links under `.claude/skills/` expose the same copies to Claude Code.
+These are development workflows, not skills shipped by the product installer.
+A fresh clone needs no private planning files. Install `kaneo-cli` separately
+following its skill's pinned-version guidance, and configure your own authorized
+profile; credentials and instance URLs are never bundled. Delivery also needs
+the tools listed in `docs/develop.md`, plus `jq` and `gh`.
+The multi-model review skill is optional: delivery supports harness reviewers.
+
 This file is for agents **changing this repo**. To **use** AgentFeedback,
 read the [README](README.md): the binary, `agentfeedback init` and the
 generated [`agentfeedback` skill](skills/agentfeedback/SKILL.md), or

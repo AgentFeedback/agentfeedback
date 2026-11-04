@@ -52,8 +52,16 @@ local/
 vendor/
 /agentfeedback
 
-# Harness-local agent settings (Claude Code)
-.claude/
+# Keep local Claude settings private, but share repository skill discovery.
+/.claude/*
+!/.claude/skills/
+/.claude/skills/*
+!/.claude/skills/deliver-ticket
+!/.claude/skills/kaneo-cli
+
+# Local worktrees and skill adoption snapshots
+/.worktrees/
+/.agents/skills/*/*.pristine
 
 # internal planning, never published
 .kitchen/
