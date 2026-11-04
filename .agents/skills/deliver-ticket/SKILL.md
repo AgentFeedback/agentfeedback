@@ -2,11 +2,12 @@
 name: deliver-ticket
 # Folded block scalar, NOT a plain scalar: the text contains ": " and "#".
 description: >-
-  Deliver a AgentFeedback OSS ticket end-to-end in one run: read the ticket
-  (kaneo), move it to In Progress, plan and interview (unless the
-  project makes the interview conditional), implement, run the project's
-  quality gates, open a PR, run the multi-model review and address findings,
-  merge, deploy, watch the deployment, and mark the ticket Done. EXPLICIT
+  Deliver one AgentFeedback OSS ticket, or a batch of them, end-to-end in one
+  run: read the ticket (kaneo), move it to In Progress, plan and
+  interview (once per run), implement, run the project's fast quality gates,
+  run the multi-model review and address findings, land (PR or direct),
+  deploy once at the end when asked, verify the deployment, and mark the
+  ticket Done. EXPLICIT
   INVOCATION ONLY. Run it when the user invokes the deliver-ticket skill by
   name, in whatever syntax the harness uses for skills (a slash command, a
   skill mention, or plain words naming it). Do NOT trigger it from
@@ -18,7 +19,7 @@ license: MIT
 metadata:
   author: "foae"
   template: adopt-deliver-ticket
-  template_version: "1.6.1"
+  template_version: "1.7.0"
   adopted: "2026-09-27"
 ---
 
@@ -46,28 +47,44 @@ your harness's task list.
 capability; `skipped` and `impossible` turn them into no-ops that the wrap-up
 names. Tracker skipped: every ticket step is a no-op (as ticket-less mode).
 Gates skipped: Phase 6 is skipped and the delivery summary (and the PR body,
-if one exists) says so. PR skipped (personal repos only): Phases 7 to 10
-collapse into "review the local range against the base, then push to the base
+if one exists) says so. PR skipped (the default, no PR flow): Phases 7 to 10
+collapse into "review the local range against the base, then land on the base
 directly once Phase 10's gates pass". Deploy skipped or
 impossible: Phases 11 and 12 are skipped.
 
 ## Inputs
 
 - **Ticket reference**: the argument after the skill name. Either a tracker
-  ID (`ABC-123`, `#42`, `task-17`) or, when the sidecar allows ticket-less
-  mode (`tracker.ticketless`), a quoted task description. If absent, ask
-  before doing anything.
-- Extra text after the reference is a constraint to fold into the plan.
+  ID (`ABC-123`, `#42`, `task-17`), **a list of them** (`ABC-123, 124, 125`
+  or `ABC-123 ABC-124`: comma- or space-separated, where a bare number
+  takes the prefix of the nearest full ID before it), or, when the sidecar
+  allows ticket-less mode (`tracker.ticketless`), a quoted task description.
+  Two or more IDs make this a **batch run** (see "Batch runs" below). If
+  absent, ask before doing anything.
+- The reference ends at the first token that is neither an ID, a comma nor
+  a bare number directly following an ID; everything from there on is
+  constraint text to fold into the plan (`ABC-12 keep it to 2 files` is one
+  ticket plus a constraint, never a batch). In a batch run the constraint
+  applies to every ticket unless it names one.
 - Per-run overrides in plain words are honoured: "pause before merge",
-  "pause before deploy", "do not deploy", "skip the panel", "panel pro",
-  "interview me". A panel override ("panel pro", "panel fast", …) sets the
-  panel outright: Phase 3 neither asks about it nor replaces it with the
-  default. "Interview me" forces the Phase 3 interview when
-  `policy.interview` is `conditional`.
+  "pause before deploy", "do not deploy", "and deploy" (or "then deploy",
+  "deploy at the end"), "skip the panel", "panel pro", "interview me". A
+  panel override ("panel pro", "panel fast", …) sets the panel outright:
+  Phase 3 neither asks about it nor replaces it with the default.
+  "Interview me" forces the Phase 3 interview when `policy.interview` is
+  `conditional`. The deploy request is the one a `deploy.on_request`
+  project needs: it records `approved` for this run (when deploy is live),
+  is never implied, and counts only as its own instruction, never as the
+  word "deploy" inside a sentence about the change ("fix the deploy
+  script" requests nothing).
 - **The deploy decision** is recorded in the subtask list, first at Phase 0
   step 3 from any invocation override, so Phase 2 already sees a refusal.
   Values: `approved` (a yes, or `deploy.auto` true), `declined`, `pending`
-  (asked or paused, not yet answered) and `n/a` (deploy not live). A
+  (asked or paused, not yet answered), `deferred` (`deploy.on_request` is
+  true and nothing requested a deploy: the change lands, the deploy waits
+  for a later request, and the ticket still reaches done; `on_request` is
+  incompatible with `merge_deploys`, where the merge is the deploy, and the
+  checker rejects the pair) and `n/a` (deploy not live). A
   refusal ("do not deploy", "skip deployment", or a no to the deploy
   question) records `declined`. It persists for the whole run, overrides
   `deploy.auto` and "pause before deploy", is never asked again, and forbids
@@ -79,7 +96,8 @@ impossible: Phases 11 and 12 are skipped.
 
 - **One standing human checkpoint: the plan interview (Phase 3),
   unconditional unless `policy.interview` is `conditional`**, in which case
-  it runs only when Phase 3 step 0 finds something to decide. Other stops
+  it runs only when Phase 3 step 0 finds something to decide. It happens
+  once per run; a batch gets one interview for all its tickets. Other stops
   are conditional and listed in the gate policy below. Never add a stop that
   the policy does not name, and never skip one it does.
 - **Parallelise everything independent.** The parallel map below says what
@@ -93,8 +111,24 @@ impossible: Phases 11 and 12 are skipped.
   the repo's CI or agent instructions, the repo is authoritative and the
   conflict goes in the delivery summary.
 - **Pre-existing issues are yours.** A bug or smell in code you depend on is
-  fixed inline when small and safe, or raised at the next checkpoint with
-  file and line, never noted and stepped around.
+  fixed inline when small and safe (a quick win now spares the next agent
+  the same trap), or raised at the next checkpoint with file and line, never
+  noted and stepped around.
+- **The human is the exception, not the loop.** The ticket is expected to
+  carry every detail that matters; the plan interview is the one place to
+  settle what it does not. Afterwards, ask only when genuinely stuck, and
+  only after the self-unblocking options are exhausted: a mock or stub for
+  a missing collaborator, narrowing to the part that does not depend on the
+  open point, or a stated assumption recorded in the plan and the summary.
+  A question that a file, a test run or the ticket's comments can answer is
+  never asked. The stops the gate policy names (Phase 9's low-confidence
+  stop among them) remain; this rule governs everything outside them.
+- **Keep end-to-end tests simple.** Prove behaviour with unit and
+  integration tests that mock the collaborators the project does not own.
+  Write a true end-to-end test only when the repo already has an easy,
+  reproducible medium for one (a fixture stack, a recorded harness); a
+  change proven with mocks is done. The heavy end-to-end suites belong in
+  `deploy.gates`, which run once before a deploy, never per ticket.
 - **Never read secret-bearing files at all.** The sidecar lists them
   (`project.secret_paths`). Not `cat`, and not `grep` either: `grep API_KEY
   .env` prints the whole line, value included, straight into your context and
@@ -148,11 +182,13 @@ hardcoded here; the table shows where they go.
 | Gate | When it stops | Override |
 |---|---|---|
 | Ticket eligibility (Phase 0, Phase 3 for a blocked ticket) | When `tracker.states.ready` is set: ends the run, with a report and no state change, when the ticket is in none of `ready`, `in_progress`, `blocked` or `in_review`; is in `ready` with an unfinished blocker; the relation or comment reads `view` chains fail; or a `blocked` ticket's impediment is not confirmed cleared. With `ready` null none of this runs, and a failed `view` stops the run as in 1.4 | sidecar `tracker.states.ready` (null turns the check off) |
-| Plan interview (Phase 3) | Always when `policy.interview` is `always`; when `conditional`, only when Phase 3 step 0 finds a trigger | sidecar `policy.interview`; "interview me" |
+| Plan interview (Phase 3) | Always when `policy.interview` is `always`; when `conditional`, only when Phase 3 step 0 finds a trigger. In a batch run it happens **once**, for every ticket together, before the first ticket starts | sidecar `policy.interview`; "interview me" |
 | Required gate (Phases 6 and 9) | When a required gate cannot run on this machine and no CI check on the PR runs it (always the case when `pr.state` is skipped or impossible). A gate that runs and fails is fixed per Phase 6, never a stop | none |
 | Review-fix direction (Phase 9) | Only when a valid finding contradicts the agreed plan or your confidence is low | none |
 | Merge (Phase 10) | Stops when `policy.merge` is `pause`, or the user said "pause before merge". `pr.required_approvals` > 0 is a **wait**, not a stop | sidecar `policy.merge` |
-| Deploy (Phase 11, or before merge/push when `deploy.merge_deploys`) | `declined` skips deploy and watch without asking again (the ticket then does not reach done); with `merge_deploys` it ends the run before the merge/push instead. `approved` proceeds. `pending` (an unanswered question or a "pause before deploy" checkpoint) stops and asks once. A yes **is** the human authorisation this gate exists to obtain, for this run only; it never changes the sidecar | sidecar `deploy.auto`; a refusal overrides it |
+| Deploy (Phase 11, or before merge/push when `deploy.merge_deploys`) | `declined` skips deploy and watch without asking again (the ticket then does not reach done); with `merge_deploys` it ends the run before the merge/push instead. `deferred` (`deploy.on_request` with no request) skips them too, and the ticket does reach done. `approved` proceeds. `pending` (an unanswered question or a "pause before deploy" checkpoint) stops and asks once. A yes **is** the human authorisation this gate exists to obtain, for this run only; it never changes the sidecar. In a batch run the deploy happens once, after the last ticket lands | sidecar `deploy.auto`, `deploy.on_request`; a refusal overrides both |
+| Pre-deploy gates (Phase 11, or Phase 10 step 4 with `merge_deploys`) | A failing command in `deploy.gates` blocks the deploy. One fix-forward round is allowed when the cause is in this run's landed changes and the fix is small; otherwise the run ends with the change landed and the deploy not done, and the report says why | none |
+| Batch reconciliation (batch runs) | Only when the next ticket cannot proceed past a ticket this run blocked, and no self-unblocking option (a mock or stub, delivering the independent part, a recorded assumption) is attainable | none |
 | Review without a panel (Phase 8) | Stops when `multi-llm-review` is absent and either `review.allow_harness_fallback` is false or the harness has no reviewer subagent; asks whether to proceed on the harness's single review, wait, or skip | sidecar `review.allow_harness_fallback` |
 | Post-watch failure (Phase 12) | Never; the recovery procedure runs autonomously and reports. `policy.fix_forward` false skips the fix-forward round and rolls back at once | sidecar `policy.fix_forward` |
 
@@ -167,12 +203,80 @@ hardcoded here; the table shows where they go.
 
 Anything not in this table runs sequentially.
 
+## Batch runs
+
+Two or more ticket IDs in the invocation make a batch. The tickets are still
+delivered **one at a time**, each through its own branch, gates, review and
+landing, but the planning, the interview and the deploy happen once:
+
+1. **Intake for all** (Phase 0 steps 1 and 2, every ticket): resolve, read
+   and check the eligibility of each ticket before touching any. A ticket
+   that is not eligible is reported and dropped from the batch; it is not a
+   stop. A `blocks` relation whose source is an earlier ticket of the same
+   batch does not make the target ineligible: order the batch as typed,
+   except that such a ticket goes after its blocker, and re-check it when
+   its turn comes (a blocker that did not land makes it the reconciliation
+   case of item 3). The move to in progress (step 4) and Phase 1 happen per
+   ticket, when its turn starts. A ticket that already landed (`in_review`
+   resume) contributes no branch and waits for the batch deploy.
+2. **Pre-work and draft plans for all** (Phase 2), then **one interview**
+   (Phase 3; a batch always runs it, whatever `policy.interview` says)
+   covering every ticket: the plans, tightly; the genuine decisions per
+   ticket; the review panel per ticket (step 2's ladder: propose `fast` for
+   a simple change, `default` for ordinary work, `pro` or above for
+   sensitive or hard-to-reverse work, and say when one panel fits the whole
+   batch; a panel override in the invocation settles it for all); and the
+   deploy decision, asked **once** for the end of the batch (step 3,
+   including when `deploy.on_request` is true, where a no records
+   `deferred`, not `declined`: landing is done there) unless the invocation
+   already recorded it. Record every answer per ticket in the subtask list;
+   nothing later re-asks.
+3. **Deliver each ticket in order**: Phase 1 (branch off the updated base,
+   which now contains the previous ticket), Phase 4 (post its plan, re-read
+   against the code as it stands now), Phases 5 to 10, then Phase 13 step 3
+   (clean up the branch so the next ticket can start). Re-plan silently
+   when the landed tickets changed the ground; ask only on a genuinely new
+   decision, per the hard rule. A ticket that cannot be finished (a gate that
+   cannot pass, an impediment, a spec gap) is moved to `blocked` with the
+   Phase 0 step 4 comment and the batch continues with the next ticket:
+   first commit its work on its own branch (a plain commit the comment
+   names) and check out the base, so the next ticket starts from a clean
+   tree and never carries the blocked work into its own branch.
+   **Reconciliation stop**: when the next ticket cannot proceed past a ticket
+   this run blocked, first try to self-unblock (mock or stub the missing
+   piece, deliver the independent part, record an assumption); only when
+   none of that is attainable, stop and ask how to reconcile, naming both
+   tickets and what was tried. Never pass a blocked ticket's work off as
+   done.
+4. **Deploy once** (Phases 11 and 12) after the last ticket lands, from the
+   merged base, with `deploy.gates` first. A `declined` or `deferred`
+   decision skips both. **`merge_deploys` is the exception**: every landing
+   is a deploy, so the interview's single deploy decision applies to each
+   landing, Phase 10 step 4 and Phase 12 run after **each** ticket, and the
+   first Phase 10 step 4 capture of the batch is the rollback target for the
+   whole batch (later captures are notes). A `declined` there ends the run
+   at the first Phase 10, as in a single run.
+5. **Wrap up each ticket** (Phase 13 steps 1 and 2) once the deploy outcome
+   is known, so every summary names it; when no deploy runs this batch, do
+   it right after each ticket lands. For shape `pseudo-container`, run the
+   cleanup of Phase 13 step 3 once, after the batch's watch, since the
+   verification container exists only then. Then one report for the batch: a row
+   per ticket (landed SHA, ticket state, panel and its real coverage, blocked
+   or dropped with the reason), the deploy and verification result, and the
+   follow-ups.
+
+Subtasks: one per ticket per phase, so the harness's task list shows where
+the batch stands and which answers belong to which ticket.
+
 ---
 
 ## Phase 0: Intake
 
-1. Resolve the ticket reference against `tracker.id_pattern`: a match is a
-   ticket ID, anything else is free text for ticket-less mode. Free text
+1. Split the reference on commas and whitespace; expand a bare number with
+   the prefix of the nearest full ID before it (`ABC-12, 13` is `ABC-12`
+   and `ABC-13`). Resolve each piece against `tracker.id_pattern`: a match
+   is a ticket ID, anything else is free text for ticket-less mode (IDs and
+   free text do not mix; a batch is IDs only). Free text
    without a ticket ID is accepted only when `tracker.ticketless` is true;
    otherwise stop and ask for a ticket ID. When the tracker is live, run
    `tracker.commands.auth_probe` first. If it fails and
@@ -199,7 +303,8 @@ Anything not in this table runs sequentially.
    **Eligibility, when `tracker.states.ready` is set**, right after `view`
    and before any state change: deliver only a ticket in `ready` (a start)
    or in `in_progress`, `blocked` or `in_review` (a resume). Any other state
-   ends the run with a report and no state change. So does a `ready` ticket
+   ends the run with a report and no state change (in a batch: drops that
+   ticket and continues). So does a `ready` ticket
    that is the **target** of a `blocks` relation whose source is not done;
    relations where this ticket is the source are ignored. How to read
    relations is tracker-specific (`tracker.notes`). A failed read of the
@@ -210,10 +315,12 @@ Anything not in this table runs sequentially.
 2. Ticket-less mode (`tracker.ticketless` true and the argument is text): the
    argument is the ticket; every status transition and ticket comment below
    becomes a no-op and the delivery summary goes to the local plan file only.
-3. Create the subtasks, one per phase, and record the deploy decision:
-   `declined` or `pending` from an invocation override, `n/a` when deploy is
-   not live, `approved` when `deploy.auto` is true; otherwise Phase 3 step 3
-   sets it.
+3. Create the subtasks, one per phase (per ticket in a batch), and record
+   the deploy decision: `declined` or `pending` from an invocation override,
+   `approved` from a "deploy" request, `n/a` when deploy is not live,
+   `approved` when `deploy.auto` is true, `deferred` when `deploy.on_request`
+   is true and this is a single-ticket run with no request; otherwise
+   Phase 3 step 3 sets it.
 4. **Resuming** (eligibility found an in-flight state). Every move to
    `tracker.states.blocked`, wherever it happens, posts a comment naming
    (a) the phase to resume at and (b) the state the ticket left. On resume,
@@ -243,15 +350,17 @@ Anything not in this table runs sequentially.
 
 Per sidecar (`workspace`):
 
-- **worktree** mode: `git fetch <remote>` then create a worktree and branch
-  off `workspace.base_ref` under `workspace.worktree_dir`, named by
-  `workspace.branch_pattern`. Branch off the remote ref, never local `main`;
-  local `main` is often behind. All edits, builds and tests happen inside the
-  worktree. A fresh worktree has **no dependencies installed**; run
-  `workspace.setup` before anything else.
-- **in-place** mode: `git fetch`, then create the branch from
-  `workspace.base_ref` in the main checkout. Require a clean tree first; if
-  it is dirty, stop and ask.
+- **in-place** mode (the default: tickets run one at a time): `git fetch`,
+  then create the branch from `workspace.base_ref` in the main checkout,
+  named by `workspace.branch_pattern`. Branch off the remote ref, never
+  local `main`; local `main` is often behind. Require a clean tree first; if
+  it is dirty, stop and ask. Run `workspace.setup` only when it names
+  something the checkout lacks (a lockfile that moved on fetch).
+- **worktree** mode (only for projects that deliver in parallel): `git fetch
+  <remote>` then create a worktree and branch off `workspace.base_ref` under
+  `workspace.worktree_dir`, named by `workspace.branch_pattern`. All edits,
+  builds and tests happen inside the worktree. A fresh worktree has **no
+  dependencies installed**; run `workspace.setup` before anything else.
 - **Resume** (Phase 0 step 4): reuse the ticket's existing branch, and its
   worktree in worktree mode, instead of creating new ones. In-place, when
   the checked-out branch is already the ticket branch, skip the clean-tree
@@ -275,7 +384,8 @@ Per sidecar (`workspace`):
    the repo and its docs do not settle, or a point where your confidence is
    low; (b) the panel question fires (step 2); (c) a deploy question is due
    (step 3); (d) the ticket is `blocked` and its impediment must be
-   confirmed cleared (step 1); (e) the invocation says "interview me".
+   confirmed cleared (step 1); (e) the invocation says "interview me";
+   (f) the run is a batch.
    With `ask_panel_when` empty, trigger (b) always fires, so `conditional` saves a stop only alongside a non-empty list.
    When none holds, say so in one line, record the panel
    and the deploy decision (step 4), and continue to Phase 4; the plan
@@ -296,20 +406,30 @@ Per sidecar (`workspace`):
    installed `multi-llm-review` skill (`~/.agents/skills/multi-llm-review/SKILL.md`
    exists) defines (`fast`, `default`, `pro`,
    `ultra` as of template 1.1), recommendation first, based on blast radius
-   and reversibility, not diff size; `review.default_panel` is the
-   recommendation when nothing argues otherwise. Every seat runs, including
+   and reversibility, not diff size: `fast` for a simple, contained change,
+   `default` for ordinary work, `pro` or `ultra` for sensitive or
+   hard-to-reverse work (auth, data migrations, payments, deploy tooling);
+   `review.default_panel` is the recommendation when nothing argues
+   otherwise. Every seat runs, including
    the one matching your own model. If the skill is absent on
    this machine, say so and offer the fallback: independent reviewer
    subagents from the harness, ideally two with different models.
-3. **Deploy decision.** A recorded refusal (from the invocation) stays
-   `declined`: do not ask, and do not contact production. Otherwise, if the
+3. **Deploy decision.** A decision the invocation already recorded at
+   Phase 0 stands: a refusal stays `declined` (do not ask, and do not
+   contact production), a deploy request stays `approved` (do not ask
+   again, in a batch either). Otherwise, if the
    user said "pause before deploy" this run, record `pending` with that
    checkpoint: it forces a stop at the deploy gate no matter what
    `deploy.auto` says, and you skip the question below. Otherwise, if
    `deploy.auto` is false and deploy is live (`deploy.state` adopted or
    substituted, shape not `none`), ask now whether to deploy this run:
    record `approved` for a yes, `declined` for a no, and `pending` for no
-   answer, never approval. Phase 11 (or Phase 10) asks again only while the
+   answer, never approval. **`deploy.on_request` true changes one thing**:
+   a single-ticket run does not ask; unless the invocation recorded a
+   decision above (a request, a refusal, a pause), it is `deferred`, so a
+   conditional interview is not forced open by this step. A batch run asks
+   once regardless, for the end of the batch, and there a no is `deferred`
+   too. Phase 11 (or Phase 10) asks again only while the
    decision is `pending`, never an answered one: Phase 11 acts on the
    decision, and when `deploy.merge_deploys` is
    true so does Phase 10, because there the merge is the deploy. A
@@ -317,7 +437,7 @@ Per sidecar (`workspace`):
    (or the reviewed commits unpushed), and the report says why.
 4. Record every answer and invocation override verbatim in the subtask
    list, including the selected review panel, the deploy decision
-   (`approved`, `declined`, `pending` or `n/a`) with any pause checkpoint, and a
+   (`approved`, `declined`, `pending`, `deferred` or `n/a`) with any pause checkpoint, and a
    step-0 skip, so later phases read decisions from the subtasks and never
    from memory.
 
@@ -352,7 +472,10 @@ before `just ci`: its staleness gate requires committed renders. This is a
 local preparation commit, not permission to push or merge. The same ordering
 applies to gate fixes and Phase 9 review fixes. Phase 7 commits only remaining
 changes; do not create an empty commit.
-Apply
+These are the **fast** gates (unit tests, lint, typecheck, docs checks): the
+feedback loop every ticket pays for. The heavy ones (end-to-end suites,
+smoke runs, audits) live in `deploy.gates` and run once before a deploy,
+never here. Apply
 the autofixers in `gates.autofix` first when a gate fails on formatting or
 lint. Fix what the tooling surfaces; do not disable a check to pass it. If a
 gate cannot run on this machine (missing toolchain), you may rely on CI for
@@ -454,12 +577,21 @@ harness has none) and say so in the wrap-up.
 **With no PR flow** (`pr.state` skipped or impossible) the same gate
 ordering applies. In step 1 use the local HEAD SHA and the latest gate
 result (Phase 6, or Phase 9 if it re-ran) instead of the forge PR commands,
-but keep the rulesets check: it tells you whether the base accepts a direct
-push at all. Skip steps 2 and 6, which exist
-only for a PR; in step 5 land with a direct push of that SHA to `pr.base`
-instead of a PR merge. If the base moved, finish the rebase before taking
-the SHA and re-run the gates on the result. Never force-push over a
-concurrent update.
+and replace the rulesets check with `git push --dry-run <remote>
+HEAD:<base>`, which tells you whether the base accepts a direct push at all
+without needing a forge CLI. Skip steps 2 and 6, which exist
+only for a PR; in step 5 land locally per `pr.merge_strategy` and push
+`pr.base` instead of a PR merge, **in the workspace, never on local
+`<base>`** (in-place that branch is the user's and may be behind or dirty;
+in worktree mode it is checked out elsewhere): `git fetch <remote>` first,
+and if `<remote>/<base>` moved past the branch point, rebase the branch onto
+it and re-run the gates before going on. Then `squash` is `git checkout
+--detach <remote>/<base> && git merge --squash <branch> && git commit` with
+the subject from `pr.title_pattern`; `merge` is `git checkout --detach
+<remote>/<base> && git merge --no-ff <branch>`; `rebase` is the rebased
+branch itself. Push with `git push <remote> HEAD:<base>` and record the
+pushed SHA as the delivery; Phase 13 step 3 brings local `<base>` up to
+date. Never force-push over a concurrent update.
 
 0. **If `deploy.merge_deploys` is true, the merge (or push) is the
    deployment.** Apply the deploy gate now; there is no way to land without
@@ -499,6 +631,13 @@ concurrent update.
    before merge", stop here, present the merge command and the state you
    verified, and wait.
 4. **Immediately before merging**, when `deploy.merge_deploys` is true: run
+   `deploy.gates` on the tree about to land (Phase 11's pre-deploy gates).
+   Nothing has landed yet, so a failure is fixed **on the ticket branch**
+   when the fix is small and `policy.fix_forward` is true, with
+   `gates.commands`, one independent review of the fix and `deploy.gates`
+   re-run before merging; otherwise end the run here with the PR open (or
+   the commits unpushed) and the ticket unchanged, and report the failing
+   gate. Then run
    `deploy.previous_ref_command` and record the result, and capture the log
    baseline (`deploy.watch.logs` over the last `duration_minutes`). Last thing
    before the merge, so neither goes stale in an approval wait. Label it the
@@ -524,7 +663,9 @@ completed Phase 10 merge or push reaches this phase, and the deploy already
 happened there; go straight to Phase 12. Otherwise **a `declined` decision
 skips straight to Phase 13**: report "deployment declined for this run", do
 not ask again, and run no production reads, deploy, watch or rollback
-commands.
+commands. **A `deferred` decision skips to Phase 13 the same way**, with
+"landed, deployment deferred (on request)", and the ticket still reaches
+done. In a batch run this phase runs once, after the last ticket landed.
 
 - Gate: `approved` proceeds. Ask only when the decision is `pending` (an
   unanswered question, or a "pause before deploy" checkpoint, which applies
@@ -533,6 +674,20 @@ commands.
   `declined` and skips to Phase 13; no answer leaves `pending`: stop and
   wait with the ticket's state unchanged and the workspace retained,
   without entering Phases 12 or 13.
+- **Pre-deploy gates first.** From the merged base (checked out as the
+  bullet after next describes), run `deploy.gates` in order, once per run,
+  before the captures below so they do not go stale while the suites run
+  (with `merge_deploys`, Phase 10 step 4 does this instead). They are the
+  heavy suites (end-to-end, smoke, audits) that are too slow for every
+  ticket. A failure blocks the deploy. When the cause is in this run's
+  landed changes, the fix is small and `policy.fix_forward` is true, take
+  **one** fix-forward round: fix on a branch off the base, run
+  `gates.commands`, one independent review of the fix (as Phase 12 step 1
+  describes), land it through the configured landing path, and re-run
+  `deploy.gates`. Otherwise stop here: the change stays landed, nothing
+  deploys, the ticket stays in its current state, and the report names the
+  failing gate and its output. Never skip or trim a pre-deploy gate to get
+  a deploy through.
 - **Before** deploying, unless the shape is `pseudo-container`: run
   `deploy.previous_ref_command` and record the result so rollback has an
   explicit target. **Keep the first one**: label it the *pre-ticket* target
@@ -563,8 +718,15 @@ commands.
 
 ## Phase 12: Watch
 
-Watch for `deploy.watch.duration_minutes` (default 3). Pass criteria, all of
-which must hold:
+Watch for `deploy.watch.duration_minutes` (default 3). **Zero means one
+immediate verification pass**: run the health check, read the logs once
+(the log command's own lookback is not a wait) and run the smoke, right
+after readiness, with no sleep or poll; when health and smoke are the same
+command, run it once for both. With zero, the pre-deploy baseline and the
+post-deploy read both use the log command's own fixed lookback, so that
+command must carry one (`--since 3m`, not `--since <duration>m`), or both
+reads come back empty and the log check passes without looking.
+Pass criteria, all of which must hold:
 
 - `deploy.watch.health` succeeds (an HTTP check, a rollout status, a
   container staying up);
@@ -605,7 +767,12 @@ which must hold:
      original.
      Reverting the original first conflicts with the fix that builds on it,
      and a partial revert leaves the broken original restored. Close an
-     unmerged fix PR with a comment; it needs no revert.
+     unmerged fix PR with a comment; it needs no revert. **In a batch**, "what
+     actually landed" is every ticket this run landed: revert them all,
+     newest first (the fix, then each ticket in reverse landing order), so
+     the base matches the pre-batch revision the rollback restored; their
+     branches are already gone (batch item 3), and the landed commits on the
+     base are what the reverts target.
    - **Do not revert twice.** When `deploy.merge_deploys` is true the rollback
      recipe *is* this revert, landed through the configured path, plus a
      sync, so run it once: the revert lands,
@@ -619,7 +786,8 @@ which must hold:
      skipping it leaks a worktree and containers. Every other shape keeps
      the workspace and branch for the human.
    - Move the ticket back to in progress with a comment stating what broke,
-     what was tried, and the current state. Stop with a full report.
+     what was tried, and the current state; in a batch, every reverted
+     ticket, each with the same comment. Stop with a full report.
 3. Never attempt a second fix-forward round.
 
 **When `pr.state` is not live**, the same procedure runs without PRs: the
@@ -630,9 +798,11 @@ than a revert PR. Nothing else changes.
 ## Phase 13: Done and wrap-up
 
 Enter this phase only after the change has landed and the deploy and watch
-have passed or were explicitly skipped or `declined`. A `pending` decision,
-or a `declined` one with `merge_deploys` (which ends the run at Phase 10),
-never reaches this phase.
+have passed or were explicitly skipped, `declined` or `deferred`. A `pending`
+decision, or a `declined` one with `merge_deploys` (which ends the run at
+Phase 10), never reaches this phase. In a batch run, steps 1 and 2 wait for
+the batch's deploy outcome (or run right after landing when no deploy runs
+this batch), while step 3 runs as soon as each ticket lands.
 
 1. Post the delivery summary as a ticket comment: what landed (PR, merge
    SHA), approach, review findings fixed and acknowledged, deploy and watch
@@ -641,7 +811,8 @@ never reaches this phase.
    during the run as its own ticket in `backlog`, never in `ready`, with
    only what is known, and name its key in the summary; otherwise list the
    follow-ups in the summary only. A `declined` deploy makes the summary
-   say "landed, deployment declined". **Repo-backed tracker**: the comment
+   say "landed, deployment declined", a `deferred` one "landed, deployment
+   deferred (on request)". **Repo-backed tracker**: the comment
    is a file edit too, so write it in the main checkout on the updated base
    and land it in the same one-file commit as the done state below. Write the same summary to the plan
    artifact when it lives outside the workspace; a committed plan file
@@ -649,7 +820,9 @@ never reaches this phase.
    PR description.
 2. **Not when the deploy was `declined`**: the ticket stays in its current
    state (`in_review` when the tracker has it, otherwise unchanged), and the
-   wrap-up says so; go to step 3. Otherwise move the ticket to done:
+   wrap-up says so; go to step 3. A `deferred` deploy is not a refusal
+   (landing is the definition of done where deploys are on request), so it
+   takes the normal path. Otherwise move the ticket to done:
    `tracker.commands.close` when the sidecar defines
    one (trackers where done is a distinct operation rather than another state,
    such as GitHub and GitLab issues), otherwise `tracker.commands.set_state`
@@ -666,7 +839,10 @@ never reaches this phase.
    about to remove.
 3. Clean up, **only after every record above is persisted** (ticket comment
    posted, done state landed or deliberately withheld, plan file outside
-   the workspace). Per
+   the workspace). In a batch this step runs as soon as the ticket lands,
+   before steps 1 and 2, which wait for the batch's deploy outcome; the
+   plan file is already outside the workspace or committed, so nothing is
+   lost. Per
    `workspace.mode`:
    - **worktree**: `git -C <main> worktree remove --force <path>`, then
      delete the branch with `-D` (a squash-merged branch is not an ancestor
@@ -728,14 +904,4 @@ across template upgrades by the `adopt-deliver-ticket` skill.
 - **Skill discovery.** Canonical skills and the sidecar live under
   `.agents/skills/`; tracked relative links under `.claude/skills/` expose
   the same files to Claude Code without a machine-local installation.
-- **Fast merge gate, heavy release gate.** `just ci` (host) is the only
-  per-ticket gate, plus the conditional checks in `gates.notes`. E2E,
-  fuzz, contract and the live harness run in `just ci-full` at release time;
-  a ticket's own tests use fakes and test servers, per the repo's pattern.
-- **Local squash landing.** In Phase 10, follow `pr.notes`: squash-merge
-  the reviewed branch into main (in-place, so in the main checkout), then
-  push main, not the feature HEAD directly. Keep the template's merge/deploy gates and
-  rulesets check. Verify the exact landing tree with `just ci`; re-run it
-  after the squash when main moved. Record the pushed squash SHA as the
-  delivery. Recovery uses the same configured landing path.
 
