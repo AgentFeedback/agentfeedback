@@ -123,6 +123,7 @@ func TestMcp_ContextFromFiles(t *testing.T) {
 		env := cfProcessWorld(t)
 		cs, _ := mcpProcess(t, env)
 		sub := toolText(t, cs, "submit_feedback", cfArgs(t, "claude-code:s1#u-3", 0))
+		requireMcpFiledMarker(t, env, "s1")
 		if sub["submission"].(map[string]any)["key"] != wantKey {
 			t.Fatalf("stored %+v", sub)
 		}
@@ -136,6 +137,7 @@ func TestMcp_ContextFromFiles(t *testing.T) {
 		env := cfProcessWorld(t, envURL+"="+url, envAPIKey+"="+testKey)
 		cs, stderr := mcpProcess(t, env)
 		sub := toolText(t, cs, "submit_feedback", cfArgs(t, "claude-code:s1#u-3", 0))
+		requireMcpFiledMarker(t, env, "s1")
 		id := int64(sub["submission"].(map[string]any)["id"].(float64))
 		if rec, err := svc.Get(context.Background(), id); err != nil || rec.Key != wantKey {
 			t.Fatalf("row on the server: %+v %v", rec, err)

@@ -40,8 +40,16 @@ func TestCaptureCommandsSharePolicyCache(t *testing.T) {
 	if r.code != 0 || init.Capture.State != "enabled" || strings.Contains(r.stderr, "sessions: this org") {
 		t.Fatalf("init: %+v", r)
 	}
-	policy, err := capturePolicy(os.Getenv, modeFlags{}, fileConfig{})
-	if err != nil || policy.LastNoticeVersion != "" {
+	path, err := configPath(os.Getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, _, err := loadFileConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, err := capturePolicy(os.Getenv, modeFlags{}, file)
+	if err != nil || policy.State != capture.Enabled || policy.LastNoticeVersion != "" {
 		t.Fatalf("JSON init marked notice: %+v, %v", policy, err)
 	}
 	for _, args := range [][]string{{"doctor", "--json"}, {"sessions", "status", "--json"}} {
@@ -185,7 +193,7 @@ func TestCaptureNoticePersistence(t *testing.T) {
 						t.Fatalf("short write: %v", err)
 					}
 				} else if command != "init failure" && err != nil {
-					t.Fatal(err)
+					t.Fatalf("%v\nstdout: %s\nstderr: %s", err, out.String(), stderr.String())
 				}
 				current, loadErr := capturePolicy(os.Getenv, modeFlags{}, fileConfig{})
 				if loadErr != nil {

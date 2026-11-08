@@ -69,11 +69,11 @@ func FiledMarkerPath(cache, sessionID string) string {
 	return filepath.Join(FiledDir(cache), hex.EncodeToString(sum[:])[:32])
 }
 
-// markFiled creates the session's filed marker when o is a friction report
+// MarkFiled creates the session's filed marker when o is a friction report
 // of a session that was submitted, found a duplicate, spooled or flushed.
 // Each filing refreshes the marker's time. A failure is ignored: the marker
 // only quiets a hook's note.
-func markFiled(cache string, o Outcome) {
+func MarkFiled(cache string, o Outcome) {
 	if o.Kind != "friction" || o.SessionID == "" {
 		return
 	}
@@ -110,7 +110,7 @@ func LogTo(cache string, o Outcome, now time.Time, stderr io.Writer) {
 	if err := appendLog(cache, o, now, stderr); err != nil {
 		fmt.Fprintf(stderr, "agentfeedback: warning: cannot write the client log %s (%v)\n", LogPath(cache), err)
 	}
-	markFiled(cache, o)
+	MarkFiled(cache, o)
 }
 
 func appendLog(cache string, o Outcome, now time.Time, stderr io.Writer) error {

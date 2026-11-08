@@ -740,7 +740,10 @@ are not wired on Windows; undo the steps by hand.
   apart, and none once the session filed a friction report (the client
   leaves an empty marker `filed/<digest of the session id>` in the cache
   directory when it logs a friction report with a `session_id` context as
-  submitted, duplicate, spooled or flushed). Interrupted calls,
+  submitted, duplicate, spooled or flushed). Successful `submit_feedback`
+  calls through `agentfeedback mcp` also leave that marker, both locally
+  and when relaying to a server, using the submitted or locally resolved session.
+  The server's HTTP `/mcp` never writes a client's marker. Interrupted calls,
   permission denials and the agentfeedback commands and MCP tools themselves
   are not counted. Harnesses that show a note only at another event (the
   `PreInvocation` of Antigravity, the `session.idle` of OpenCode) get it there,

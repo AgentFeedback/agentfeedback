@@ -20,6 +20,7 @@ import (
 
 	"github.com/agentfeedback/agentfeedback/v4/internal/api"
 	"github.com/agentfeedback/agentfeedback/v4/internal/mcp"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/client"
 	"github.com/agentfeedback/agentfeedback/v4/pkg/schema"
 )
 
@@ -78,11 +79,60 @@ func runMcp(args []string, _ io.Reader, _, stderr io.Writer) error {
 			return failErr("the MCP server cannot be built: "+oneLine(err.Error()), "report this as a bug")
 		}
 	}
+	cache, cacheErr := cacheDir(os.Getenv)
+	if cacheErr == nil {
+		srv.AddReceivingMiddleware(mcpFiledMarker(cache))
+	}
 	if err := srv.Run(ctx, &sdk.StdioTransport{}); err != nil && !errors.Is(err, context.Canceled) {
 		return failErr("the MCP session ended: "+oneLine(err.Error()), "restart the MCP server from the harness")
 	}
 
 	return nil
+}
+
+type mcpFiledSessionKey struct{}
+
+// Only the stdio process owns the submitting machine's hook state.
+func mcpFiledMarker(cache string) sdk.Middleware {
+	return func(next sdk.MethodHandler) sdk.MethodHandler {
+		return func(ctx context.Context, method string, req sdk.Request) (sdk.Result, error) {
+			sessionID := ""
+			if call, ok := req.(*sdk.CallToolRequest); ok && method == "tools/call" && call.Params.Name == mcp.ToolSubmit {
+				// Replays may return a redacted row with no context; keep
+				// the submitting session independently of the stored record.
+				sessionID = client.SessionIDOf(call.Params.Arguments)
+				ctx = context.WithValue(ctx, mcpFiledSessionKey{}, &sessionID)
+			}
+			result, err := next(ctx, method, req)
+			call, ok := req.(*sdk.CallToolRequest)
+			if err != nil || !ok || method != "tools/call" || call.Params.Name != mcp.ToolSubmit {
+				return result, err
+			}
+			response, ok := result.(*sdk.CallToolResult)
+			if !ok || response.IsError {
+				return result, err
+			}
+			for _, content := range response.Content {
+				text, ok := content.(*sdk.TextContent)
+				if !ok {
+					continue
+				}
+				var body struct {
+					Submission struct {
+						Kind string `json:"kind"`
+					} `json:"submission"`
+				}
+				if json.Unmarshal([]byte(text.Text), &body) == nil {
+					client.MarkFiled(cache, client.Outcome{
+						Outcome: client.OutcomeSubmitted,
+						Kind:    body.Submission.Kind, SessionID: sessionID,
+					})
+					break
+				}
+			}
+			return result, nil
+		}
+	}
 }
 
 // buildRelay connects to the configured server's /mcp with its key and
@@ -208,12 +258,15 @@ type contextFromService struct {
 
 // Body builds the body submit --context-from builds. Every failure is a
 // validation problem of context_from carrying the CLI's message.
-func (c *contextFromService) Body(_ context.Context, args json.RawMessage) (json.RawMessage, error) {
+func (c *contextFromService) Body(ctx context.Context, args json.RawMessage) (json.RawMessage, error) {
 	body, err := c.body(args)
 	if err != nil {
 		return nil, mcp.InvalidArgument(mcp.ArgContextFrom, oneLine(err.Error()))
 	}
 
+	if sessionID, ok := ctx.Value(mcpFiledSessionKey{}).(*string); ok {
+		*sessionID = client.SessionIDOf(body)
+	}
 	return body, nil
 }
 

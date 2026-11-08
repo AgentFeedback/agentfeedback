@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"maps"
 	"net/http"
@@ -21,6 +22,7 @@ import (
 	"github.com/agentfeedback/agentfeedback/v4/internal/api"
 	"github.com/agentfeedback/agentfeedback/v4/internal/core"
 	"github.com/agentfeedback/agentfeedback/v4/internal/harness"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/client"
 )
 
 // binaryEnv is an environment for the test binary run as agentfeedback: a
@@ -76,6 +78,66 @@ func toolText(t *testing.T, cs *sdk.ClientSession, name string, args any) map[st
 	return v
 }
 
+func requireMcpFiledMarker(t *testing.T, env []string, session string) {
+	t.Helper()
+	cache, err := cacheDir(func(k string) string { return envValue(env, k) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(client.FiledMarkerPath(cache, session)); err != nil {
+		t.Fatalf("filed marker for %s: %v", session, err)
+	}
+}
+
+func TestMcp_FiledFrictionQuietsHook(t *testing.T) {
+	for _, remote := range []bool{false, true} {
+		t.Run(fmt.Sprintf("remote=%t", remote), func(t *testing.T) {
+			env := binaryEnv(t)
+			if remote {
+				url, _ := relayServer(t)
+				env = append(env, envURL+"="+url, envAPIKey+"="+testKey)
+			}
+			cs, _ := mcpProcess(t, env)
+			args := map[string]any{
+				"kind": "friction", "key": "filed-key", "summary": "filed through stdio",
+				"payload": map[string]any{"category": "tooling", "details": "d", "suggested_fix": "f"},
+				"context": map[string]any{"session_id": "filed-session"},
+			}
+			body := toolText(t, cs, "submit_feedback", args)
+			id := fmt.Sprint(body["submission"].(map[string]any)["id"])
+			if out, err := binaryCommand(t, env, "redact", id).CombinedOutput(); err != nil {
+				t.Fatalf("redact: %v: %s", err, out)
+			}
+			cache, err := cacheDir(func(k string) string { return envValue(env, k) })
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Remove(client.FiledMarkerPath(cache, "filed-session")); err != nil {
+				t.Fatal(err)
+			}
+			toolText(t, cs, "submit_feedback", args)
+			cwd := t.TempDir()
+			for _, session := range []string{"filed-session", "other-session"} {
+				var last string
+				for range 3 {
+					cmd := binaryCommand(t, env, "hook", "claude-code", "PostToolUseFailure")
+					cmd.Stdin = strings.NewReader(ccFailure(session, cwd, "make"))
+					out, err := cmd.Output()
+					if err != nil {
+						t.Fatal(err)
+					}
+					if note := noteOf(t, string(out)); note != "" {
+						last = note
+					}
+				}
+				if (last == "") != (session == "filed-session") {
+					t.Fatalf("session %s: note %q", session, last)
+				}
+			}
+		})
+	}
+}
+
 // TestMcp_StdioOnLocalDatabase runs agentfeedback mcp as a process and drives
 // it over its real stdin and stdout: initialize, tools/list, submit, list and
 // mark; the row is then in the local database the CLI reads.
@@ -99,8 +161,10 @@ func TestMcp_StdioOnLocalDatabase(t *testing.T) {
 	if st := toolText(t, cs, "sessions_list", map[string]any{}); st["stores"] == nil {
 		t.Errorf("sessions_list: %+v", st)
 	}
-	sub := toolText(t, cs, "submit_feedback", map[string]any{"kind": "friction", "summary": "stdio mcp row", "project": "p1",
-		"payload": map[string]any{"category": "tooling", "details": "d", "suggested_fix": "f"}})
+	sub := toolText(t, cs, "submit_feedback", map[string]any{
+		"kind": "friction", "summary": "stdio mcp row", "project": "p1",
+		"payload": map[string]any{"category": "tooling", "details": "d", "suggested_fix": "f"},
+	})
 	id := sub["submission"].(map[string]any)["id"].(float64)
 	if list := toolText(t, cs, "list_submissions", map[string]any{"limit": 10}); list["total"].(float64) != 1 {
 		t.Errorf("list: %+v", list)
@@ -229,8 +293,10 @@ func TestMcp_RelayToServer(t *testing.T) {
 		t.Errorf("initialize: %+v", init.ServerInfo)
 	}
 
-	sub := toolText(t, cs, "submit_feedback", map[string]any{"kind": "friction", "summary": "relayed row", "project": "p1",
-		"payload": map[string]any{"category": "tooling", "details": "d", "suggested_fix": "f"}})
+	sub := toolText(t, cs, "submit_feedback", map[string]any{
+		"kind": "friction", "summary": "relayed row", "project": "p1",
+		"payload": map[string]any{"category": "tooling", "details": "d", "suggested_fix": "f"},
+	})
 	id := int64(sub["submission"].(map[string]any)["id"].(float64))
 	if rec, err := svc.Get(context.Background(), id); err != nil || rec.Summary != "relayed row" {
 		t.Fatalf("row on the server: %+v %v", rec, err)
