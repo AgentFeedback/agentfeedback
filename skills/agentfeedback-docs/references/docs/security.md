@@ -161,6 +161,18 @@ consent), is removed by its markers with `install --project --uninstall`
 a symbolic link (a linked file is refused), and is not recorded in the
 manifest and not backed up.
 
+**What `config` writes.** The settings menu and `config set` edit only the
+allowlisted [machine settings](operate.md#machine-settings), using an atomic
+0600 replacement that retains unknown keys and credentials, not TOML comments.
+CLI config writers serialize the whole read/edit/write operation with a persistent
+`config.toml.lock` file. Symlinked configs and ambiguous case variants of known
+keys are refused. Destination updates through `init` and `doctor --init` retain
+machine settings, including collection restrictions.
+The settings menu and `config set` never change the destination, API key, repository
+narrowing or organisation policy. Read output masks the API key; policy display can contact the configured
+server but sends no transcript. Menu harness actions use the same installer
+and ownership rules described above, for one explicitly selected harness.
+
 ## What gets stored
 
 What the client collects into `context` for a friction, all best-effort

@@ -13,7 +13,6 @@ import (
 
 	"github.com/agentfeedback/agentfeedback/v4/internal/capture"
 	"github.com/agentfeedback/agentfeedback/v4/internal/harness"
-	"github.com/pelletier/go-toml/v2"
 	"golang.org/x/term"
 )
 
@@ -300,7 +299,7 @@ func initTarget(env harness.Env, local bool, flagServer string, keyFromStdin, as
 	if err != nil {
 		return initTargetChoice{}, err
 	}
-	file, exists, err := loadFileConfig(path)
+	file, _, err := loadFileConfig(path)
 	if err != nil {
 		return initTargetChoice{}, err
 	}
@@ -372,9 +371,6 @@ func initTarget(env harness.Env, local bool, flagServer string, keyFromStdin, as
 	}
 	if srv == serverLocal {
 		return initTargetChoice{server: serverLocal}, nil
-	}
-	if exists {
-		return initTargetChoice{}, errInitConfigNoURL(path, srv)
 	}
 
 	return initTargetChoice{server: srv, write: true}, nil
@@ -456,22 +452,14 @@ func parseHarnessList(s string) ([]string, error) {
 	return out, nil
 }
 
-// writeInitConfig writes config.toml with the server's URL and, when key is
-// set, its API key: 0600 from creation, never over an existing file.
+// writeInitConfig adds a destination without replacing configured credentials
+// or machine settings.
 func writeInitConfig(server, key string) (string, error) {
 	path, err := configPath(os.Getenv)
 	if err != nil {
 		return "", err
 	}
-	data, err := toml.Marshal(struct {
-		URL    string `toml:"url"`
-		APIKey string `toml:"api_key,omitempty"`
-	}{server, key})
-	if err != nil {
-		return "", errInitWrite(path, err)
-	}
-
-	return path, writeConfigFile(path, data, false)
+	return path, updateConfigDestination(path, server, key, false)
 }
 
 // hookDescriptions says, per wired harness, what its hooks do.

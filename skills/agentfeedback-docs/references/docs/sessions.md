@@ -23,6 +23,10 @@ session policy, subject to its cache and backoff, and prints the org's
 processing status (`capture` in JSON). Listing, digesting and marking stay
 local; `submit` and `sessions push` send their respective content to the server.
 See [Session policy settings](operate.md#session-policy-settings).
+Use `agentfeedback config` or `config set sessions.quiet 10m` to change this
+machine's quiet interval. The menu shows organisation policy and repository
+restrictions read-only; changing a setting never grants capture permission.
+See [Machine settings](operate.md#machine-settings) for all editable keys.
 
 ## Push
 

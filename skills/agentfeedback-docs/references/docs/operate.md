@@ -1002,6 +1002,57 @@ Compose-level variables (`infra/agentfeedback/.env`): `API_KEY`,
 `AGENTFEEDBACK_IMAGE` (deploy stack only), `AGENTFEEDBACK_BIND_ADDRESS`,
 `PUBLIC_URL`, `MCP_INSTRUCTIONS`, `INGEST_SCRUB`.
 
+### Machine settings
+
+`agentfeedback config` opens a numbered menu on a terminal. Without a terminal
+it exits 2 with guidance to use `config show`, `get` or `set`; it never waits for input.
+`config show --json` reports each known value with its source (`flag`,
+`environment`, `file` or `default`), whether it is set and whether it is editable.
+The API key is always masked. `show` and `get` accept `--local` or `--server URL`
+as read-only destination overrides.
+
+```bash
+agentfeedback config show --json
+agentfeedback config get sessions.quiet
+agentfeedback config set sessions.quiet 10m
+agentfeedback config set collect.deny_paths '~/private,~/clients'
+```
+
+`get` prints one scalar or a JSON list. An unset optional value produces no
+output and exits 3. Unknown keys and attempts to set read-only keys exit 2
+with guidance; values rejected by `set` are not echoed.
+
+The editable keys are:
+
+- `collect.deny_paths`, `collect.opt_in_paths`: comma-separated paths or a JSON
+  string array; an empty value clears the list. Paths must be absolute or
+  start with `~/`.
+- `collect.opt_in_only`, `collect.disabled`, `context.cwd`, `detect.nudge`:
+  `true` or `false`.
+- `sessions.quiet`: a positive Go duration, such as `5m`.
+- `detect.same_tool`, `detect.same_command`, `detect.session_failures`,
+  `detect.interval_minutes`, `detect.max_per_session`: positive integers.
+  The interval must fit in a Go duration (at most 153722867 minutes).
+
+Each edit atomically replaces this machine's `config.toml` with mode 0600.
+CLI writers serialize updates using the persistent `config.toml.lock` file
+beside it. Symlinked config files and competing case variants of known keys
+are refused rather than replaced or reordered.
+Unknown keys and destination credentials survive; TOML comments and formatting
+do not. The destination, key and other known settings are read-only here:
+use `init` or `doctor --init` for the destination and key. They can extend a
+settings-only file; `doctor --init --force` replaces configured credentials
+while preserving machine settings. Menu options list
+harnesses and install or uninstall one named harness through the existing
+installer, with its normal prompts and ownership rules.
+
+The view separately shows the current directory's repository narrowing and
+the organisation's session policy, both read-only. Displaying policy may
+contact the configured server, subject to its cache and backoff; it never
+uploads transcripts. Outside Git, only the directory's session-push restriction
+applies. Repository restrictions are not writable machine settings and cannot
+grant capture permission.
+
 ### Session policy settings
 
 The client's `config.toml` accepts:

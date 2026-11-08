@@ -657,8 +657,10 @@ func TestDoctorInit(t *testing.T) {
 		t.Fatalf("mode after force %v", info.Mode())
 	}
 	entries, _ := os.ReadDir(filepath.Dir(cfgPath))
-	if len(entries) != 1 {
-		t.Fatalf("temporary files left: %v", entries)
+	for _, entry := range entries {
+		if entry.Name() != "config.toml" && entry.Name() != "config.toml.lock" {
+			t.Fatalf("temporary file left: %s", entry.Name())
+		}
 	}
 }
 

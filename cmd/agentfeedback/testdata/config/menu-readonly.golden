@@ -1,0 +1,8 @@
+Organisation session policy (read-only):
+sessions: friction reports only (local mode)
+Repository narrowing (read-only): $HOME/repository/.agentfeedback.toml
+  collect.disabled = true
+  collect.deny_paths = ["$HOME/repository/private"]
+  context.drop = ["machine"]
+  detect.nudge = false
+  sessions.push = false (never grants capture permission)

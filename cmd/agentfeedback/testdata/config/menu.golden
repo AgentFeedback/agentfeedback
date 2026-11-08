@@ -1,0 +1,18 @@
+
+Machine configuration menu (destination, organization policy and repository constraints are read-only):
+  1. Edit collect.deny_paths
+  2. Edit collect.opt_in_paths
+  3. Edit collect.opt_in_only
+  4. Edit collect.disabled
+  5. Edit sessions.quiet
+  6. Edit context.cwd
+  7. Edit detect.nudge
+  8. Edit detect.same_tool
+  9. Edit detect.same_command
+  10. Edit detect.session_failures
+  11. Edit detect.interval_minutes
+  12. Edit detect.max_per_session
+  13. List harnesses
+  14. Install one harness
+  15. Uninstall one harness
+  0. Quit

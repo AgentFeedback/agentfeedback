@@ -67,6 +67,7 @@ var commands = []command{
 	{"schema", "schema [<kind> [<version>]]: list the schemas or print one", runSchema},
 	{"skill", "skill render <form> [--server URL]: print the submission guidance in one form | skill render docs --out DIR: write the agentfeedback-docs skill | skill render agent-plugin|marketplace --out DIR: write the plugin bundle or a marketplace root | skill reminder: print the one-line reminder older installs run at a session start (install now wires prime)", runSkill},
 	{"init", initSynopsis + ": set up this machine in one pass: local reporting unless a server is named (config.toml is written only then), wire the detected harnesses and the triage skill as install does, run the doctor --e2e check, and print the next steps", runInit},
+	{"config", configSynopsis + ": inspect effective machine settings and sources, edit safe settings, or open the terminal menu; destination, key and repository narrowing stay read-only", runConfig},
 	{"install", installSynopsis + ": wire the agentfeedback skill, hooks and the rule in each global instruction file (or with --mcp an MCP entry), and the agentfeedback-triage skill, into the coding-agent harnesses; no harness named lists them; --check reports the rule sections and changes nothing; --project writes the pointer section into the repository's instruction file", runInstall},
 	{"prime", primeSynopsis + ": print the short submission guidance a session starts with (what the session-start hooks run); --full prints all of it", runPrime},
 	{"uninstall", uninstallSynopsis + ": remove exactly what install added, restoring untouched files from their backups", runUninstall},
@@ -77,7 +78,7 @@ var commands = []command{
 }
 
 const helpFooter = `
-Add --json to help, doctor, version, schema, list, get or stats for JSON output.
+Add --json to help, doctor, version, schema, list, get, stats or config show for JSON output.
 First-time setup: agentfeedback init (local by default; agentfeedback init --server URL for a server)
 
 Local mode: with no server URL configured, every client command works against the data directory
@@ -94,7 +95,9 @@ client config file: %s
   flat keys: url, api_key, machine, model, harness
   tables: [collect] deny_paths, opt_in_only, opt_in_paths, disabled; [context] cwd, drop, app, workspace, url, channel, task_id, workflow;
   [detect] nudge, same_tool, same_command, session_failures, interval_minutes, max_per_session
-  a repository .agentfeedback.toml may only narrow (collect.disabled, collect.deny_paths, context.drop, detect.nudge)
+  [sessions] quiet, policy_ttl, push_batch, push_budget
+  a repository .agentfeedback.toml may only narrow (collect.disabled, collect.deny_paths, context.drop, detect.nudge, sessions.push)
+Machine settings: agentfeedback config (terminal menu), or config show|get|set; destination and key use init or doctor --init.
 
 server environment: API_KEY or API_KEY_FILE (serve only, not both), DATABASE_PATH,
 HTTP_LISTEN_ADDR, GRACEFUL_SHUTDOWN_TIMEOUT, SERVICE_VERSION, LOG_LEVEL,

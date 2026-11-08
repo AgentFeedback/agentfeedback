@@ -256,3 +256,18 @@ args = []
 command = "prime"
 flags = ["--format", "--full"]
 args = []
+
+[local.config_show]
+command = "config show"
+flags = ["--json", "--local", "--server"]
+args = []
+
+[local.config_get]
+command = "config get"
+flags = ["--local", "--server"]
+args = ["<key>"]
+
+[local.config_set]
+command = "config set"
+flags = []
+args = ["<key>", "<value>"]

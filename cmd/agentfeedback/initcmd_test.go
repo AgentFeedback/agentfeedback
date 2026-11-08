@@ -273,9 +273,6 @@ func TestInit_Refusals(t *testing.T) {
 		{"bad URL", nil, []string{"--server", "ftp://x"}, 2, "ftp://x"},
 		{"local over a configured server", func(t *testing.T, e installEnv) { e.seed(t) }, []string{"--local"}, 1, "never switches a configured server to local"},
 		{"another server than the configured one", func(t *testing.T, e installEnv) { e.seed(t) }, []string{"--server", "https://other.example.test"}, 1, "differs from"},
-		{"a config without url", func(t *testing.T, e installEnv) {
-			putFile(t, filepath.Join(e.home, ".config", "agentfeedback", "config.toml"), "model = \"m\"\n", 0o600)
-		}, []string{"--server", "https://x.example.test"}, 1, "names no server"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newInstallEnv(t)

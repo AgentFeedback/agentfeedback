@@ -495,6 +495,11 @@ With a server, `"server"` is `<URL>` and `"config"` the configuration file
 of step 2.2 takes the place of `"database"`. Tell the human what step 2.3
 printed under `next`: `agentfeedback ui` shows the reports in a local page,
 and `agentfeedback list --open` lists them.
+For later per-machine adjustments, point the human to `agentfeedback config`
+and agents to `config show --json` or `config get|set`; the
+[machine settings reference](docs/operate.md#machine-settings) lists the editable
+keys. Destination and key changes still use `init` or `doctor --init`, never
+the settings menu. Repository and organisation policy are read-only there.
 
 `human_todo` holds what is left for the human, for example: restart the
 harness; in Codex, trust the new hook in `/hooks`; add `~/.local/bin` to

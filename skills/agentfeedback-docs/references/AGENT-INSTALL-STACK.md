@@ -320,6 +320,12 @@ systemctl --user status agentfeedback.service --no-pager
 {"step": "S7", "status": "ok", "server": {"mode": "systemd", "listen": "127.0.0.1:8090", "env_file": "/home/user/.config/agentfeedback/server/serve.env", "key_file": "/home/user/.config/agentfeedback/server/api-key", "database": "/home/user/.local/share/agentfeedback/agentfeedback.db", "status_command": "systemctl --user status agentfeedback.service", "backup_command": "set -a; . /home/user/.config/agentfeedback/server/serve.env; set +a; /home/user/.local/bin/agentfeedback backup /home/user/.local/share/agentfeedback/agentfeedback-$(date -u +%Y%m%dT%H%M%SZ).db"}, "client": {"binary": "/home/user/.local/bin/agentfeedback", "server": "http://127.0.0.1:8090", "harnesses": ["claude-code"], "install_check_id": 1}, "reachable_from": "coding agents with the binary or an MCP client that sends the key header (Claude Code, Codex, Cursor, OpenCode, omp, pi), on this machine and on every machine that reaches the listen address; Claude's chat apps (Claude.ai, Claude Desktop, Claude on mobile) through a custom connector with the key as a request header, once the server is reachable over public HTTPS (client step 2.8); ChatGPT not at all (OAuth only)", "human_todo": ["copy the key from the key file into your password manager", "restart the harness so it loads the skill"]}
 ```
 
+The client's `agentfeedback config` menu changes only
+[machine settings](docs/operate.md#machine-settings), not this service's
+environment, destination credentials or organisation policy. Use
+`config show --json` for inspection; destination/key changes follow client
+step 2.2.
+
 `human_todo` holds what is left for the human, for example: copy the key
 (step S4); open the firewall, set up the reverse proxy or the tunnel (step
 S4); run the client playbook on each machine named in step S4 with `<URL>`

@@ -143,7 +143,7 @@ func runDoctor(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	asJSON := fs.Bool("json", false, "print one JSON object")
 	doInit := fs.Bool("init", false, "write the config file from --url and the key on stdin; no network call")
 	keyFromStdin := fs.Bool("key-from-stdin", false, "with --init: read the API key from stdin")
-	force := fs.Bool("force", false, "with --init: replace an existing config file")
+	force := fs.Bool("force", false, "with --init: replace destination and key, preserving machine settings")
 	e2e := fs.Bool("e2e", false, "submit, list and mark one install-check row against the server; one line per step")
 	mf := addModeFlags(fs)
 	if err := parseFlags(fs, args, stderr); err != nil {
@@ -835,6 +835,9 @@ func printReport(w io.Writer, r doctorReport) {
 		cfg = "present, mode " + orNone(r.Config.Mode)
 	}
 	fmt.Fprintf(w, "config:   %s (%s)\n", r.Config.Path, cfg)
+	if !r.Config.Exists {
+		fmt.Fprintln(w, "settings: use agentfeedback config to inspect defaults or set machine settings; use init or doctor --init for the destination and key")
+	}
 	if r.Mode == modeLocal {
 		db := "missing"
 		if r.Database.Exists {

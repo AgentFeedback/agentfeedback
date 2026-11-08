@@ -682,18 +682,13 @@ func errInitConfiguredServer(configured, source string) error {
 		"drop --local to wire this server, or remove the url from the configuration (or unset the variable) first")
 }
 
-func errInitConfigNoURL(path, server string) error {
-	return failErr(fmt.Sprintf("%s exists and names no server, and init never edits an existing configuration", path),
-		fmt.Sprintf("add url = %q to it and run agentfeedback init again, or run agentfeedback init --local", server))
-}
-
 func errInitAnswer(err error) error {
 	return failErr(fmt.Sprintf("cannot read the answer from the terminal: %v", err), "pass --yes with --local or --server and --harnesses")
 }
 
 func errInitKeyConfigured(configured, source string) error {
 	return failErr(fmt.Sprintf("a server is already configured (%s, %s), and init never edits the configuration, so it does not write the key", configured, source),
-		"give the key with agentfeedback doctor --init --url URL --key-from-stdin (--force replaces the file), or with "+envAPIKey)
+		"give the key with agentfeedback doctor --init --url URL --key-from-stdin (--force replaces the destination and key, preserving settings), or with "+envAPIKey)
 }
 
 func errInitRecordedServer(recorded, manifest string) error {
@@ -765,11 +760,11 @@ func errHookSpawn(name, msg string) error {
 
 func errConfigUnknownKey(path, key string) error {
 	return failErr(fmt.Sprintf("%s: unknown key %s is ignored", path, key),
-		"check its spelling (narrowing it names is not applied)")
+		"use agentfeedback config show to see known settings and config set <key> <value> for editable machine settings; remove the misspelt key from the file (its narrowing is not applied)")
 }
 
 func errCollectWarning(w string) error {
-	return failErr(w, "fix the setting it names")
+	return failErr(w, "fix the setting it names; use agentfeedback config for machine settings (repository narrowing remains read-only)")
 }
 
 func errDoctorWorkdir(err error) error {

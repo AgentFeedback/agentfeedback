@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode"
-
-	"github.com/pelletier/go-toml/v2"
 )
 
 const keyReadLimit = 64 << 10
@@ -42,10 +40,8 @@ func printInitOutcomeLocal(stdout io.Writer, path string, lr *localReports, err 
 	return &reportedError{err}
 }
 
-// runDoctorInit writes url and api_key to the config file. It makes no
-// network call. Without force an existing file is never touched: the new file
-// is linked into place, which fails when the name exists. With force it is
-// renamed over the old one. The file is 0600 from creation.
+// runDoctorInit writes the destination while retaining machine settings. Replacing
+// configured credentials requires force. The file is 0600 from creation.
 func runDoctorInit(getenv func(string) string, rawURL string, keyFromStdin, force bool, stdin io.Reader) (string, error) {
 	if !keyFromStdin {
 		return "", errInitNeedsStdin()
@@ -62,15 +58,7 @@ func runDoctorInit(getenv func(string) string, rawURL string, keyFromStdin, forc
 		return "", err
 	}
 
-	data, err := toml.Marshal(struct {
-		URL    string `toml:"url"`
-		APIKey string `toml:"api_key"`
-	}{rawURL, key})
-	if err != nil {
-		return "", errInitWrite(path, err)
-	}
-
-	return path, writeConfigFile(path, data, force)
+	return path, updateConfigDestination(path, rawURL, key, force)
 }
 
 func checkInitURL(raw string) error {
@@ -136,7 +124,7 @@ func parseKey(data []byte) (key string, ok bool) {
 	return key, !strings.ContainsFunc(key, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) })
 }
 
-func writeConfigFile(path string, data []byte, force bool) error {
+func placeConfigFile(path string, data []byte, force bool) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return errInitWrite(path, err)
 	}
