@@ -3,20 +3,23 @@ package main
 import (
 	"bufio"
 	"cmp"
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"slices"
 	"strings"
 
 	"github.com/agentfeedback/agentfeedback/v4/internal/capture"
 	"github.com/agentfeedback/agentfeedback/v4/internal/harness"
+	"github.com/agentfeedback/agentfeedback/v4/pkg/client"
 	"golang.org/x/term"
 )
 
-const initSynopsis = "init [--local | --server cloud|URL [--key-from-stdin]] [--harnesses all|none|<harness>,...] [--yes] [--no-hooks] [--no-triage] [--mcp] [--json]"
+const initSynopsis = "init [--local | --server cloud|URL] [--key-from-stdin | --login EMAIL | --agent | --enrol-token-from-stdin] [--harnesses all|none|<harness>,...] [--yes] [--no-hooks] [--no-triage] [--mcp] [--json]"
 
 // initResult is what init did; with --json it is the one line printed.
 type initResult struct {
@@ -39,12 +42,15 @@ type initResult struct {
 	E2E     []e2eStep `json:"e2e,omitempty"`
 	// LocalReports names the reports in the local database when this run
 	// switched the machine to a server; omitted when there are none.
-	LocalReports *localReports  `json:"local_reports,omitempty"`
-	Next         []initNext     `json:"next,omitempty"`
-	Warnings     []string       `json:"warnings,omitempty"`
-	Manual       []manualStep   `json:"manual,omitempty"`
-	Message      string         `json:"message,omitempty"`
-	Capture      capture.Policy `json:"capture"`
+	LocalReports   *localReports  `json:"local_reports,omitempty"`
+	Next           []initNext     `json:"next,omitempty"`
+	Warnings       []string       `json:"warnings,omitempty"`
+	Manual         []manualStep   `json:"manual,omitempty"`
+	Message        string         `json:"message,omitempty"`
+	Capture        capture.Policy `json:"capture"`
+	ClaimURL       string         `json:"claim_url,omitempty"`
+	ClaimExpiresAt string         `json:"claim_expires_at,omitempty"`
+	ClaimNotice    string         `json:"claim_notice,omitempty"`
 }
 
 // initNext is one command init suggests, with what it is for.
@@ -68,6 +74,9 @@ func runInit(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	local := fs.Bool("local", false, "report to the local database (the default when no server is configured)")
 	server := fs.String("server", "", "report to this server: cloud or a base URL; init writes it to config.toml")
 	keyFromStdin := fs.Bool("key-from-stdin", false, "with --server: read the server's API key from stdin and write it to config.toml")
+	loginEmail := fs.String("login", "", "sign in or register by email (defaults to cloud)")
+	agent := fs.Bool("agent", false, "with --server: create an unclaimed installation")
+	enrolToken := fs.Bool("enrol-token-from-stdin", false, "with --server: exchange an enrolment token from stdin")
 	names := fs.String("harnesses", "", "harnesses to wire, comma-separated; all is every detected one, none wires nothing (default: ask on a terminal, else all detected)")
 	yes := fs.Bool("yes", false, "ask nothing; take the defaults for what no flag sets")
 	noHooks := fs.Bool("no-hooks", false, "wire no hooks: the skill and the rule only")
@@ -90,11 +99,41 @@ func runInit(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 
 		return finishInit(stdout, initResult{}, *asJSON, err)
 	}
+	loginSelected := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "login" {
+			loginSelected = true
+		}
+	})
+	if loginSelected {
+		*loginEmail, err = onboardingEmail(*loginEmail)
+		if err != nil {
+			return finishInit(stdout, initResult{}, *asJSON, err)
+		}
+	}
+	authCount := 0
+	for _, selected := range []bool{*keyFromStdin, loginSelected, *agent, *enrolToken} {
+		if selected {
+			authCount++
+		}
+	}
+	if authCount > 1 {
+		return finishInit(stdout, initResult{}, *asJSON, usageErr("authentication options are mutually exclusive", "choose one key source"))
+	}
+	if *loginEmail != "" && *server == "" && !*local {
+		*server = "cloud"
+	}
 	switch {
 	case *local && *server != "":
 		err = usageErr("--local and --server are both set", "pass one of them")
+	case *local && authCount > 0:
+		err = usageErr("authentication options require a server", "omit --local")
+	case (*agent || *enrolToken) && *server == "":
+		err = usageErr("authentication options require --server", "pass --server URL")
 	case *keyFromStdin && *server == "":
 		err = usageErr("--key-from-stdin applies only with --server", "pass --server URL with --key-from-stdin")
+	case (*agent || loginSelected || *enrolToken) && os.Getenv(envAPIKey) != "":
+		err = usageErr("an environment API key overrides the saved credentials", "unset "+envAPIKey+" before onboarding")
 	}
 	if err != nil {
 		return finishInit(stdout, initResult{}, *asJSON, err)
@@ -111,7 +150,7 @@ func runInit(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		return finishInit(stdout, initResult{Manual: steps, Warnings: warnings}, *asJSON, err)
 	}
 	// Prompts read stdin only when it is a terminal and nothing else reads it.
-	ask := isTerminal() && !*yes && !*keyFromStdin
+	ask := isTerminal() && !*yes && !*keyFromStdin && !*enrolToken
 	in := bufio.NewReader(stdin)
 	env, err := harnessEnv()
 	if err != nil {
@@ -122,11 +161,14 @@ func runInit(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if res.DataDir, err = dataDir(os.Getenv); err != nil {
 		return finishInit(stdout, res, *asJSON, err)
 	}
-	t, err := initTarget(env, *local, *server, *keyFromStdin, ask, in, stderr)
+	t, err := initTarget(env, *local, *server, authCount > 0, ask, in, stderr)
 	if err != nil {
 		return finishInit(stdout, res, *asJSON, err)
 	}
 	res.Mode, res.Server = modeRemote, t.server
+	if t.server == serverLocal && authCount > 0 {
+		return finishInit(stdout, res, *asJSON, usageErr("authentication options require a remote server", "pass --server cloud or a server URL"))
+	}
 	if t.server == serverLocal {
 		res.Mode, res.Server = modeLocal, ""
 		if res.Database, err = localDBPath(os.Getenv); err != nil {
@@ -134,16 +176,61 @@ func runInit(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		}
 	}
 	key := ""
+	credentials := onboardingCredentials{}
 	if t.write {
+		choice := onboardingChoice{email: *loginEmail, agent: *agent, enrol: *enrolToken}
 		switch {
 		case *keyFromStdin:
-			if key, err = readKey(stdin, "init --server URL --key-from-stdin"); err != nil {
-				return finishInit(stdout, res, *asJSON, err)
+			key, err = readKey(stdin, "init --server URL --key-from-stdin")
+		case authCount > 0 || (ask && os.Getenv(envAPIKey) == ""):
+			var c *client.OnboardingClient
+			c, err = client.NewOnboardingClient(t.server, nil)
+			if err == nil {
+				ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+				if authCount == 0 {
+					choice, err = chooseOnboarding(ctx, c, t.server, in, stderr)
+				}
+				if err == nil {
+					if choice.email != "" || choice.agent || choice.enrol {
+						// Reject existing credentials before consuming a single-use source.
+						path, pathErr := configPath(os.Getenv)
+						if pathErr != nil {
+							cancel()
+							return finishInit(stdout, res, *asJSON, pathErr)
+						}
+						file, _, loadErr := loadFileConfig(path)
+						if loadErr != nil {
+							cancel()
+							return finishInit(stdout, res, *asJSON, loadErr)
+						}
+						if file.APIKey != "" {
+							cancel()
+							return finishInit(stdout, res, *asJSON, errInitExists(path))
+						}
+						credentials, err = acquireOnboarding(ctx, c, choice, stdin, stderr)
+						key = credentials.key
+					} else {
+						key, err = askKey(t.server, stderr)
+					}
+				}
+				cancel()
 			}
-		case ask && os.Getenv(envAPIKey) == "":
-			if key, err = askKey(t.server, stderr); err != nil {
-				return finishInit(stdout, res, *asJSON, err)
+		}
+		if err != nil {
+			return finishInit(stdout, res, *asJSON, err)
+		}
+		if credentials.key != "" {
+			// Hosted keys are disclosed once. Preserve them before later prompts
+			// or harness wiring can fail, and return the claim even on write failure.
+			res.ClaimURL, res.ClaimExpiresAt = credentials.claimURL, credentials.claimExpiresAt
+			if credentials.claimURL != "" {
+				res.ClaimNotice = claimNotice
 			}
+			path, writeErr := writeInitConfig(t.server, key)
+			if writeErr != nil {
+				return finishInit(stdout, res, *asJSON, writeErr)
+			}
+			res.Config = path
 		}
 	}
 
@@ -189,9 +276,9 @@ func runInit(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 			fmt.Fprintf(stderr, "agentfeedback init: warning: %s\n", w)
 		}
 	}
-	// The configuration is written once the wiring went through, so a
-	// refused run leaves none behind.
-	if t.write {
+	// Pasted keys remain recoverable, so preserve the existing refusal behavior
+	// for that path. Hosted credentials have already been saved.
+	if t.write && res.Config == "" {
 		if res.Config, err = writeInitConfig(t.server, key); err != nil {
 			return finishInit(stdout, res, *asJSON, err)
 		}
@@ -588,6 +675,9 @@ func printInitSummary(w io.Writer, res initResult) {
 	}
 	if res.Config != "" {
 		fmt.Fprintf(w, "config:   %s\n", res.Config)
+	}
+	if res.ClaimURL != "" {
+		fmt.Fprintf(w, "claim:    %s\nexpires:  %s\n%s\n", res.ClaimURL, res.ClaimExpiresAt, res.ClaimNotice)
 	}
 	fmt.Fprintf(w, "data:     %s\n", res.DataDir)
 	for _, h := range res.Harnesses {

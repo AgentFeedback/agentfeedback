@@ -8,10 +8,45 @@ command an agent can run.
 Contents: [Local mode (no server)](#local-mode-no-server) · [Run locally](#run-locally) (a server in Docker) · [Bare binary (no Docker)](#bare-binary-no-docker) ·
 [Canonical issues](#canonical-issues) · [Wire the harnesses](#wire-the-harnesses) · [Build from source](#build-from-source) ·
 [Deploy to a host](#deploy-to-a-host) ·
-[Configuration](#configuration) · [Backups](#backups) ·
+[Authenticate a client](#authenticate-a-client) · [Configuration](#configuration) · [Backups](#backups) ·
 [Restore and migration](#restore-and-migration) · [Upgrading and downgrading](#upgrading-and-downgrading) ·
 [Key rotation](#key-rotation) · [Retention](#retention) · [Monitoring](#monitoring) ·
 [Uninstall](#uninstall)
+
+## Authenticate a client
+
+Keep authentication separate from harness wiring. Select exactly one key source:
+`--key-from-stdin` (paste an existing key), `--login EMAIL` (email device
+login), `--agent` (self-enrolment), or `--enrol-token-from-stdin` (an
+enrolment token). For each, use `agentfeedback init --server URL` with the
+selected flag and `--harnesses none --yes --json`. `cloud` still means
+`https://api.agentfeedback.dev`. Then wire separately with
+`agentfeedback init --harnesses HARNESS --yes --json`.
+
+The human types keys or tokens privately on stdin and completes email
+confirmation themselves; never put secrets in argv, chat, logs or shell
+traces. See [the hidden terminal prompt](../AGENT-INSTALL.md#step-22-authenticate-without-exposing-the-key).
+Email, agent and token routes must be advertised by the server's capabilities;
+OSS supports paste only. If interactive discovery fails, the menu still offers
+paste; explicit hosted methods fail rather than guess. Unsupported methods exit 2. Device polling
+honors the advertised interval; codes, keys and verification URLs are not
+printed. Agent enrolment prints its claim URL once with its deadline and
+reduced-attribution notice; treat that URL as private and never log it.
+
+Existing configuration is not automatically replaced. To explicitly refresh
+a configured machine's key through email, run
+`agentfeedback login --email EMAIL --server cloud --json` (or a server URL).
+`login` also accepts an interactive email when `--email` is omitted.
+The key is saved through the existing `0600` config writer, not a browser
+session. `doctor --init` remains the existing paste-key configuration path.
+Hosted credentials are saved before harness selection and wiring. If either
+later step fails, fix that setup problem and rerun `init` without an
+authentication flag; do not consume another enrolment token. Unset
+`AGENT_FEEDBACK_API_KEY` before acquiring hosted credentials. A claim URL in
+either successful or failed output is private; do not paste it into agent chat
+or retain it in session transcripts.
+Authentication does not change feature-target or session collection policy.
+
 
 ## Run locally
 

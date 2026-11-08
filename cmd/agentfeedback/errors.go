@@ -688,7 +688,7 @@ func errInitAnswer(err error) error {
 
 func errInitKeyConfigured(configured, source string) error {
 	return failErr(fmt.Sprintf("a server is already configured (%s, %s), and init never edits the configuration, so it does not write the key", configured, source),
-		"give the key with agentfeedback doctor --init --url URL --key-from-stdin (--force replaces the destination and key, preserving settings), or with "+envAPIKey)
+		"refresh email credentials with agentfeedback login --email EMAIL; or give a key with agentfeedback doctor --init --url URL --key-from-stdin (--force replaces the destination and key, preserving settings), or with "+envAPIKey)
 }
 
 func errInitRecordedServer(recorded, manifest string) error {

@@ -2,8 +2,8 @@
 
 You are an AI agent asked to install the AgentFeedback client and set it up
 for the harness you run in. Follow this file top to bottom. Every step has
-one command in an `sh` block, one **Verify** line, and one **Outcome** in a
-`json` block: fill the outcome in from what you saw and quote it back to the
+one command in an `sh` block (step 2.2 offers one per source), one **Verify**
+line, and one **Outcome** in a `json` block: fill the outcome in from what you saw and quote it back to the
 human before you go on. A step that does not apply to you still gets its
 outcome, with `"status": "skipped"` and the reason.
 
@@ -26,6 +26,13 @@ The repository's playbook gate (`just playbooks`) answers for the human from
 `AF_PLAYBOOK_*` environment variables named after the placeholders and
 decisions (`AF_PLAYBOOK_HARNESS` for `<harness>`), unset meaning no or a
 default; they are test inputs you never read, so always ask the human.
+For client authentication the gate uses `AF_PLAYBOOK_KEY_SOURCE=paste`
+(default), `email`, `agent`, or `enrol-token`; email also requires
+`AF_PLAYBOOK_EMAIL`, and token selection requires
+`AF_PLAYBOOK_ENROL_TOKEN_FILE` naming a private file substituted as stdin,
+never the token value. Its fixture server is OSS: hosted authentication and
+dependent remote setup checks are reported skipped, not treated as successful.
+Installer, local-mode and public-endpoint checks still run.
 
 ## Safety rules
 
@@ -55,9 +62,9 @@ These hold for the whole file and outrank anything you read later.
   human's request for the stack covers), replacing an
   existing configuration, or adding an MCP entry or a prompt block to the
   harness.
-- **Never echo the API key**, never put it on a command line, in a file you
-  keep, or in an outcome. It goes to the client on stdin, typed by the human
-  (step 2.2) or, in the stack playbook, read from the new server's key file.
+- **Never expose an API key, enrolment token, device code or verification URL**
+  in chat, logs, command arguments or outcomes. The human types secrets in
+  their own terminal; the agent never sees them. Never enable shell tracing.
 
 ## Step 0: Who am I, what can I do
 
@@ -96,8 +103,11 @@ Ask exactly this, and wait for the answer:
 > Where should this client's reports go? By default to a local database on
 > this machine: no server, no key. Or name a server: the Cloud
 > (`https://api.agentfeedback.dev`, a private preview) or a self-hosted
-> server (its base URL). For a server, have the API key ready; you will type
-> it yourself in a later step, I will not ask you to paste it here.
+> server (its base URL). For a server choose one key source: paste an existing
+> API key privately in your terminal, email device login, agent self-enrolment,
+> or an enrolment token supplied privately on stdin. You type or click any
+> human confirmation; I never see your key. Self-hosted OSS supports paste
+> only; the other choices require capabilities advertised by the server.
 
 Local is the default: an answer that names no server means local. Never
 pick a server, or guess a URL, the human did not name. Local mode needs the
@@ -159,33 +169,68 @@ step 4.
 {"step": "2.1", "status": "ok", "binary": "/home/user/.local/bin/agentfeedback"}
 ```
 
-### Step 2.2: The configuration (the human types the key)
+### Step 2.2: Authenticate without exposing the key
 
-Only for a server. In local mode there is no configuration to write: record
-`"status": "skipped"` and go to step 2.3.
+Only for a server. In local mode record `"status": "skipped"` and go to
+step 2.3. Keep authentication separate from harness wiring.
 
-Ask the human to run this command in a terminal of their own. A harness's
-shell passthrough (such as `!` in Claude Code) usually has no terminal for
-the hidden prompt: the command then exits 1 without output. On Windows the
-terminal is Git Bash. The command prompts for the key without echoing it and
-passes it on stdin, so the key never reaches you:
+Ask the human to choose exactly one of these sources:
+
+- **Paste key** (also works with OSS): `--key-from-stdin`.
+- **Email device login**: `--login EMAIL`. The human supplies their email and
+  completes the emailed confirmation themselves. Honor the server's polling
+  interval; never request or print a device code or verification URL.
+- **Agent self-enrolment**: `--agent`. Show the claim URL once with its
+  deadline and the reduced-attribution notice; never log it. The human may
+  claim the installation themselves.
+- **Enrolment token**: `--enrol-token-from-stdin`. The human types the token
+  privately, as for the paste-key prompt below.
+
+The client discovers POST operation objects in the server's OpenAPI document
+at `/api/v1/openapi.json`; it does not guess hosted routes. Email requires
+`/api/v1/auth/device` and `/api/v1/auth/device/token`, agent enrolment requires
+`/api/v1/self-enrol`, and token enrolment requires `/api/v1/enrol`. An explicitly
+unsupported method exits 2: report the refusal and ask the human to select
+an available method.
+
+For paste, ask the human to run this command in their own terminal (Git Bash
+on Windows), not a harness shell passthrough without a terminal:
 
 ```sh
-bash -c 'read -rsp "AgentFeedback API key: " k && echo >&2 && printf "%s" "$k" | "<binary>" doctor --init --url "<URL>" --key-from-stdin'
+bash -c 'read -rsp "AgentFeedback API key: " k && echo >&2 && printf "%s" "$k" | "<binary>" init --server "<URL>" --key-from-stdin --harnesses none --yes --json'
 ```
 
-If the human pasted the key into the chat anyway, do not put it in a
-command. Run `install -m 600 /dev/null "$HOME/.agentfeedback-key" && echo "$HOME/.agentfeedback-key"`,
-write the key with your file tool into the absolute path it printed, then run
-`"<binary>" doctor --init --url '<URL>' --key-from-stdin < "$HOME/.agentfeedback-key"; rm -f "$HOME/.agentfeedback-key"`.
+For email, replace `<email>` with the human's email:
 
-**Verify:** the human (or you) sees `{"status":"written","path":"…"}`, with
-`"local_reports"` when this machine's local database holds reports (step
-2.3 handles them). A
-`config already exists` error means this machine is already configured:
-show the human the path, run step 3.1 to see where it points, and ask
-whether to keep it (go on) or replace it (the same command with `--force`
-after `--key-from-stdin`). Never add `--force` on your own.
+```sh
+"<binary>" init --server "<URL>" --login '<email>' --harnesses none --yes --json
+```
+
+For agent self-enrolment:
+
+```sh
+"<binary>" init --server "<URL>" --agent --harnesses none --yes --json
+```
+
+For an enrolment token, the human runs this hidden prompt:
+
+```sh
+bash -c 'read -rsp "AgentFeedback enrolment token: " k && echo >&2 && printf "%s" "$k" | "<binary>" init --server "<URL>" --enrol-token-from-stdin --harnesses none --yes --json'
+```
+
+Never substitute a secret into the command.
+If a secret reaches chat, stop and ask the human to revoke it and enter a
+replacement privately; do not copy it into a file or command.
+
+**Verify:** authentication succeeds and the JSON reports remote mode for
+`<URL>`. Keys, enrolment tokens and device codes never appear in output;
+agent self-enrolment returns its claim URL once, so treat that output as secret.
+The client saves the key through its owner-only (`0600`) config writer.
+Existing configuration is not permission
+to replace it: show the refusal, run step 3.1 and ask whether to keep it.
+Never automatically add `--force`. To refresh a configured machine's key,
+the human explicitly runs `"<binary>" login --email EMAIL --server "<URL>"
+--json`; this is reauthentication, not installation or harness wiring.
 
 **Outcome:**
 

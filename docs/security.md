@@ -67,8 +67,9 @@ starts it, or as a bounded upload child of one of those commands:
   open a listening socket, and both stay in the foreground.
   Upgrading is installing a new binary.
 - Network: the client talks to one host, the server `url` it is configured
-  with, and in local mode to none. The one exception is `agentfeedback
-  migrate`, which also talks to the target named by `--to` (`cloud` is
+  with, and in local mode to none. Explicit onboarding and `login` contact the
+  named server for discovery and authentication. `agentfeedback migrate`
+  also talks to the target named by `--to` (`cloud` is
   `https://api.agentfeedback.dev`) for the duration of that command; its
   `--dry-run` sends no record but still reads the target's metadata and
   tombstones. Standard `HTTPS_PROXY` variables apply; redirects are not
@@ -86,6 +87,22 @@ starts it, or as a bounded upload child of one of those commands:
   harness CLIs during `install` (such as `claude mcp add`),
   `agentfeedback version --json` of the binary each hook names (`doctor`),
   and `agentfeedback sessions push --due --json` for the automatic sweep.
+
+Server onboarding accepts exactly one of an existing key on stdin, email
+device login, agent self-enrolment, or an enrolment token on stdin. Only
+capability-advertised POST routes are used for the hosted methods; OSS
+supports paste only. The human types secrets or completes email confirmation,
+not the agent. Keys and tokens never belong in argv, chat, shell tracing or
+logs. Device codes and verification URLs are not printed. Agent enrolment's
+claim URL is shown once with its deadline and reduced-attribution notice and
+must not be logged. No browser session, redirects or dummy credentials are
+used. `login` explicitly reauthenticates a configured machine through email;
+neither onboarding nor login silently replaces an existing destination.
+Returned keys use the existing atomic `0600` config writer. Hosted credentials
+are saved before harness prompts or wiring; a later setup refusal does not
+discard the key. An environment API key must be unset before hosted
+authentication. Login refuses a different saved destination, including one
+changed while email approval was pending.
 
 `init`, `doctor` and `sessions status` also read
 `GET /api/v1/sessions/policy` with the configured key. This policy request

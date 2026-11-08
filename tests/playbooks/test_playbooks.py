@@ -8,6 +8,7 @@ Usage: python3 tests/playbooks/test_playbooks.py
 
 import hashlib
 import importlib.util
+import shlex
 import shutil
 import subprocess
 import sys
@@ -217,15 +218,116 @@ class Commands(unittest.TestCase):
                 self.assertNotEqual(r.returncode, 0)
                 self.assertEqual(r.stdout.splitlines(), stdout)
 
-    def skipped(self, route, environ):
-        docs = pb.read_docs()
-        return {(e.doc, e.step) for e, _, reason in pb.commands(docs, route, pb.answers(environ), "v4.0.0", None) if reason}
+    def route_commands(self, playbook, environ):
+        ctx = pb.answers(environ)
+        pb.begin(playbook, ctx)
+        return list(pb.commands(pb.read_docs(), pb.ROUTES[playbook], ctx, "v4.0.0", None))
+
+    def skipped(self, playbook, environ):
+        return {(e.doc, e.step) for e, _, reason in self.route_commands(playbook, environ) if reason}
 
     def test_answers_skip_steps(self):
-        self.assertEqual(self.skipped(pb.STACK_ROUTE, {}), {(pb.STACK, "S4")})
-        self.assertEqual(self.skipped(pb.STACK_ROUTE, {"AF_PLAYBOOK_ADDRESS": "0.0.0.0"}), set())
-        self.assertEqual(self.skipped(pb.CLIENT_ROUTE, {}), set())
-        self.assertEqual(self.skipped(pb.LOCAL_ROUTE, {}), set())
+        for source in ({}, {"AF_PLAYBOOK_KEY_SOURCE": "paste"}):
+            self.assertEqual(self.skipped("stack", source), {(pb.STACK, "S4")})
+            self.assertEqual(self.skipped("stack", {**source, "AF_PLAYBOOK_ADDRESS": "0.0.0.0"}), set())
+            self.assertEqual(self.skipped("client", source), set())
+            self.assertEqual(self.skipped("client-local", source), set())
+
+    def test_hosted_sources_skip_only_authentication_and_dependents(self):
+        for source, extra in (
+            ("email", {"AF_PLAYBOOK_EMAIL": "human@example.test"}),
+            ("agent", {}),
+            ("enrol-token", {"AF_PLAYBOOK_ENROL_TOKEN_FILE": "/private/token"}),
+        ):
+            with self.subTest(source=source):
+                env = {"AF_PLAYBOOK_KEY_SOURCE": source, **extra}
+                entries = self.route_commands("client", env)
+                skipped = {e.step for e, _, reason in entries if reason}
+                self.assertEqual(skipped, {"2.2", "2.3", "3.1", "3.2", "4"})
+                for e, command, reason in entries:
+                    if e.step in skipped:
+                        self.assertIsNone(command)
+                        self.assertIn("OSS fixture advertises paste only", reason)
+                        self.assertIn("hosted " + source, reason)
+                        self.assertIn("dependent remote checks are not exercised", reason)
+                    else:
+                        self.assertIsNone(reason)
+                        self.assertTrue(command)
+                independent = {e.step: command for e, command, reason in entries if not reason}
+                self.assertEqual(set(independent), {"0", "1", "2.1", "2.6", "2.7"})
+                self.assertIn("/download/v4.0.0/install.sh", independent["2.1"])
+                self.assertIn("/api/v1/meta", independent["1"])
+                self.assertIn("/mcp", independent["2.6"])
+                self.assertIn("/skill?format=prompt", independent["2.7"])
+                local = self.route_commands("client-local", env)
+                self.assertTrue(all(command and not reason for _, command, reason in local))
+                self.assertTrue(next(command for e, command, _ in local if e.step == "2.3").endswith(" --local"))
+                self.assertEqual(self.skipped("stack", env), {(pb.STACK, "S4")})
+
+    def test_hosted_skip_depends_on_remote_target_not_user_name(self):
+        ctx = pb.answers({"AF_PLAYBOOK_KEY_SOURCE": "agent"})
+        pb.begin("client-local", ctx)
+        route = [pb.Entry(e.doc, e.step, "client") for e in pb.LOCAL_ROUTE]
+        entries = list(pb.commands(pb.read_docs(), route, ctx, "v4.0.0", None))
+        self.assertTrue(all(command and not reason for _, command, reason in entries))
+        self.assertTrue(next(command for e, command, _ in entries if e.step == "2.3").endswith(" --local"))
+
+    def test_authentication_selects_the_documented_source(self):
+        step = pb.parse(pb.read_docs()[pb.CLIENT])["2.2"]
+        for env, flag in (
+            ({}, "--key-from-stdin"),
+            ({"AF_PLAYBOOK_KEY_SOURCE": "email", "AF_PLAYBOOK_EMAIL": "human@example.test"}, "--login"),
+            ({"AF_PLAYBOOK_KEY_SOURCE": "agent"}, "--agent"),
+            ({"AF_PLAYBOOK_KEY_SOURCE": "enrol-token", "AF_PLAYBOOK_ENROL_TOKEN_FILE": "/private/token"}, "--enrol-token-from-stdin"),
+        ):
+            command = pb.authentication_command(step, pb.answers(env))
+            self.assertIn(flag, command)
+            if "--login" in command:
+                self.assertIn("--login 'human@example.test'", command)
+
+    def test_enrolment_token_file_is_safely_consumed_on_stdin(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            token_file = root / "token ' ; $(touch injected)"
+            token = "private-enrolment-input\n"
+            token_file.write_text(token)
+            captured = root / "stdin"
+            arguments = root / "arguments"
+            binary = root / "agentfeedback"
+            binary.write_text("#!/bin/sh\nprintf '%s\\n' \"$@\" > " + shlex.quote(str(arguments))
+                              + "\ncat > " + shlex.quote(str(captured)) + "\n")
+            binary.chmod(0o700)
+            ctx = pb.answers({"AF_PLAYBOOK_KEY_SOURCE": "enrol-token", "AF_PLAYBOOK_ENROL_TOKEN_FILE": str(token_file)})
+            ctx.values.update(binary=str(binary), URL="https://server.example.test")
+            step = pb.parse(pb.read_docs()[pb.CLIENT])["2.2"]
+            command = pb.substitute(pb.authentication_command(step, ctx), ctx.values)
+            self.assertIn("< " + shlex.quote(str(token_file)), command)
+            self.assertNotIn("read -rsp", command)
+            self.assertNotIn(token.strip(), command)
+            result = subprocess.run(["bash", "-c", command], cwd=root, capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, "")
+            self.assertEqual(captured.read_text(), token)
+            self.assertIn("--enrol-token-from-stdin", arguments.read_text().splitlines())
+            self.assertNotIn(token.strip(), arguments.read_text())
+            self.assertFalse((root / "injected").exists())
+
+    def test_enrolment_token_rewrite_refuses_a_changed_prompt(self):
+        docs = pb.read_docs()[pb.CLIENT].replace('read -rsp "AgentFeedback enrolment token: "', 'read -rp "AgentFeedback enrolment token: "')
+        ctx = pb.answers({"AF_PLAYBOOK_KEY_SOURCE": "enrol-token", "AF_PLAYBOOK_ENROL_TOKEN_FILE": "/private/token"})
+        with self.assertRaisesRegex(pb.GateError, "hidden prompt"):
+            pb.authentication_command(pb.parse(docs)["2.2"], ctx)
+
+    def test_source_inputs_require_matching_details(self):
+        for env in (
+            {"AF_PLAYBOOK_KEY_SOURCE": "unknown"},
+            {"AF_PLAYBOOK_KEY_SOURCE": "email"},
+            {"AF_PLAYBOOK_KEY_SOURCE": "enrol-token"},
+            {"AF_PLAYBOOK_KEY_SOURCE": "email", "AF_PLAYBOOK_EMAIL": "x'; touch /tmp/bad; '"},
+        ):
+            with self.assertRaises(pb.GateError):
+                pb.answers(env)
 
     def test_local_route_has_no_server(self):
         steps = [e.step for e in pb.LOCAL_ROUTE]

@@ -247,9 +247,17 @@ command = "install"
 flags = ["--server", "--mcp", "--docs", "--with-triage", "--with-reminder", "--no-hooks", "--dry-run", "--list", "--json", "--check", "--project", "--yes", "--uninstall"]
 args = ["<harness>..."]
 
+# Hosted onboarding: GET /api/v1/openapi.json discovers the POST routes
+# /api/v1/enrol, /api/v1/self-enrol, /api/v1/auth/device and
+# /api/v1/auth/device/token. The OSS service does not serve these routes.
 [local.init]
 command = "init"
-flags = ["--local", "--server", "--key-from-stdin", "--harnesses", "--yes", "--no-hooks", "--no-triage", "--mcp", "--json"]
+flags = ["--local", "--server", "--key-from-stdin", "--login", "--agent", "--enrol-token-from-stdin", "--harnesses", "--yes", "--no-hooks", "--no-triage", "--mcp", "--json"]
+args = []
+
+[local.login]
+command = "login"
+flags = ["--email", "--server", "--json"]
 args = []
 
 [local.prime]

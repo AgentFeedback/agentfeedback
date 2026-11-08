@@ -7,7 +7,7 @@ AGENT-INSTALL-STACK.md in a clean Linux container.
   python3 scripts/playbooks.py run <tag> [github|tree|<release-dir>] [--keep]
 
 `check` reads both playbooks and fails when a step the gate runs or excludes
-lacks its one `sh` block, its **Verify** line or its **Outcome** JSON (which
+lacks its `sh` block (four source alternatives for client 2.2), its **Verify** line or its **Outcome** JSON (which
 must parse and name the step), when an `sh` block belongs to no route below
 and is not excluded with a reason, or when an `sh` block sits outside every
 step. `list` prints the commands in run order with the human's answers filled
@@ -26,6 +26,10 @@ an agent would), a release directory such as GoReleaser's dist/release
 built under the tag). Only step 2.1's command is rewritten for the last two:
 its release root becomes the file:// copy. In local mode step 2.3's command
 gets the --local its prose adds.
+Hosted authentication sources skip only client authentication and its
+dependent remote checks against the OSS fixture; installer, local and
+unauthenticated endpoint checks still run. Enrolment-token selection reads
+the private AF_PLAYBOOK_ENROL_TOKEN_FILE as stdin, never as a token argument.
 
 The human's answers come from AF_PLAYBOOK_* variables, named after the
 playbooks' placeholders and decisions (HUMAN_INPUTS below). Unset means no,
@@ -45,6 +49,7 @@ import json
 import os
 import platform
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -77,6 +82,9 @@ SETUP_TIMEOUT = 900  # seconds for the image build
 HUMAN_INPUTS = {
     "AF_PLAYBOOK_HARNESS": "<harness> of client step 2.3, one of " + ", ".join(HARNESSES) + " (default claude-code)",
     "AF_PLAYBOOK_ADDRESS": "<address> of step S4: an explicit yes to exposure on that IPv4 address",
+    "AF_PLAYBOOK_KEY_SOURCE": "client step 2.2: paste (default), email, agent, or enrol-token; hosted sources are skipped against the OSS fixture",
+    "AF_PLAYBOOK_EMAIL": "email for the email source (not a key)",
+    "AF_PLAYBOOK_ENROL_TOKEN_FILE": "private stdin token file for the enrol-token source; never a token value",
 }
 
 
@@ -368,7 +376,7 @@ CLIENT_ROUTE = [
     Entry(CLIENT, "0", "client", expect=x_platform),
     Entry(CLIENT, "1", "client", expect=x_unauthorized),
     Entry(CLIENT, "2.1", "client", expect=x_binary),
-    Entry(CLIENT, "2.2", "client", expect=x_written, stdin_key=True),
+    Entry(CLIENT, "2.2", "client", expect=lambda out, c: need(last_json(out).get("mode") == "remote", "authentication did not configure remote mode"), stdin_key=True),
     *client_route("client"),
     Entry(CLIENT, "2.6", "client", expect=lambda out, c: need(last(out) == "401", f"expected 401, got {last(out)!r}")),
     Entry(CLIENT, "2.7", "client", expect=x_prompt),
@@ -431,8 +439,9 @@ def check(docs: dict[str, str], routes: dict[str, list[Entry]] = ROUTES, exclude
                 continue
             if (name, sid) in excluded and not sh:
                 pass  # a step for humans, such as a text block for a chat app
-            elif len(sh) != 1:
-                problems.append(f"{where}: {len(sh)} sh blocks, expected one command")
+            elif len(sh) != (4 if name == CLIENT and sid == "2.2" else 1):
+                expected = 4 if name == CLIENT and sid == "2.2" else 1
+                problems.append(f"{where}: {len(sh)} sh blocks, expected {expected} command(s)")
             if st.verify != 1:
                 problems.append(f"{where}: {st.verify} **Verify:** lines, expected one")
             outs = st.outcomes()
@@ -500,6 +509,24 @@ def local_init(cmd: str) -> str:
     need(re.fullmatch(r'"<binary>" init .*--json', cmd) is not None, "step 2.3's command no longer has the shape the gate extends")
     return cmd + " --local"
 
+KEY_SOURCES = ("paste", "email", "agent", "enrol-token")
+
+
+def authentication_command(step: Step, ctx: Ctx) -> str:
+    """Select the documented source before deciding whether the fixture can run it."""
+    source = ctx.answer("KEY_SOURCE") or "paste"
+    command = step.sh()[KEY_SOURCES.index(source)]
+    if source == "email":
+        command = command.replace("<email>", ctx.answer("EMAIL"))
+    if source == "enrol-token":
+        prompt = 'read -rsp "AgentFeedback enrolment token: " k && echo >&2 && printf "%s" "$k" | '
+        shell = shlex.split(command)
+        need(len(shell) == 3 and shell[:2] == ["bash", "-c"] and shell[2].startswith(prompt),
+             "step 2.2's enrolment-token command no longer has the hidden prompt the gate replaces")
+        command = shell[2][len(prompt):] + " < " + shlex.quote(ctx.answer("ENROL_TOKEN_FILE"))
+    return command
+
+
 
 def commands(docs: dict[str, str], route: list[Entry], ctx: Ctx, tag: str, file_root: str | None):
     """(entry, command or None, skip reason) in run order, resolving what is known."""
@@ -507,6 +534,14 @@ def commands(docs: dict[str, str], route: list[Entry], ctx: Ctx, tag: str, file_
     for e in route:
         reason = e.when(ctx)
         cmd = parsed[e.doc][e.step].sh()[0]
+        if e.doc == CLIENT and e.step == "2.2":
+            cmd = authentication_command(parsed[e.doc][e.step], ctx)
+        # Step 2.2 establishes the remote config used by init, doctor and
+        # the wiring report. The public endpoint probes do not depend on it.
+        if (e.user == "client" and ctx.values.get("target") == "server"
+                and e.doc == CLIENT and e.step in ("2.2", "2.3", "3.1", "3.2", "4")
+                and ctx.answer("KEY_SOURCE") not in ("", "paste")):
+            reason = "the gate's OSS fixture advertises paste only; hosted " + ctx.answer("KEY_SOURCE") + " onboarding and its dependent remote checks are not exercised"
         if e.doc == CLIENT and e.step == "2.1":
             cmd = pin_release(cmd, tag, file_root)
         if e.doc == CLIENT and e.step == "2.3" and ctx.values.get("target") == "local":
@@ -524,6 +559,13 @@ def answers(environ: dict[str, str]) -> Ctx:
     harness = ctx.answer("HARNESS") or "claude-code"
     need(harness in HARNESSES, f"AF_PLAYBOOK_HARNESS must be one of {', '.join(HARNESSES)}, got {harness!r}")
     ctx.values["harness"] = harness
+    source = ctx.answer("KEY_SOURCE") or "paste"
+    need(source in KEY_SOURCES, "AF_PLAYBOOK_KEY_SOURCE must be paste, email, agent, or enrol-token")
+    if source == "email":
+        need(re.fullmatch(r"[A-Za-z0-9._+%-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", ctx.answer("EMAIL")) is not None,
+             "AF_PLAYBOOK_EMAIL must be a plain email address")
+    if source == "enrol-token":
+        need(bool(ctx.answer("ENROL_TOKEN_FILE")), "AF_PLAYBOOK_ENROL_TOKEN_FILE is required for the enrol-token source")
     if ctx.answer("ADDRESS"):
         try:
             ipaddress.IPv4Address(ctx.answer("ADDRESS"))

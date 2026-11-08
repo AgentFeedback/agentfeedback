@@ -29,6 +29,14 @@ machine's quiet interval. The menu shows organisation policy and repository
 restrictions read-only; changing a setting never grants capture permission.
 See [Machine settings](operate.md#machine-settings) for all editable keys.
 
+Server authentication is separate from collection permission. The four
+[onboarding sources](operate.md#authenticate-a-client) (paste key, email
+device login, agent self-enrolment, stdin enrolment token) and explicit
+`agentfeedback login` reauthentication do not enable capture or relax
+repository restrictions. A changed key invalidates credential-scoped cached
+policy; the server's current policy still governs uploads. Keep keys,
+tokens, device codes, verification URLs and claim URLs out of session logs.
+
 ## Push
 
 ```bash

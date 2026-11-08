@@ -104,8 +104,8 @@ func TestInit_SwitchCopiesOnYes(t *testing.T) {
 	readSecret = func() (string, error) { return testKey, nil }
 	t.Cleanup(func() { readSecret = origSecret })
 
-	// The server, none for harnesses, then yes to the copy.
-	r := runCLI(t, l.srv.URL+"\nnone\ny\n", "init")
+	// The server, paste-key choice, none for harnesses, then yes to the copy.
+	r := runCLI(t, l.srv.URL+"\n\nnone\ny\n", "init")
 	if r.code != 0 || !strings.Contains(r.stderr, "This machine's local database holds 2 report(s). Copy them to "+l.srv.URL+" now? [y/N] ") {
 		t.Fatalf("init: %+v", r)
 	}
@@ -127,7 +127,7 @@ func TestInit_SwitchCopiesOnYes(t *testing.T) {
 	if err := os.Remove(e.home + "/.config/agentfeedback/config.toml"); err != nil {
 		t.Fatal(err)
 	}
-	r = runCLI(t, l.srv.URL+"\nnone\nyes\n", "init")
+	r = runCLI(t, l.srv.URL+"\n\nnone\nyes\n", "init")
 	if r.code != 0 || !strings.Contains(r.stdout, "sent 2, imported 0, skipped 2") {
 		t.Fatalf("second init: %+v", r)
 	}
@@ -139,7 +139,7 @@ func TestInit_SwitchCopiesOnYes(t *testing.T) {
 	if err := os.Remove(e.home + "/.config/agentfeedback/config.toml"); err != nil {
 		t.Fatal(err)
 	}
-	r = runCLI(t, l.srv.URL+"\nnone\n\n", "init")
+	r = runCLI(t, l.srv.URL+"\n\nnone\n\n", "init")
 	if r.code != 0 || !strings.Contains(r.stdout, "local:    2 report(s) in the local database stay there; copy them with "+migrateLocalCommand(l.srv.URL)) {
 		t.Fatalf("init answered no: %+v", r)
 	}
@@ -159,7 +159,7 @@ func TestInit_SwitchCopyFailureWarns(t *testing.T) {
 	}
 	t.Cleanup(func() { migrateTransport = orig })
 
-	r := runCLI(t, l.srv.URL+"\nnone\ny\n", "init")
+	r := runCLI(t, l.srv.URL+"\n\nnone\ny\n", "init")
 	if r.code != 0 || !strings.Contains(r.stderr, "agentfeedback init: warning: copying the local reports to "+l.srv.URL+" failed") ||
 		!strings.Contains(r.stdout, "local:    2 report(s) in the local database stay there") ||
 		!strings.Contains(r.stdout, "next:     "+migrateLocalCommand(l.srv.URL)) {

@@ -114,3 +114,41 @@ func updateConfigDestination(path, server, key string, force bool) error {
 		return nil
 	})
 }
+
+func checkLoginDestination(persisted, target string) error {
+	if persisted == "" {
+		return nil
+	}
+	server, err := normaliseServer("saved server", persisted)
+	if err != nil {
+		return err
+	}
+	if server != target {
+		return usageErr("login cannot change the saved server", "use init to configure a different server")
+	}
+	return nil
+}
+
+func updateLoginCredentials(path, server, key string) error {
+	return updateConfigFile(path, func(doc map[string]any) error {
+		urlName, err := configSettingsSpelling(doc, "url")
+		if err != nil {
+			return err
+		}
+		keyName, err := configSettingsSpelling(doc, "api_key")
+		if err != nil {
+			return err
+		}
+		if value, exists := doc[urlName]; exists {
+			persisted, ok := value.(string)
+			if !ok {
+				return errConfigInvalid(path, errors.New("url must be a string"))
+			}
+			if err := checkLoginDestination(persisted, server); err != nil {
+				return err
+			}
+		}
+		doc[urlName], doc[keyName] = server, key
+		return nil
+	})
+}

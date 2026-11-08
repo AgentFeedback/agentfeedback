@@ -346,14 +346,15 @@ func TestInit_ConfiguredServerKeepsItsConfig(t *testing.T) {
 func TestInit_RecordedServer(t *testing.T) {
 	e := newInstallEnv(t)
 	e.detectHarnesses(t, ".claude")
-	if r, _ := installRun(t, "install", "claude-code", "--server", "https://feedback.example.test"); r.code != 0 {
+	l := newLive(t, testKey)
+	if r, _ := installRun(t, "install", "claude-code", "--server", l.srv.URL); r.code != 0 {
 		t.Fatalf("install: %+v", r)
 	}
 	cfg, _ := configPath(os.Getenv)
 
 	// Without a terminal, local would rewire away from the recorded server.
 	r, out := initRun(t, "", "--yes")
-	if r.code != 1 || !strings.Contains(out.Message, "wired to https://feedback.example.test") {
+	if r.code != 1 || !strings.Contains(out.Message, "wired to "+l.srv.URL) {
 		t.Fatalf("init: %+v", r)
 	}
 	if r, out = initRun(t, "", "--yes", "--local"); r.code != 0 || out.Mode != "local" {
@@ -364,7 +365,7 @@ func TestInit_RecordedServer(t *testing.T) {
 	}
 
 	// On a terminal Enter keeps the recorded server.
-	if r, _ := installRun(t, "install", "claude-code", "--server", "https://feedback.example.test"); r.code != 0 {
+	if r, _ := installRun(t, "install", "claude-code", "--server", l.srv.URL); r.code != 0 {
 		t.Fatalf("install: %+v", r)
 	}
 	isTerminal = func() bool { return true }
@@ -372,7 +373,7 @@ func TestInit_RecordedServer(t *testing.T) {
 	readSecret = func() (string, error) { return "", nil }
 	t.Cleanup(func() { readSecret = origSecret })
 	r, out = initRun(t, "\n\n")
-	if r.code != 0 || out.Server != "https://feedback.example.test" || out.Config != cfg || !strings.Contains(r.stderr, "the server the harnesses are wired to") {
+	if r.code != 0 || out.Server != l.srv.URL || out.Config != cfg || !strings.Contains(r.stderr, "the server the harnesses are wired to") {
 		t.Fatalf("init on a terminal: %+v", r)
 	}
 }
