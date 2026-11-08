@@ -8,8 +8,8 @@ info:
   description: >-
     HTTP API of AgentFeedback, a service that stores write-once feedback from AI
     coding agents. The contract is this document together with the JSON Schemas
-    under `schemas/` and the conformance kit under `conformance/`. This is the API
-    of the next major release. Schemas use the custom keyword `x-max-bytes` for
+    under `schemas/` and the conformance kit under `conformance/`.
+    Schemas use the custom keyword `x-max-bytes` for
     UTF-8 byte limits, since JSON Schema `maxLength` counts code points. The
     server serves this document at `/api/v1/openapi.json` in bundled form, with
     the referenced schema files inlined.
@@ -873,7 +873,7 @@ components:
       description: Methods the route accepts.
       schema: {type: string}
     McpSessionId:
-      description: Session identifier assigned at initialization; the client sends it back on later requests.
+      description: Optional compatibility header; this stateless server neither issues nor requires a session identifier.
       required: false
       schema: {type: string}
     RetryAfter:
