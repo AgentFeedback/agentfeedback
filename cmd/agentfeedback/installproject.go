@@ -85,6 +85,7 @@ type ruleCheckOutcome struct {
 // pointer section. It writes nothing and takes no lock; any missing or
 // stale section exits 3.
 func runInstallCheck(env harness.Env, pos []string, project, asJSON bool, stdout io.Writer) error {
+	canonicalHarnessNames(pos)
 	var names []string
 	if len(pos) == 0 || slices.Contains(pos, "all") {
 		recorded, err := env.Recorded()

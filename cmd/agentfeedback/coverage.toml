@@ -212,6 +212,8 @@ reason = "scraped by monitoring, not a client read"
 #   [local.<name>]   command = "<command> <subcommand>"
 #                    flags = ["--flag", ...]   every flag of the subcommand
 #                    args = ["<arg>", ...]     positional arguments its usage names
+# OpenCode's canonical harness argument/filter is opencode-v1; opencode is
+# accepted as an input alias, including legacy opencode:<id> session refs.
 [local.sessions_list]
 command = "sessions list"
 flags = ["--harness", "--since", "--unprocessed", "--json"]

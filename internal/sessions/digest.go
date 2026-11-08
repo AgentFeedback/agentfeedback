@@ -31,8 +31,10 @@ const timeLayout = "2006-01-02T15:04:05.000Z"
 
 // flagPhrases are the prompt phrases a digest flags, matched without case
 // on word boundaries.
-var flagPhrases = []string{"doesn't work", "does not work", "still failing", "still broken", "wrong", "why did you",
-	"that's not", "not what i", "broken", "again"}
+var flagPhrases = []string{
+	"doesn't work", "does not work", "still failing", "still broken", "wrong", "why did you",
+	"that's not", "not what i", "broken", "again",
+}
 
 var flagRes = func() []*regexp.Regexp {
 	out := make([]*regexp.Regexp, len(flagPhrases))
@@ -233,6 +235,7 @@ func Digest(ctx context.Context, db *store.DB, env Env, req DigestRequest) (Dige
 			if err != nil {
 				return DigestOutput{}, err
 			}
+			ref = Ref(h, id)
 			r, _ := readerFor(h)
 			var row *store.SessionSeen
 			if err := db.Read(ctx, func(q store.Querier) error {

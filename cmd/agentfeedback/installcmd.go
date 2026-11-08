@@ -63,7 +63,7 @@ func harnessEnv() (harness.Env, error) {
 		return harness.Env{}, errNoHome(err)
 	}
 
-	return harness.Env{
+	return (harness.Env{
 		Home:     home,
 		Getenv:   os.Getenv,
 		LookPath: exec.LookPath,
@@ -74,7 +74,7 @@ func harnessEnv() (harness.Env, error) {
 
 			return cmd.CombinedOutput()
 		},
-	}, nil
+	}).WithOpenCodeVersionCache(), nil
 }
 
 // withEnv is environ with the setenv overrides applied; an empty value
@@ -190,7 +190,38 @@ type wireOptions struct {
 // the ones named beside it) and reports on stderr under command. resolve
 // picks the server; it runs under the lock, after the harnesses are known.
 // The outcome holds what the run did even when err is set.
-func wireHarnesses(env harness.Env, pos []string, o wireOptions, resolve func() (string, bool, error), command string, stderr io.Writer) (installOutcome, error) {
+func wireHarnesses(env harness.Env, pos []string, o wireOptions, resolve func() (string, bool, error), command string, stderr io.Writer) (outcome installOutcome, runErr error) {
+	// Canonicalization and filtering must not change the caller's requests.
+	pos = slices.Clone(pos)
+	var guardWarnings []string
+	defer func() { outcome.Warnings = append(guardWarnings, outcome.Warnings...) }()
+	warn := func(message string) {
+		guardWarnings = append(guardWarnings, message)
+		fmt.Fprintf(stderr, "agentfeedback %s: warning: %s\n", command, message)
+	}
+	if slices.Contains(pos, "opencode") || slices.Contains(pos, "all") {
+		major := env.OpenCodeMajor()
+		skipAlias := major == 2
+		if major == 2 && slices.Contains(pos, "opencode") {
+			warn("OpenCode 2 detected; `opencode-v2` is not available in this release yet")
+		} else if major == 0 {
+			if _, err := env.LookPath("opencode"); err == nil {
+				warn(harness.OpenCodeUnknownVersion)
+				skipAlias = true
+			}
+		}
+		if skipAlias {
+			pos = slices.DeleteFunc(pos, func(name string) bool { return name == "opencode" })
+			if len(pos) == 0 {
+				status := "unchanged"
+				if o.dryRun {
+					status = "dry_run"
+				}
+				return installOutcome{Status: status}, nil
+			}
+		}
+	}
+	canonicalHarnessNames(pos)
 	// The lock is held from before the manifest is first read to the end
 	// of the run.
 	unlock, err := harness.Lock(env, stderr, command)
@@ -223,8 +254,10 @@ func wireHarnesses(env harness.Env, pos []string, o wireOptions, resolve func() 
 		kept := names[:0:0]
 		for _, n := range names {
 			if ok, reason := harness.Supports(n, mode); !ok && !slices.Contains(pos, n) {
-				skipped = append(skipped, harness.HarnessStatus{Name: n, Mode: "-", Skill: "-", MCP: "-", Hook: "-", Reminder: "-", Docs: "-", Triage: "-", Rule: "-",
-					Notes: []string{reason + "; it was left out of " + command + " all"}})
+				skipped = append(skipped, harness.HarnessStatus{
+					Name: n, Mode: "-", Skill: "-", MCP: "-", Hook: "-", Reminder: "-", Docs: "-", Triage: "-", Rule: "-",
+					Notes: []string{reason + "; it was left out of " + command + " all"},
+				})
 
 				continue
 			}
@@ -333,6 +366,7 @@ func runUninstall(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if err := checkHarnessNames(pos); err != nil {
 		return printInstallOutcome(stdout, installOutcome{}, err)
 	}
+	canonicalHarnessNames(pos)
 	env, err := harnessEnv()
 	if err != nil {
 		return printInstallOutcome(stdout, installOutcome{}, err)
@@ -391,6 +425,12 @@ func checkInstallSupported(command string) error {
 	}
 
 	return nil
+}
+
+func canonicalHarnessNames(names []string) {
+	for i, name := range names {
+		names[i] = harness.CanonicalName(name)
+	}
 }
 
 func checkHarnessNames(names []string) error {

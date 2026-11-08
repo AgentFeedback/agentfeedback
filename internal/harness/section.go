@@ -222,6 +222,7 @@ func (e Env) Check(harnesses []string) ([]RuleCheck, error) {
 	}
 	out := make([]RuleCheck, 0, len(harnesses))
 	for _, name := range harnesses {
+		name = CanonicalName(name)
 		a := adapterOf(name)
 		if a == nil {
 			continue

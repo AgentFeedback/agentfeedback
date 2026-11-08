@@ -56,6 +56,20 @@ func TestParse_Fixtures(t *testing.T) {
 	}
 }
 
+func TestOpenCodeCanonicalAndLegacyIdentity(t *testing.T) {
+	for _, event := range []string{"tool.execute.after", "session.idle"} {
+		payload := fixture(t, "opencode", event)
+		old, oldOK := Parse("opencode", event, payload)
+		current, currentOK := Parse("opencode-v1", event, payload)
+		if !oldOK || !currentOK || old != current {
+			t.Fatalf("%s alias mismatch: %+v %+v", event, old, current)
+		}
+		if KnownEvent("opencode-v1", event) != KnownEvent("opencode", event) || CanDeliver("opencode-v1", event) != CanDeliver("opencode", event) {
+			t.Fatalf("%s capabilities differ", event)
+		}
+	}
+}
+
 func TestParse_NotOK(t *testing.T) {
 	for _, tt := range []struct{ harness, event, payload string }{
 		{"claude-code", "PreToolUse", `{"session_id":"a"}`},
@@ -171,8 +185,12 @@ func TestKnownEvent(t *testing.T) {
 		harness, event string
 		want           bool
 	}{
-		{"claude-code", "Stop", true}, {"antigravity", "PreInvocation", true}, {"opencode", "session.idle", true},
-		{"claude-code", "PreToolUse", false}, {"nobody", "Stop", false}, {"pi", "agent_end", false},
+		{"claude-code", "Stop", true},
+		{"antigravity", "PreInvocation", true},
+		{"opencode", "session.idle", true},
+		{"claude-code", "PreToolUse", false},
+		{"nobody", "Stop", false},
+		{"pi", "agent_end", false},
 	} {
 		if got := KnownEvent(tt.harness, tt.event); got != tt.want {
 			t.Errorf("%s %s: %v", tt.harness, tt.event, got)

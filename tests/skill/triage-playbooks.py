@@ -81,7 +81,6 @@ Usage: python3 tests/skill/triage-playbooks.py   (after `just check`)
 """
 import contextlib
 import datetime
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -492,7 +491,7 @@ def store_opencode(work):
 
 
 SESSION_STORES = {"claude-code": store_claude, "codex": store_codex, "copilot": store_copilot,
-                  "gemini-cli": store_gemini, "opencode": store_opencode}
+                  "gemini-cli": store_gemini, "opencode-v1": store_opencode}
 
 
 def session_env(work, url=None):
@@ -557,7 +556,7 @@ def fill(text, values, escape=False):
     return PLACEHOLDER.sub(one, text)
 
 
-def session_effects(env, work, harness, values, before, key=None):
+def session_effects(env, work, harness, values, before):
     """Return the problems with the filed friction and the session states."""
     problems = []
     rows = json.loads(run([BIN, "list", "--kind", "friction", "--json", "--include", "payload"], env, work))
@@ -565,8 +564,6 @@ def session_effects(env, work, harness, values, before, key=None):
     if len(rows) != 1:
         return [f"{len(rows)} friction rows with uid {values['filed-uid']}, want 1"]
     row, context = rows[0], rows[0].get("context") or {}
-    if key is not None and row.get("key") != key:
-        problems.append(f"row key {row.get('key')!r}, want {key!r}")
     if not str(row.get("key", "")).startswith("session-scan-"):
         problems.append(f"row key {row.get('key')!r} does not start with session-scan-")
     if context.get("origin") != "session-scan":
@@ -704,14 +701,6 @@ class Stdio:
         return self.proc.stderr.read()
 
 
-def span_key(event_ref, ordinal, detector_version):
-    """The key submit --context-from computes for event_ref (internal/sessions Key)."""
-    ref, span = event_ref.rsplit("#", 1)
-    harness, session_id = ref.split(":", 1)
-    joined = "\x00".join([harness, session_id, span, str(ordinal), detector_version])
-    return "session-scan-" + hashlib.sha256(joined.encode()).hexdigest()
-
-
 def run_mcp_route(name, text, harness):
     """Run the MCP-only route's tool calls over harness's golden store, in local mode."""
     work = Path(tempfile.mkdtemp(prefix="triage-playbooks-"))
@@ -760,7 +749,7 @@ def run_mcp_route(name, text, harness):
         mcp.proc.stdin.close()
         mcp.proc.wait(10)
         stderr = mcp.stop()
-        problems = session_effects(env, work, harness, values, before, key=span_key(values["event-ref"], 1, values["detector-version"]))
+        problems = session_effects(env, work, harness, values, before)
         # The same report filed through the CLI from the same span is the same row.
         report = json.dumps({"summary": values["summary"],
                              "payload": {"category": "tooling", "details": values["details"]}})

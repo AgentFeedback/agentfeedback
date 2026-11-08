@@ -543,21 +543,41 @@ agentfeedback install claude-code --no-hooks     # no hooks at all, the session-
 agentfeedback install --check                    # is the rule section current in each detected or recorded harness? changes nothing; exit 3 when one is missing or stale
 agentfeedback install --project --yes            # the pointer section in this repository's AGENTS.md (or CLAUDE.md); --uninstall removes it
 agentfeedback prime                              # the short guidance the session-start hook prints (--format cursor: Cursor's JSON; --full: the whole guidance)
-agentfeedback install opencode --mcp             # an MCP entry instead of the skill and the hook: stdio, agentfeedback mcp for local, agentfeedback mcp --server URL for a server
+agentfeedback install opencode-v1 --mcp          # an MCP entry instead of the skill and the hook: stdio, agentfeedback mcp for local, agentfeedback mcp --server URL for a server
 agentfeedback install claude-code --docs         # also the agentfeedback-docs skill: the reference docs, schemas and OpenAPI document for integrators and operators
 agentfeedback install all --dry-run              # print every file that would change, change nothing
 agentfeedback uninstall all                      # remove exactly what install added
 ```
 
-Harnesses: `claude-code`, `codex`, `cursor`, `opencode`, `omp`, `pi`, `copilot`, `antigravity`, `devin`, `kiro`, `cline`, `amp`, `vscode`, `gemini-cli`. A
+Harnesses: `claude-code`, `codex`, `cursor`, `opencode-v1`, `omp`, `pi`, `copilot`, `antigravity`, `devin`, `kiro`, `cline`, `amp`, `vscode`, `gemini-cli`. A
 harness counts as detected when its binary is on `PATH` or its directory
-exists; a named harness that is not detected is wired anyway, with a note.
+exists, with the OpenCode version check below; a named harness that is not
+detected is wired anyway, with a note.
 `all` is every detected harness plus any named beside it.
 Unknown names exit 2. The last stdout line is a JSON outcome (`status`
 `installed`, `unchanged`, `uninstalled`, `dry_run` or `error`, `harnesses`,
 `changed`, `backups`, `next`); progress goes to stderr. Running install twice
 changes nothing the second time (`unchanged`); a changed mode, binary path,
 server, `--with-reminder`, `--with-triage`, `--no-hooks` or `--docs` replaces what the previous run added.
+
+OpenCode V1 is `opencode-v1`; `opencode` is an input alias. Detection requires
+`opencode --version` to report major 1, or no binary and an existing OpenCode
+directory. A 2.x binary is not detected as V1. With 2.x on `PATH`,
+`install opencode` writes nothing and warns that `opencode-v2` is not
+available in this release yet; other harnesses named in the same command
+are still installed. Explicitly naming `opencode-v1` still wires V1 with a
+not-detected note. An unreadable or unrecognized version is not detected as
+V1; verify the installed version before explicitly selecting V1. `doctor`
+flags a V1 plugin beside a 2.x binary and recommends uninstalling it.
+Existing manifest entries are read as `opencode-v1`, retaining uninstall
+ownership, backups and shared-file state. The physical OpenCode directories,
+config files, plugin filename and hook-counter directory do not change.
+OpenCode V2 is not supported.
+
+New feedback uses `harness: opencode-v1`. Stored feedback is write-once:
+older `harness: opencode` submissions keep that value. Feedback filters and
+groupings use the stored value, so query both names when reviewing history
+across the rename.
 
 - **The rule.** In CLI mode install writes one section into each harness's
   global instruction file (the Rule column): a begin marker
@@ -623,7 +643,7 @@ are not wired on Windows; undo the steps by hand.
 | `claude-code` | `claude`, `$CLAUDE_CONFIG_DIR` (default `~/.claude`) | `<claude config>/skills/agentfeedback/SKILL.md` | `<claude config>/settings.json` `hooks.PostToolUseFailure` (note) and `hooks.Stop` | `hooks.SessionStart` runs `agentfeedback prime` | `<claude config>/CLAUDE.md` | `claude mcp add-json agentfeedback ... --scope user` | live-checked 2026-10-07 |
 | `codex` | `codex`, `$CODEX_HOME` (default `~/.codex`) | `~/.agents/skills/agentfeedback/SKILL.md` | `<codex home>/hooks.json` `hooks.Stop` (flush only) | `hooks.SessionStart` runs `agentfeedback prime` | `<codex home>/AGENTS.md` | marked `[mcp_servers.agentfeedback]` block in `<codex home>/config.toml` | documented 2026-10-07 |
 | `cursor` | `cursor-agent`, or an `agent` that resolves into a Cursor install; `~/.cursor` | `~/.cursor/skills/agentfeedback/SKILL.md` | `~/.cursor/hooks.json` `hooks.postToolUseFailure` (note) and `hooks.stop` | `hooks.sessionStart` runs `agentfeedback prime --format cursor` | none: Cursor's User Rules live in its settings UI, not in a file | `~/.cursor/mcp.json` `mcpServers.agentfeedback` | documented 2026-10-07 |
-| `opencode` | `opencode`, `${XDG_CONFIG_HOME:-~/.config}/opencode` | `<opencode>/skills/agentfeedback/SKILL.md` | plugin `<opencode>/plugins/agentfeedback.js` (on `tool.execute.after` for `bash`, and `session.idle`, which delivers the note) | not supported | `<opencode>/AGENTS.md` | `mcp.agentfeedback` in the first of `opencode.jsonc`, `opencode.json` that has an `mcp` member, else an existing `opencode.jsonc`, else `opencode.json` | live-checked 2026-10-07 |
+| `opencode-v1` | `opencode` reporting 1.x, or `${XDG_CONFIG_HOME:-~/.config}/opencode` with no binary | `<opencode>/skills/agentfeedback/SKILL.md` | plugin `<opencode>/plugins/agentfeedback.js` (on `tool.execute.after` for `bash`, and `session.idle`, which delivers the note) | not supported | `<opencode>/AGENTS.md` | `mcp.agentfeedback` in the first of `opencode.jsonc`, `opencode.json` that has an `mcp` member, else an existing `opencode.jsonc`, else `opencode.json` | live-checked 2026-10-07 |
 | `omp` | `omp`, `~/.omp` | `~/.omp/agent/skills/agentfeedback/SKILL.md` | extension `~/.omp/agent/extensions/agentfeedback.ts` (on `tool_result` errors, with the note, and `agent_end`, not for subagents) | not supported | `~/.omp/agent/AGENTS.md` | `~/.omp/agent/mcp.json` `mcpServers.agentfeedback` | documented 2026-10-07 |
 | `pi` | `pi`, `~/.pi` | `~/.pi/agent/skills/agentfeedback/SKILL.md` | extension `~/.pi/agent/extensions/agentfeedback.ts` (on `tool_result` errors, with the note as a next-turn message, and `agent_settled`) | not supported | `~/.pi/agent/AGENTS.md` | `~/.pi/agent/mcp.json` `mcpServers.agentfeedback`; needs pi 0.99.0 or later | documented 2026-10-07 |
 | `copilot` | `copilot`, `~/.copilot` | `~/.copilot/skills/agentfeedback/SKILL.md` | file `~/.copilot/hooks/agentfeedback.json` (`postToolUseFailure`, with the note on exit 2, and `agentStop`) | not supported | `~/.copilot/copilot-instructions.md` | `~/.copilot/mcp-config.json` `mcpServers.agentfeedback` | documented 2026-10-07 |

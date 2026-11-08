@@ -22,8 +22,8 @@ import (
 	_ "modernc.org/sqlite" // database/sql driver "sqlite"
 )
 
-// HarnessOpenCode is the registry name of OpenCode.
-const HarnessOpenCode = "opencode"
+// HarnessOpenCode is the registry name of OpenCode V1.
+const HarnessOpenCode = "opencode-v1"
 
 // opencodeReader reads OpenCode's SQLite session store, in the schema of
 // OpenCode 1.18.35 (tables session, message and part; message and part
@@ -448,9 +448,18 @@ var (
 	}
 	ocAssistantFields = [][]string{{"time", "completed"}}
 	ocPartFields      = [][]string{
-		{"messageID"}, {"type"}, {"synthetic"}, {"ignored"}, {"tool"}, {"callID"},
-		{"state", "status"}, {"state", "input"}, {"state", "output"}, {"state", "error"},
-		{"state", "metadata", "exit"}, {"state", "metadata", "interrupted"},
+		{"messageID"},
+		{"type"},
+		{"synthetic"},
+		{"ignored"},
+		{"tool"},
+		{"callID"},
+		{"state", "status"},
+		{"state", "input"},
+		{"state", "output"},
+		{"state", "error"},
+		{"state", "metadata", "exit"},
+		{"state", "metadata", "interrupted"},
 	}
 	ocTextFields = [][]string{{"text"}}
 )

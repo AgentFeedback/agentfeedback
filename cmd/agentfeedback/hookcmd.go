@@ -50,12 +50,20 @@ type lastRun struct {
 
 // hookLastRunPath is <cache>/hooks/<harness>.json.
 func hookLastRunPath(cache, name string) string {
+	// Keep the V1 cache readable across the public harness rename.
+	if name == "opencode-v1" {
+		name = "opencode"
+	}
 	return filepath.Join(cache, "hooks", name+".json")
 }
 
 // hookSpawnErrorPath is the file an OpenCode, omp or pi plugin writes when
 // it cannot start the hook.
 func hookSpawnErrorPath(cache, name string) string {
+	// Previously installed V1 plugins still write this physical path.
+	if name == "opencode-v1" {
+		name = "opencode"
+	}
 	return filepath.Join(cache, "hooks", name+".spawn-error.json")
 }
 
@@ -77,7 +85,7 @@ func runHook(args []string, stdin io.Reader, stdout, _ io.Writer) error {
 
 		return nil
 	}
-	name, event := args[0], args[1]
+	name, event := harness.CanonicalName(args[0]), args[1]
 	cache, cerr := cacheDir(os.Getenv)
 	fail := func(err error) {
 		if cerr != nil {

@@ -114,7 +114,7 @@ run.
 them) are read only by `agentfeedback sessions`, `submit --context-from`, the
 stdio `sessions_*` tools and the stdio `submit_feedback`'s `context_from`
 (in remote mode too: the session is read here, and only the body built
-from it is sent), on demand and never written; the OpenCode
+from it is sent), on demand and never written; the OpenCode V1 (`opencode-v1`)
 database is opened read-only, without creating any file beside it. The `[collect]`
 rules are applied per session before a log is opened, and a digest is
 bounded and scrubbed before it is shown. Only the watermark rows and what

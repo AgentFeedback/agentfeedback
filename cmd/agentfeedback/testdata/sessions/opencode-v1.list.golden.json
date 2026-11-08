@@ -1,15 +1,15 @@
 {
   "stores": [
     {
-      "harness": "opencode",
+      "harness": "opencode-v1",
       "location": "<HOME>/.local/share/opencode",
       "state": "present"
     }
   ],
   "sessions": [
     {
-      "ref": "opencode:ses_golden0001",
-      "harness": "opencode",
+      "ref": "opencode-v1:ses_golden0001",
+      "harness": "opencode-v1",
       "session_id": "ses_golden0001",
       "path": "<HOME>/.local/share/opencode/opencode.db",
       "project": "<CWD>",

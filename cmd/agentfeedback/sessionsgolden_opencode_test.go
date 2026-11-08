@@ -14,7 +14,7 @@ import (
 // data home under the home directory, in WAL mode and closed so no -wal
 // file remains.
 func init() {
-	registerGoldenStore("opencode", func(t *testing.T, home string) string {
+	registerGoldenStore("opencode-v1", func(t *testing.T, home string) string {
 		t.Helper()
 		cwd := filepath.Join(t.TempDir(), "golden-proj")
 		if err := os.Mkdir(cwd, 0o755); err != nil {

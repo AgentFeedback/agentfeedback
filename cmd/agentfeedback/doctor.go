@@ -382,6 +382,9 @@ func checkHarnessBinaries(clientVer string, problem func(error)) []harnessBinary
 		hooked[a.Name] = a.Hook.Format != "none"
 	}
 	for _, h := range st {
+		for _, message := range h.Problems {
+			problem(errors.New(message))
+		}
 		if h.Binary == "" {
 			continue
 		}

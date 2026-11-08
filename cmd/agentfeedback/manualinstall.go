@@ -47,6 +47,7 @@ const ruleNote = "paste the output of the rule command into the harness's instru
 // server is resolved without a prompt; nothing is written. warnings are
 // those of the binary a stdio entry runs, when a step carries one.
 func manualSteps(command string, pos []string, serverFlag string, stderr io.Writer) (steps []manualStep, warnings []string) {
+	canonicalHarnessNames(pos)
 	env, err := harnessEnv()
 	if err != nil {
 		return nil, nil

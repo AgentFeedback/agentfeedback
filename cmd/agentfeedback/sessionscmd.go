@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/agentfeedback/agentfeedback/v4/internal/capture"
+	"github.com/agentfeedback/agentfeedback/v4/internal/harness"
 	"github.com/agentfeedback/agentfeedback/v4/internal/localmode"
 	"github.com/agentfeedback/agentfeedback/v4/internal/mcp"
 	"github.com/agentfeedback/agentfeedback/v4/internal/sessions"
@@ -135,6 +136,7 @@ func sinceTime(v string) (time.Time, error) {
 
 // knownHarness refuses a harness without a session reader.
 func knownHarness(h string) error {
+	h = harness.CanonicalName(h)
 	if h == "" {
 		return nil
 	}

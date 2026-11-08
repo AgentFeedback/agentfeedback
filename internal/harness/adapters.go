@@ -13,9 +13,13 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/agentfeedback/agentfeedback/v4/internal/skillgen"
 	"github.com/pelletier/go-toml/v2"
@@ -68,13 +72,26 @@ type Env struct {
 	// claudeAtSet is whether CLAUDE_CONFIG_DIR was set at that install.
 	codexAt, claudeAt, geminiAt string
 	claudeAtSet                 bool
+
+	// Only production environments opt in; manually constructed test Envs
+	// probe their current Exec on every call.
+	openCodeVersion *openCodeVersionCache
 }
 
 // Names lists every harness the package knows.
 func Names() []string { return append([]string(nil), names...) }
 
+// CanonicalName resolves the legacy OpenCode input alias.
+func CanonicalName(name string) string {
+	if name == "opencode" {
+		return "opencode-v1"
+	}
+	return name
+}
+
 // Known reports whether name is a harness the package knows.
 func Known(name string) bool {
+	name = CanonicalName(name)
 	for _, n := range names {
 		if n == name {
 			return true
@@ -104,6 +121,10 @@ func (e Env) xdgCache() string {
 // SpawnErrorPath is the file a plugin writes when it cannot start the hook
 // command for the harness.
 func (e Env) SpawnErrorPath(name string) string {
+	// Keep the existing plugin-owned error file location.
+	if name == "opencode-v1" {
+		name = "opencode"
+	}
 	return filepath.Join(e.xdgCache(), "agentfeedback", "hooks", name+".spawn-error.json")
 }
 
@@ -225,6 +246,15 @@ func (e Env) ManifestPath() string {
 
 // Detect reports how the harness was found: "binary", "dir" or "no".
 func (e Env) Detect(name string) string {
+	name = CanonicalName(name)
+	if name == "opencode-v1" {
+		if _, err := e.LookPath("opencode"); err == nil {
+			if e.OpenCodeMajor() == 1 {
+				return "binary"
+			}
+			return "no"
+		}
+	}
 	a := adapterOf(name)
 	if a == nil {
 		return "no"
@@ -252,6 +282,60 @@ func (e Env) Detect(name string) string {
 	}
 
 	return "no"
+}
+
+// OpenCodeUnknownVersion explains the fail-closed automatic detection policy.
+const OpenCodeUnknownVersion = "cannot determine the installed OpenCode version; automatic OpenCode V1 wiring was skipped; if you have verified that it is V1, run agentfeedback install opencode-v1"
+
+type openCodeVersionCache struct {
+	once  sync.Once
+	major int
+}
+
+// WithOpenCodeVersionCache returns an Env whose copies share a lazy version
+// probe. Call it after configuring Exec and LookPath; call it again after
+// replacing either dependency to start a fresh cache.
+func (e Env) WithOpenCodeVersionCache() Env {
+	e.openCodeVersion = &openCodeVersionCache{}
+	return e
+}
+
+var openCodeVersionLine = regexp.MustCompile(`^(?:opencode )?v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
+
+// OpenCodeMajor returns the installed binary's major version, or zero when
+// unavailable or unparseable. Version probing never uses the API credential.
+func (e Env) OpenCodeMajor() int {
+	if cache := e.openCodeVersion; cache != nil {
+		cache.once.Do(func() { cache.major = e.probeOpenCodeMajor() })
+		return cache.major
+	}
+	return e.probeOpenCodeMajor()
+}
+
+func (e Env) probeOpenCodeMajor() int {
+	path, err := e.LookPath("opencode")
+	if err != nil || e.Exec == nil {
+		return 0
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	out, err := e.Exec(ctx, map[string]string{"AGENT_FEEDBACK_API_KEY": "", "API_KEY": ""}, path, "--version")
+	if err != nil {
+		return 0
+	}
+	major := 0
+	for _, line := range strings.Split(string(out), "\n") {
+		match := openCodeVersionLine.FindStringSubmatch(strings.TrimSpace(line))
+		if match == nil {
+			continue
+		}
+		n, err := strconv.Atoi(match[1])
+		if err != nil || n < 1 || (major != 0 && major != n) {
+			return 0
+		}
+		major = n
+	}
+	return major
 }
 
 // SkillPath is the SKILL.md install writes for the harness, in its first
@@ -596,7 +680,8 @@ func (e Env) pluginSkill(name string) bool {
 			if !strings.HasPrefix(k, prefix) || json.Unmarshal(v, &installs) != nil ||
 				!slices.ContainsFunc(installs, func(i struct {
 					Scope string `json:"scope"`
-				}) bool {
+				},
+				) bool {
 					return i.Scope == "user"
 				}) {
 				continue
@@ -837,7 +922,7 @@ function note(out` + t(": string") + `)` + t(": string") + ` {
 }
 
 func opencodePlugin(bin, spawnErr string) []byte {
-	return []byte(pluginHelper(bin, spawnErr, "opencode", false) + `
+	return []byte(pluginHelper(bin, spawnErr, "opencode-v1", false) + `
 export const AgentFeedback = async ({ client, directory }) => ({
   "tool.execute.after": async (input, output) => {
     if (input?.tool !== "bash") return;

@@ -193,8 +193,11 @@ func TestInstall_RefusedModes(t *testing.T) {
 func display(e Env, a Adapter, path string) string {
 	type sub struct{ prefix, with string }
 	subs := []sub{
-		{e.claudeDir(), "<claude config>"}, {e.codexHome(), "<codex home>"}, {e.opencodeDir(), "<opencode>"},
-		{e.vscodeUserDir(), "<Code/User>"}, {e.Home, "~"},
+		{e.claudeDir(), "<claude config>"},
+		{e.codexHome(), "<codex home>"},
+		{e.opencodeDir(), "<opencode>"},
+		{e.vscodeUserDir(), "<Code/User>"},
+		{e.Home, "~"},
 	}
 	if a.Name == "amp" {
 		subs = append(subs, sub{e.xdgConfig(), "<xdg>"})
@@ -326,7 +329,7 @@ func TestRegistry_AgreesWithWiring(t *testing.T) {
 		}
 		if mcpFile != "" && a.Name != "claude-code" {
 			want := display(e, a, mcpFile)
-			if a.Name == "opencode" || a.Name == "amp" {
+			if a.Name == "opencode-v1" || a.Name == "amp" {
 				want = filepath.Base(mcpFile)
 			}
 			if !strings.Contains(r.mcp, want) {

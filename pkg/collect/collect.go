@@ -75,11 +75,11 @@ type harness struct {
 var harnesses = []harness{
 	{name: "omp", markers: []string{"PI_CODING_AGENT_DIR", "OMP_PROFILE"}, vars: []envVar{{"OMP_PROFILE", "profile"}}},
 	{name: "pi", markers: []string{"PI_CODING_AGENT"}, vars: []envVar{{"PI_PROFILE", "profile"}}, model: "PI_MODEL"},
-	{name: "opencode", markers: []string{"OPENCODE"}, model: "OPENCODE_MODEL"},
+	{name: "opencode-v1", markers: []string{"OPENCODE"}, model: "OPENCODE_MODEL"},
 	{name: "codex", markers: []string{"CODEX_SANDBOX"}},
 	{name: "claude-code", markers: []string{"CLAUDECODE"}, vars: []envVar{{"CLAUDE_CODE_SESSION_ID", "session_id"}, {"CLAUDE_EFFORT", "effort"}}},
 	{name: "pi", markers: []string{"PI_MODEL"}, vars: []envVar{{"PI_PROFILE", "profile"}}, model: "PI_MODEL"},
-	{name: "opencode", markers: []string{"OPENCODE_MODEL"}, model: "OPENCODE_MODEL"},
+	{name: "opencode-v1", markers: []string{"OPENCODE_MODEL"}, model: "OPENCODE_MODEL"},
 }
 
 // commonVars are read whatever the harness; they are applied after the

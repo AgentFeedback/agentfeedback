@@ -43,7 +43,7 @@ func stdioMember(exe string, args ...string) map[string]struct {
 
 	return map[string]m{
 		"cursor":      {".cursor/mcp.json", []string{"mcpServers"}, typed},
-		"opencode":    {".config/opencode/opencode.jsonc", []string{"mcp"}, `{"type":"local","command":[` + bin + `,` + list[1:] + `,"enabled":true}`},
+		"opencode-v1": {".config/opencode/opencode.jsonc", []string{"mcp"}, `{"type":"local","command":[` + bin + `,` + list[1:] + `,"enabled":true}`},
 		"omp":         {".omp/agent/mcp.json", []string{"mcpServers"}, typed},
 		"pi":          {".pi/agent/mcp.json", []string{"mcpServers"}, plain},
 		"copilot":     {".copilot/mcp-config.json", []string{"mcpServers"}, `{"type":"local","command":` + bin + `,"args":` + list + `,"tools":["*"]}`},
@@ -283,7 +283,7 @@ func TestWindows_ManualStdioEntries(t *testing.T) {
 	if cursor == nil || compactJSON(t, cursor.Value) != want["cursor"].want {
 		t.Fatalf("cursor %+v", cursor)
 	}
-	if opencode == nil || compactJSON(t, opencode.Value) != want["opencode"].want {
+	if opencode == nil || compactJSON(t, opencode.Value) != want["opencode-v1"].want {
 		t.Fatalf("opencode %+v", opencode)
 	}
 }

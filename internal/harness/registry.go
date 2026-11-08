@@ -240,6 +240,7 @@ func (e Env) ampDir() string     { return filepath.Join(e.xdgConfig(), "amp") }
 func (e Env) clineMCPFile() string {
 	return filepath.Join(e.Home, ".cline", "data", "settings", "cline_mcp_settings.json")
 }
+
 func (e Env) copilotHookFile() string {
 	return filepath.Join(e.copilotDir(), "hooks", "agentfeedback.json")
 }
@@ -405,8 +406,10 @@ var registry = []Adapter{
 			Reminder: true,
 		},
 		MCP: MCP{File: homePath(".cursor", "mcp.json"), Path: []string{"mcpServers"}, EnvRef: "${env:AGENT_FEEDBACK_API_KEY}"},
-		Sessions: Sessions{Locations: []string{"~/.cursor/projects/*/agent-transcripts/"}, Reader: "none", NoReader: "the session stores were examined and are not read; see docs/sessions.md",
-			Verified: Verified{Level: LevelUnsupported, Date: verifiedDate, Note: "docs/sessions.md#cursor"}},
+		Sessions: Sessions{
+			Locations: []string{"~/.cursor/projects/*/agent-transcripts/"}, Reader: "none", NoReader: "the session stores were examined and are not read; see docs/sessions.md",
+			Verified: Verified{Level: LevelUnsupported, Date: verifiedDate, Note: "docs/sessions.md#cursor"},
+		},
 		Verified: documented(),
 		hook: func(p *plan, o Options) ([]Item, []string) {
 			f := filepath.Join(p.env.Home, ".cursor", "hooks.json")
@@ -437,7 +440,7 @@ var registry = []Adapter{
 		},
 	},
 	{
-		Name:       "opencode",
+		Name:       "opencode-v1",
 		Binaries:   []string{"opencode"},
 		ConfigDirs: dirs(Env.opencodeDir),
 		SkillDirs:  func(e Env) []string { return []string{filepath.Join(e.opencodeDir(), "skills")} },
@@ -470,7 +473,7 @@ var registry = []Adapter{
 			return []string{filepath.Join(oc, "opencode.jsonc"), filepath.Join(oc, "opencode.json")}, []string{filepath.Join(oc, "plugins", "agentfeedback.js")}
 		},
 		row: docsRow{
-			detected: "`opencode`, `${XDG_CONFIG_HOME:-~/.config}/opencode`",
+			detected: "`opencode` reporting 1.x, or `${XDG_CONFIG_HOME:-~/.config}/opencode` with no binary",
 			skill:    "`<opencode>/skills/agentfeedback/SKILL.md`",
 			hook:     "plugin `<opencode>/plugins/agentfeedback.js` (on `tool.execute.after` for `bash`, and `session.idle`, which delivers the note)",
 			reminder: "not supported",
@@ -613,8 +616,10 @@ var registry = []Adapter{
 			Deliver: "PreInvocation",
 		},
 		MCP: MCP{File: func(e Env) string { return filepath.Join(e.geminiDir(), "config", "mcp_config.json") }, Path: []string{"mcpServers"}, EnvRef: "${AGENT_FEEDBACK_API_KEY}"},
-		Sessions: Sessions{Locations: []string{"~/.gemini/antigravity*/brain/<id>/.system_generated/logs/transcript.jsonl"}, Reader: "none", NoReader: "the session stores were examined and are not read; see docs/sessions.md",
-			Verified: Verified{Level: LevelUnsupported, Date: verifiedDate, Note: "docs/sessions.md#antigravity"}},
+		Sessions: Sessions{
+			Locations: []string{"~/.gemini/antigravity*/brain/<id>/.system_generated/logs/transcript.jsonl"}, Reader: "none", NoReader: "the session stores were examined and are not read; see docs/sessions.md",
+			Verified: Verified{Level: LevelUnsupported, Date: verifiedDate, Note: "docs/sessions.md#antigravity"},
+		},
 		Caveats:  []string{"the legacy Cascade configuration is not wired", "~/.gemini/GEMINI.md is shared with gemini-cli unless GEMINI_CLI_HOME is set"},
 		Verified: documented(),
 		hook: func(p *plan, o Options) ([]Item, []string) {
@@ -858,7 +863,7 @@ func init() {
 
 				return []Item{it}, nil, nil
 			}
-		case "opencode":
+		case "opencode-v1":
 			a.mcp = jsonMCP(a, (*plan).opencodeConfig, nil, nil)
 		case "amp":
 			a.mcp = jsonMCP(a, (*plan).ampConfig, nil, nil)
@@ -884,6 +889,7 @@ var names = func() []string {
 
 // adapterOf is the registry entry of name, or nil.
 func adapterOf(name string) *Adapter {
+	name = CanonicalName(name)
 	for i := range registry {
 		if registry[i].Name == name {
 			return &registry[i]

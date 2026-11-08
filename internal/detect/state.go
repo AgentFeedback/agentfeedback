@@ -64,6 +64,10 @@ func StatePath(cache, harness, sessionID string) string {
 	if len(id) > fileIDMax {
 		id = id[:fileIDMax]
 	}
+	// V1 keeps its deployed directory, including the sibling file locks.
+	if harness == "opencode-v1" {
+		harness = "opencode"
+	}
 	sum := sha256.Sum256([]byte(sessionID))
 
 	return filepath.Join(SessionsDir(cache), SafeID(harness), id+"-"+hex.EncodeToString(sum[:])[:16]+".json")

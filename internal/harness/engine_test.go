@@ -108,7 +108,7 @@ func TestDuplicateKey_UninstallLeavesFile(t *testing.T) {
 
 func TestPluginSources_IgnoreSpawnErrors(t *testing.T) {
 	for name, src := range map[string][]byte{
-		"opencode": opencodePlugin("/bin/af", "/c/err.json"), "omp": ompExtension("/bin/af", "/c/err.json"), "pi": piExtension("/bin/af", "/c/err.json"),
+		"opencode-v1": opencodePlugin("/bin/af", "/c/err.json"), "omp": ompExtension("/bin/af", "/c/err.json"), "pi": piExtension("/bin/af", "/c/err.json"),
 	} {
 		for _, want := range []string{
 			`const BIN = "/bin/af";`, `const SPAWN_ERR = "/c/err.json";`, `const HARNESS = "` + name + `";`,
@@ -595,7 +595,7 @@ func TestInstall_ReplacesOlderFlushHook(t *testing.T) {
 	if _, err := e.Run(cliRequest("claude-code", "opencode")); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := e.LegacyHooks(); err != nil || !slices.Equal(got, []string{"claude-code", "opencode"}) {
+	if got, err := e.LegacyHooks(); err != nil || !slices.Equal(got, []string{"claude-code", "opencode-v1"}) {
 		t.Fatalf("legacy %v %v", got, err)
 	}
 	claude.hook, opencode.hook = origClaude, origOpencode

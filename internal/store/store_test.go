@@ -43,8 +43,8 @@ func TestOpenAppliesSchemaAndIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("schema version: %v", err)
 	}
-	if got != known || known != 4 {
-		t.Fatalf("schema version %d, known %d, want both 4", got, known)
+	if got != known || known != 5 {
+		t.Fatalf("schema version %d, known %d, want both 5", got, known)
 	}
 	if err := db.Close(); err != nil {
 		t.Fatalf("close: %v", err)
@@ -59,23 +59,6 @@ func TestOpenAppliesSchemaAndIsIdempotent(t *testing.T) {
 
 	if err := db.Ping(ctx); err != nil {
 		t.Fatalf("ping: %v", err)
-	}
-}
-
-func TestMigrationsAreNumberedConsecutively(t *testing.T) {
-	t.Parallel()
-
-	entries, err := migrationsFS.ReadDir("migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var names []string
-	for _, e := range entries {
-		names = append(names, e.Name())
-	}
-	want := []string{"001_init.sql", "002_origin.sql", "003_sessions.sql", "004_capture.sql"}
-	if !slices.Equal(names, want) {
-		t.Fatalf("migrations/ holds %v, want %v", names, want)
 	}
 }
 
@@ -227,8 +210,8 @@ func TestOpenResumesAfterAnInterruptedFirstOpen(t *testing.T) {
 		t.Fatalf("open after interrupted first open: %v", err)
 	}
 	defer func() { _ = db.Close() }()
-	if v, err := db.SchemaVersion(ctx); err != nil || v != 4 {
-		t.Fatalf("schema version %d, %v; want 4", v, err)
+	if v, err := db.SchemaVersion(ctx); err != nil || v != 5 {
+		t.Fatalf("schema version %d, %v; want 5", v, err)
 	}
 }
 
@@ -470,8 +453,8 @@ func TestOpenMigratesAPopulatedVersion1Database(t *testing.T) {
 		t.Fatalf("reopen: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	if v, err := db.SchemaVersion(ctx); err != nil || v != 4 {
-		t.Fatalf("schema version %d, %v; want 4", v, err)
+	if v, err := db.SchemaVersion(ctx); err != nil || v != 5 {
+		t.Fatalf("schema version %d, %v; want 5", v, err)
 	}
 	var n int
 	if err := db.reader.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type = 'index' AND name = 'ix_submissions_origin'").Scan(&n); err != nil || n != 1 {

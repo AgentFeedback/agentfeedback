@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agentfeedback/agentfeedback/v4/internal/harness"
 	"github.com/agentfeedback/agentfeedback/v4/internal/store"
 	"github.com/agentfeedback/agentfeedback/v4/pkg/client"
 	"github.com/agentfeedback/agentfeedback/v4/pkg/collect"
@@ -513,15 +514,19 @@ func runEnvelope(kind string, args []string, stdin io.Reader, stdout, stderr io.
 	}
 
 	if tooBig {
-		o := client.Outcome{Outcome: client.OutcomeRejected, Reason: "body_too_large",
-			Message: fmt.Sprintf("stdin is over the %d-byte limit; it was not sent", envelope.BodyLimit)}
+		o := client.Outcome{
+			Outcome: client.OutcomeRejected, Reason: "body_too_large",
+			Message: fmt.Sprintf("stdin is over the %d-byte limit; it was not sent", envelope.BodyLimit),
+		}
 		s.logLocal(o)
 
 		return finish("submit", o, stdout)
 	}
 
-	obj, warnings, err := buildEnvelope(s, envelopeInput{kind: kind, str: str, given: given, ctxFlags: ctxFlags,
-		version: version, obj: obj, scrub: *scrubFlag, from: from})
+	obj, warnings, err := buildEnvelope(s, envelopeInput{
+		kind: kind, str: str, given: given, ctxFlags: ctxFlags,
+		version: version, obj: obj, scrub: *scrubFlag, from: from,
+	})
 	if err != nil {
 		return err
 	}
@@ -627,6 +632,12 @@ func buildEnvelope(s *submitter, in envelopeInput) (rawObject, []client.Warning,
 	flagOr("project", "project", collected.Project)
 	flagOr("machine", "machine", settings.Machine.Value, collected.Machine)
 	flagOr("harness", "harness", settings.Harness.Value, collected.Harness)
+	if raw, ok := obj.get("harness"); ok {
+		var name string
+		if json.Unmarshal(raw, &name) == nil && name == "opencode" {
+			obj = obj.setString("harness", harness.CanonicalName(name))
+		}
+	}
 	if from == nil {
 		flagOr("model", "model", settings.Model.Value, collected.Model)
 	}
@@ -750,8 +761,10 @@ func scrubBody(obj rawObject) (rawObject, []client.Warning) {
 			continue
 		}
 		out[i].raw = raw
-		warnings = append(warnings, client.Warning{Code: "scrubbed", Pointer: "/" + schema.EscapeToken(m.name),
-			Message: scrubMessage(c)})
+		warnings = append(warnings, client.Warning{
+			Code: "scrubbed", Pointer: "/" + schema.EscapeToken(m.name),
+			Message: scrubMessage(c),
+		})
 	}
 
 	return out, warnings

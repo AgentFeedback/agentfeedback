@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/agentfeedback/agentfeedback/v4/internal/core"
+	harnessreg "github.com/agentfeedback/agentfeedback/v4/internal/harness"
 	"github.com/agentfeedback/agentfeedback/v4/internal/store"
 	"github.com/agentfeedback/agentfeedback/v4/pkg/collect"
 	"github.com/agentfeedback/agentfeedback/v4/pkg/scrub"
@@ -134,7 +135,7 @@ var errUnsupported = errors.New("unsupported session store format")
 
 // readerOrder is the listing order of the readers, by harness; a harness
 // whose reader is not registered is skipped.
-var readerOrder = []string{"claude-code", "codex", "copilot", "gemini-cli", "opencode"}
+var readerOrder = []string{"claude-code", "codex", "copilot", "gemini-cli", "opencode-v1"}
 
 // registered are the readers register added, by harness.
 var registered = map[string]reader{}
@@ -187,6 +188,7 @@ func loadFile(env Env, c candidate, parse func(r io.Reader) (*transcript, error)
 }
 
 func readerFor(harness string) (reader, bool) {
+	harness = harnessreg.CanonicalName(harness)
 	for _, r := range readers {
 		if r.harness() == harness {
 			return r, true
@@ -475,12 +477,15 @@ func watermark(tr *transcript, row *store.SessionSeen) (state, reason string, fr
 }
 
 // Ref is the ref of a session: "<harness>:<session id>".
-func Ref(harness, sessionID string) string { return harness + ":" + sessionID }
+func Ref(harness, sessionID string) string {
+	return harnessreg.CanonicalName(harness) + ":" + sessionID
+}
 
 // ParseRef splits a session ref; the harness must have a reader and the
 // session id must be a plain file stem.
 func ParseRef(ref string) (harness, sessionID string, err error) {
 	harness, sessionID, ok := strings.Cut(ref, ":")
+	harness = harnessreg.CanonicalName(harness)
 	if !ok || sessionID == "" {
 		return "", "", fmt.Errorf("session ref %q: want <harness>:<session id>", ref)
 	}
@@ -653,7 +658,7 @@ func Mark(ctx context.Context, db *store.DB, env Env, refs []string, outcome str
 		if err != nil {
 			return err
 		}
-		targets = append(targets, target{ref, h, id})
+		targets = append(targets, target{Ref(h, id), h, id})
 	}
 	now := env.now().UnixMicro()
 
@@ -742,6 +747,9 @@ func Status(ctx context.Context, db *store.DB, env Env) (StatusOutput, error) {
 		if err := json.Unmarshal([]byte(raw), &sel); err != nil {
 			return StatusOutput{}, fmt.Errorf("saved selection: %w", err)
 		}
+		for i, h := range sel.Harnesses {
+			sel.Harnesses[i] = harnessreg.CanonicalName(h)
+		}
 		out.Selection = &sel
 	}
 
@@ -751,7 +759,10 @@ func Status(ctx context.Context, db *store.DB, env Env) (StatusOutput, error) {
 // SetSelection saves sel. Every harness must have a reader and Limit must
 // not be negative.
 func SetSelection(ctx context.Context, db *store.DB, sel Selection) error {
-	for _, h := range sel.Harnesses {
+	sel.Harnesses = slices.Clone(sel.Harnesses)
+	for i, h := range sel.Harnesses {
+		h = harnessreg.CanonicalName(h)
+		sel.Harnesses[i] = h
 		if !slices.Contains(Harnesses(), h) {
 			return fmt.Errorf("selection: no session reader for harness %q", h)
 		}
@@ -774,6 +785,11 @@ func SetSelection(ctx context.Context, db *store.DB, sel Selection) error {
 // session: "session-scan-" and the SHA-256 hex of harness, session id,
 // span, ordinal and detector version joined by NUL bytes.
 func Key(harness, sessionID, span string, ordinal int, detectorVersion string) string {
+	harness = harnessreg.CanonicalName(harness)
+	// V1 finding keys retain the deployed identity despite its public rename.
+	if harness == "opencode-v1" {
+		harness = "opencode"
+	}
 	sum := sha256.Sum256([]byte(harness + "\x00" + sessionID + "\x00" + span + "\x00" + strconv.Itoa(ordinal) + "\x00" + detectorVersion))
 
 	return "session-scan-" + hex.EncodeToString(sum[:])

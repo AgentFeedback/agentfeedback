@@ -64,7 +64,7 @@ KEY_RE = re.compile(r"[0-9a-f]{64}")
 # The harnesses client step 2.3 wires with the skill: every install harness
 # but vscode, which takes only the MCP entry.
 HARNESSES = (
-    "claude-code", "codex", "cursor", "opencode", "omp", "pi",
+    "claude-code", "codex", "cursor", "opencode-v1", "omp", "pi",
     "copilot", "antigravity", "devin", "kiro", "cline", "amp", "gemini-cli",
 )
 # Harnesses install wires without a hook; their hook column reads "-".

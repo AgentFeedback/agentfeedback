@@ -32,7 +32,15 @@ See [Session policy settings](operate.md#session-policy-settings).
 | `codex` | `codex-rollout` | `<codex home>/sessions/YYYY/MM/DD/rollout-*.jsonl` and `<codex home>/archived_sessions/rollout-*.jsonl` (`$CODEX_HOME`, else `~/.codex`) | the `session_meta` first line, read alone, before; `turn_context`, after |
 | `copilot` | `copilot-events` | `<copilot home>/session-state/<session id>/events.jsonl` (`$COPILOT_HOME`, else `~/.copilot`) | `workspace.yaml` beside the log, before; `session.start` and `session.context_changed`, after |
 | `gemini-cli` | `gemini-cli-jsonl` | `<gemini dir>/tmp/<project>/chats/session-*.jsonl` (`$GEMINI_CLI_HOME/.gemini`, else `~/.gemini`) | `<project>/.project_root`, before; the metadata line's `directories`, which the log records only for sub-agents and `/dir add`, after |
-| `opencode` | `opencode-sqlite` | `$OPENCODE_DB` (a relative one under `<data home>/opencode`), else `opencode.db` and `opencode-*.db` in `<data home>/opencode` (`$XDG_DATA_HOME`, else `~/.local/share`) | the session row's `directory`, before; each assistant message's `path.cwd`, after |
+| `opencode-v1` | `opencode-sqlite` | `$OPENCODE_DB` (a relative one under `<data home>/opencode`), else `opencode.db` and `opencode-*.db` in `<data home>/opencode` (`$XDG_DATA_HOME`, else `~/.local/share`) | the session row's `directory`, before; each assistant message's `path.cwd`, after |
+
+OpenCode V1 session references use `opencode-v1:<id>`. The input alias
+`opencode:<id>` resolves and marks the same session. Existing local session
+state migrates to the canonical name without resetting processed progress;
+saved harness selections accept the alias too. The store paths, SQLite
+reader format, detector version and finding idempotency keys remain unchanged:
+retrying a previously filed span still uses its original key. This reader
+does not support OpenCode V2.
 
 A directory variable that is not an absolute path is ignored. A store
 directory that cannot be listed, or a session file whose directory entry

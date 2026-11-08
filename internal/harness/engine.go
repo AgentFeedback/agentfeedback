@@ -161,6 +161,27 @@ func LoadManifest(path string) (m *Manifest, raw []byte, err error) {
 	if m.Files == nil {
 		m.Files = map[string]*FileRecord{}
 	}
+	if old := m.Harnesses["opencode"]; old != nil {
+		if current := m.Harnesses["opencode-v1"]; current != nil {
+			// Preserve both records' ownership; refuse conflicting metadata
+			// rather than silently dropping either record.
+			if old.Mode != current.Mode || old.Binary != current.Binary || old.Reminder != current.Reminder || old.Docs != current.Docs || old.Triage != current.Triage {
+				return nil, nil, &Refusal{Problem: "conflicting opencode and opencode-v1 install records", Next: "restore a manifest with one OpenCode V1 record"}
+			}
+			for _, item := range old.Items {
+				found := false
+				for _, existing := range current.Items {
+					found = found || existing.same(item)
+				}
+				if !found {
+					current.Items = append(current.Items, item)
+				}
+			}
+		} else {
+			m.Harnesses["opencode-v1"] = old
+		}
+		delete(m.Harnesses, "opencode")
+	}
 	// A record written before records carried their own binary runs the
 	// manifest-wide one as loaded, before a later run overwrites it.
 	for _, rec := range m.Harnesses {
@@ -1233,6 +1254,7 @@ type HarnessStatus struct {
 	// Verification is the adapter's verification record; set by Status.
 	Verification *Verified `json:"verification,omitempty"`
 	Notes        []string  `json:"notes,omitempty"`
+	Problems     []string  `json:"problems,omitempty"`
 }
 
 // Result is what a run did, or with DryRun would do.
@@ -1247,6 +1269,14 @@ type Result struct {
 // Run plans every harness first, so a refusal writes nothing, then applies
 // harness by harness. The caller holds Lock for the whole run.
 func (e Env) Run(req Request) (Result, error) {
+	wanted := make([]string, 0, len(req.Harnesses))
+	for _, name := range req.Harnesses {
+		name = CanonicalName(name)
+		if !slices.Contains(wanted, name) {
+			wanted = append(wanted, name)
+		}
+	}
+	req.Harnesses = wanted
 	mpath := e.ManifestPath()
 	man, raw, err := LoadManifest(mpath)
 	if err != nil {
@@ -1927,6 +1957,16 @@ func (e Env) Status() ([]HarnessStatus, error) {
 	versions := map[string]string{}
 	for i := range out {
 		out[i].Detected = e.Detect(out[i].Name)
+		if out[i].Name == "opencode-v1" && e.OpenCodeMajor() == 2 {
+			if info, err := os.Stat(filepath.Join(e.opencodeDir(), "plugins", "agentfeedback.js")); err == nil && info.Mode().IsRegular() {
+				out[i].Problems = append(out[i].Problems, "OpenCode 2 does not run the installed opencode-v1 plugin; run agentfeedback uninstall opencode-v1 and wait for OpenCode V2 support")
+			}
+		}
+		if out[i].Name == "opencode-v1" && e.OpenCodeMajor() == 0 {
+			if _, err := e.LookPath("opencode"); err == nil {
+				out[i].Problems = append(out[i].Problems, OpenCodeUnknownVersion)
+			}
+		}
 		if v, ok := Verification(out[i].Name); ok {
 			out[i].Verification = &v
 		}

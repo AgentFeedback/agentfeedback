@@ -29,10 +29,10 @@
       "docs": "docs/operate.md"
     },
     {
-      "id": "opencode",
-      "name": "OpenCode",
+      "id": "opencode-v1",
+      "name": "OpenCode V1",
       "kind": "adapter",
-      "install": "`agentfeedback install opencode`",
+      "install": "`agentfeedback install opencode-v1`",
       "status": "live-checked",
       "date": "2026-10-07",
       "docs": "docs/operate.md"
