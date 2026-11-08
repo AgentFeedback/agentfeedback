@@ -423,6 +423,8 @@ func TestDoctor_LegacySpool(t *testing.T) {
 // delivers it.
 func TestDoctor_DeliversNothing(t *testing.T) {
 	isolate(t)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("PATH", t.TempDir())
 	data := dataRoot(t)
 	if r := runCLI(t, "", "submit", "friction", "--summary", "first"); r.code != 0 {
 		t.Fatalf("submit: %+v", r)
@@ -463,6 +465,8 @@ func TestDoctor_LooseModes(t *testing.T) {
 		t.Skip("file modes are not meaningful on Windows")
 	}
 	isolate(t)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("PATH", t.TempDir())
 	if s := runCLI(t, "", "submit", "friction", "--summary", "x"); s.code != 0 {
 		t.Fatalf("submit: %+v", s)
 	}
@@ -505,6 +509,8 @@ func TestDoctor_LooseModes(t *testing.T) {
 
 func TestDoctor_CreatesNothing(t *testing.T) {
 	cfgPath, cache := isolate(t)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("PATH", t.TempDir())
 	r := runCLI(t, "", "doctor")
 	if r.code != 0 || !strings.Contains(r.stdout, "mode:     local (database ") || !strings.Contains(r.stdout, ", missing)") ||
 		strings.Contains(r.stdout, "url:") || strings.Contains(r.stdout, "api key:") {
@@ -526,6 +532,8 @@ func TestDoctor_CreatesNothing(t *testing.T) {
 // database exists and /meta is served in-process.
 func TestDoctor_LocalMode(t *testing.T) {
 	isolate(t)
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("PATH", t.TempDir())
 	want := filepath.Join(os.Getenv("XDG_DATA_HOME"), "agentfeedback", "agentfeedback.db")
 	rep, r := doctorJSON(t)
 	if r.code != 0 || rep.Status != "ok" || rep.Mode != modeLocal || rep.Database.Path != want || rep.Database.Exists || len(rep.Database.Loose) != 0 ||
@@ -553,6 +561,8 @@ func TestDoctor_LocalMode(t *testing.T) {
 // --local still shows the url it set aside; --server targets a server once;
 // --local with --server is a usage error.
 func TestDoctor_ModeSelection(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("PATH", t.TempDir())
 	t.Run("configured url", func(t *testing.T) {
 		cfgPath, _ := isolate(t)
 		t.Setenv(envAPIKey, testKey)

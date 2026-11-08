@@ -231,11 +231,12 @@ plugin; if so, go to step 2.4 instead.
 `init` also prints a `sessions:` policy status line on stderr and includes
 `capture` in its JSON result. This is the org's setting, not another consent
 question; `--yes` does not change it. `doctor` and `sessions status` show
-the same policy. These commands send no transcript. See
+the same policy and expose the last automatic push record. Policy discovery
+itself sends no transcript. When enabled, existing turn-end hooks and eligible
+CLI commands can launch a bounded, detached
+[`sessions push --due` sweep](docs/sessions.md#automatic-sweep); no resident
+daemon, scheduler or new hook registration is installed. See
 [Session policy settings](docs/operate.md#session-policy-settings).
-Manual [`sessions push`](docs/sessions.md#push) can upload eligible,
-scrubbed transcripts when that policy is enabled; setup itself does not
-upload them or enable a background sweep.
 
 OpenCode's `opencode` input alias selects V1; with a 2.x binary on `PATH`,
 `install opencode` writes nothing and warns that V2 is not available.

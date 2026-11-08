@@ -195,6 +195,14 @@ func Refresh(ctx context.Context, db *store.DB, c *client.Client, opts Options) 
 			if err != nil {
 				return err
 			}
+			// A failed refresh may retain trigger permission only from the
+			// same credential's uninterrupted enabled consent. A new key or
+			// an authorization/unsupported response must not revive it later.
+			if row.CredentialFingerprint != fingerprint ||
+				(row.State != Enabled && row.State != Error && row.State != Suspended) ||
+				(observed.State != Error && observed.State != Suspended) {
+				row.Enabled = false
+			}
 			row.Server = observed.Server
 		}
 		row.CheckedAt, row.State, row.RetryAt = opts.Now.UnixMicro(), observed.State, nil

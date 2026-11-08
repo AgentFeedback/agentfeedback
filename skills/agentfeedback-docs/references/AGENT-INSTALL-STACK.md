@@ -267,7 +267,8 @@ The OSS server does not offer transcript processing: the client reports
 `capture.state: unsupported` and "this server does not process sessions".
 This is an expected policy status, not a failed installation check.
 Manual [`sessions push`](docs/sessions.md#push) therefore sends no transcript
-to this stack; it requires a server whose organisation enables processing.
+to this stack, and the [automatic sweep](docs/sessions.md#automatic-sweep)
+is a no-op; both require a server whose organisation enables processing.
 
 **Outcome:**
 

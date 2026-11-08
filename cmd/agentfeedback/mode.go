@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"time"
 
 	"github.com/agentfeedback/agentfeedback/v4/internal/localmode"
 	"github.com/agentfeedback/agentfeedback/v4/internal/store"
@@ -201,6 +202,9 @@ func newAPIClient(getenv func(string) string, mf modeFlags, stderr io.Writer) (*
 	})
 	if err != nil {
 		return nil, m, errClientSetup(err)
+	}
+	if !skipStartupPass {
+		triggerCaptureSweep(getenv, mf, time.Now().Add(100*time.Millisecond))
 	}
 
 	return c, m, nil

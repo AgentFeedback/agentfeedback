@@ -125,6 +125,32 @@ check() {
     fail "$mode: the Stop hook command failed: $hook"
   [ -z "$out" ] || fail "$mode: the Stop hook printed: $out"
   pass "$mode: the PostToolUseFailure hook prints the note on the second failure; the Stop hook prints nothing"
+
+  # Exercise the real detached child, including ownership handoff and completion.
+  export SWEEP_URL="$URL" AGENT_FEEDBACK_URL="$URL"
+  python3 /opt/live/sweep.py
+  out=$(cd /tmp && timeout 4 bash -c "$hook" <<<"$(jq -cn --arg s "$session" '{session_id: $s, cwd: "/tmp", hook_event_name: "Stop", stop_hook_active: false}')") ||
+    fail "$mode: sweep blocked the installed Stop hook"
+  [ -z "$out" ] || fail "$mode: sweep printed into the harness: $out"
+  local last="$XDG_CACHE_HOME/agentfeedback/push.last-run.json"
+  local started="$XDG_CACHE_HOME/agentfeedback/push.last-started"
+  for _ in $(seq 100); do
+    [ -s "$last" ] && break
+    sleep 0.05
+  done
+  jq -e '.started != null and .finished != null' "$last" >/dev/null ||
+    fail "$mode: detached session push did not finish"
+  local first
+  first=$(cat "$started")
+  # The OSS fixture has no capture API. Restore enabled consent without changing
+  # the run records so the repeat exercises quiet throttling, not unsupported.
+  python3 /opt/live/sweep.py --keep-markers
+  out=$(cd /tmp && timeout 4 bash -c "$hook" <<<"$(jq -cn --arg s "$session" '{session_id: $s, cwd: "/tmp", hook_event_name: "Stop", stop_hook_active: false}')") ||
+    fail "$mode: repeated Stop hook failed"
+  [ -z "$out" ] || fail "$mode: repeated Stop printed output"
+  [ "$(cat "$started")" = "$first" ] || fail "$mode: repeated Stop spawned a second child"
+  unset AGENT_FEEDBACK_URL
+  pass "$mode: cached enabled policy launches one detached child without blocking Stop; repeat is throttled"
   expect unchanged install claude-code --server "$URL"
   expect uninstalled uninstall claude-code
   [ ! -e "$dir/skills/agentfeedback" ] || fail "$mode: the skill is left in $dir/skills"

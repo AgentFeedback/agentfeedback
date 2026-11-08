@@ -403,9 +403,10 @@ func TestConsentEpochOffOnAndOrgSwitching(t *testing.T) {
 		t.Fatalf("authorization failure changed consent: %+v", unauthorized)
 	}
 	back = observe(testOrg, true, http.StatusOK)
-	if !back.Enabled || !back.Since.Equal(on.Since) {
-		t.Fatalf("authorization recovery reset epoch: %+v", back)
+	if !back.Enabled || !back.Since.After(on.Since) {
+		t.Fatalf("authorization recovery did not reset epoch: %+v", back)
 	}
+	on = back
 	suspended := observe(testOrg, true, http.StatusTooManyRequests)
 	if suspended.Enabled || suspended.State != Suspended || !suspended.Since.Equal(on.Since) {
 		t.Fatalf("suspension changed consent: %+v", suspended)

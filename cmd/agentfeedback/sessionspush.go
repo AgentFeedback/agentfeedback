@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/agentfeedback/agentfeedback/v4/internal/capture"
 	"github.com/agentfeedback/agentfeedback/v4/pkg/client"
@@ -14,7 +15,52 @@ import (
 
 const sessionsPushSynopsis = "sessions push [<harness:id>...] [--due] [--since T] [--dry-run] [--limit N] [--json]"
 
-func runSessionsPush(args []string, stdout, stderr io.Writer) error {
+func runSessionsPush(args []string, stdout, stderr io.Writer) (retErr error) {
+	cache, err := cacheDir(os.Getenv)
+	if err != nil {
+		return err
+	}
+	data, err := dataDir(os.Getenv)
+	if err != nil {
+		return err
+	}
+	run, err := capture.AcceptSweep(cache, data)
+	if err != nil {
+		client.LogTo(cache, client.Outcome{Outcome: client.OutcomeError, Reason: "session sweep: handoff rejected"}, nowFunc(), io.Discard)
+		return err
+	}
+	var results []capture.PushResult
+	var suspendedUntil *time.Time
+	if run != nil {
+		defer func() {
+			last := capture.LastRun{Started: run.Started(), Finished: nowFunc(), SuspendedUntil: suspendedUntil}
+			for _, result := range results {
+				switch result.Status {
+				case "pushed":
+					last.Pushed++
+				case "replayed":
+					last.Replayed++
+				case "deferred", "suspended":
+					last.Deferred++
+				case "error":
+					last.Errors++
+				default:
+					last.Skipped++
+				}
+			}
+			if retErr != nil && last.Errors == 0 {
+				last.Errors++
+			}
+			if err := run.Finish(last); err != nil {
+				retErr = errors.Join(retErr, err)
+			}
+			outcome := client.Outcome{Outcome: client.OutcomeSubmitted, Reason: "session sweep completed"}
+			if retErr != nil || last.Errors > 0 {
+				outcome = client.Outcome{Outcome: client.OutcomeError, Reason: "session sweep failed"}
+			}
+			client.LogTo(cache, outcome, nowFunc(), io.Discard)
+		}()
+	}
 	fs := newFlagSet("sessions push")
 	due := fs.Bool("due", false, "push eligible sessions, oldest first")
 	since := fs.String("since", "", "explicitly replace the consent cutoff with this RFC 3339 or relative time")
@@ -63,14 +109,6 @@ func runSessionsPush(args []string, stdout, stderr io.Writer) error {
 	if mode.Settings.APIKey.Value == "" {
 		return failErr("session push requires an installation key", "configure the key, then run agentfeedback doctor")
 	}
-	data, err := dataDir(os.Getenv)
-	if err != nil {
-		return err
-	}
-	cache, err := cacheDir(os.Getenv)
-	if err != nil {
-		return err
-	}
 	// Do not use apiClient: its start-up inbox/spool pass is unrelated to capture.
 	c, err := client.New(client.Config{
 		URL: mode.Settings.URL.Value, APIKey: mode.Settings.APIKey.Value,
@@ -85,12 +123,25 @@ func runSessionsPush(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	cfg := file.Sessions.config()
-	results, pushErr := capture.Push(context.Background(), svc.db, c, svc.env, capture.PushOptions{
+	var pushErr error
+	results, pushErr = capture.Push(context.Background(), svc.db, c, svc.env, capture.PushOptions{
 		Policy: capture.Options{Server: mode.Settings.URL.Value, Quiet: cfg.Quiet, PolicyTTL: cfg.PolicyTTL, Now: nowFunc(), Clock: nowFunc},
 		Config: cfg, Refs: refs, Since: sinceTime, Limit: *limit, DryRun: *dryRun,
 		ClientVersion: clientVersion().Version, WithCwd: file.Context.Cwd, Drop: file.Context.Drop,
-		Log: func(message string) { fmt.Fprintln(stderr, "agentfeedback sessions push: "+message) },
+		Log: func(message string) {
+			if run != nil {
+				client.LogTo(cache, client.Outcome{Outcome: client.OutcomeSubmitted, Reason: "session sweep: " + message}, nowFunc(), io.Discard)
+			} else {
+				fmt.Fprintln(stderr, "agentfeedback sessions push: "+message)
+			}
+		},
 	})
+	if run != nil {
+		policy, policyErr := capture.CachedPolicy(context.Background(), svc.db, c, capture.Options{Server: mode.Settings.URL.Value, Quiet: cfg.Quiet, PolicyTTL: cfg.PolicyTTL, Now: nowFunc(), Clock: nowFunc})
+		if policyErr == nil && !policy.RetryAt.IsZero() {
+			suspendedUntil = &policy.RetryAt
+		}
+	}
 	if results == nil {
 		results = []capture.PushResult{}
 	}

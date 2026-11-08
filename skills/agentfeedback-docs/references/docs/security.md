@@ -56,12 +56,16 @@ internet.
 
 ## The client on a machine
 
-The `agentfeedback` binary runs only when a person, a harness hook or an
-agent starts it, and exits when the command is done:
+The `agentfeedback` binary runs when a person, a harness hook or an agent
+starts it, or as a bounded upload child of one of those commands:
 
-- No self-update, no background process, no scheduled task, no telemetry.
-  Only `serve` and `ui` (loopback only) open a listening socket, and both
-  stay in the foreground. Upgrading is installing a new binary.
+- No self-update, no resident daemon, no scheduled task, no telemetry.
+  The [automatic session sweep](sessions.md#automatic-sweep) can launch one
+  detached, short-lived upload child from an existing turn-end hook or CLI
+  command, bounded by `sessions.push_budget` and `sessions.push_batch`.
+  It is never resident or scheduled. Only `serve` and `ui` (loopback only)
+  open a listening socket, and both stay in the foreground.
+  Upgrading is installing a new binary.
 - Network: the client talks to one host, the server `url` it is configured
   with, and in local mode to none. The one exception is `agentfeedback
   migrate`, which also talks to the target named by `--to` (`cloud` is
@@ -79,8 +83,9 @@ agent starts it, and exits when the command is done:
   skill's optional clustering helper is a separate boundary (below).
 - No process enumeration, no keychain or credential store, no clipboard, no
   shell history. Commands it runs: `git` (read-only, for the context),
-  harness CLIs during `install` (such as `claude mcp add`), and
-  `agentfeedback version --json` of the binary each hook names (`doctor`).
+  harness CLIs during `install` (such as `claude mcp add`),
+  `agentfeedback version --json` of the binary each hook names (`doctor`),
+  and `agentfeedback sessions push --due --json` for the automatic sweep.
 
 `init`, `doctor` and `sessions status` also read
 `GET /api/v1/sessions/policy` with the configured key. This policy request
@@ -99,9 +104,10 @@ repository upload vetoes and the policy's consent cutoff apply. Every scrub
 class is applied before hashing and partitioning, with JSON strings decoded
 so escaping cannot hide credentials and multiline private keys redacted
 across records. Logs contain scrub counts, never transcript text. Scrubbing
-is not a guarantee that all sensitive prose is recognised. Uploads are
-explicit, not triggered by hooks or background jobs. See
-[Push](sessions.md#push) for timing, revision, size and retry rules. A dry-run
+is not a guarantee that all sensitive prose is recognised. Uploads can be
+manual or triggered by the [automatic sweep](sessions.md#automatic-sweep),
+which requires matching cached consent (including recovery from transient policy
+errors) and refreshes permission in the upload child. See [Push](sessions.md#push) for timing, revision, size and retry rules. A dry-run
 preview stays in command output; it is not saved or sent to the upload
 routes. Pending uploads retain only their initial scrubbed manifest metadata
 and partition size in SQLite, never transcript content or parts. Source
@@ -113,7 +119,7 @@ under the home directory, on every operating system):
 | Location | Access | What |
 |---|---|---|
 | `${XDG_DATA_HOME:-~/.local/share}/agentfeedback/` | owned, `0700`, files `0600` | the database (reports in local mode; session watermarks and policy cache in both modes; remote `init`, `doctor` and `sessions status` create it for policy discovery; when switching to a server, existing reports leave the machine only through `migrate` or init's copy after a yes), `spool/`, `rejected/`, `inbox/` ([operate.md](operate.md#data-directory)) |
-| `${XDG_CACHE_HOME:-~/.cache}/agentfeedback/` | owned, `0700`, files `0600` | `log/client.jsonl`, the hooks' per-session counters (`sessions/`, deleted after 7 days) and last-run records (`hooks/`), `filed/` markers, `digest/` output |
+| `${XDG_CACHE_HOME:-~/.cache}/agentfeedback/` | owned, `0700`, files `0600` | `log/client.jsonl`, the hooks' per-session counters (`sessions/`, deleted after 7 days) and last-run records (`hooks/`), `filed/` markers, `digest/` output; `push.lock`, `push.last-started` and `push.last-run.json` coordinate and summarize automatic session sweeps without transcript content |
 | `${XDG_CONFIG_HOME:-~/.config}/agentfeedback/` | owned, `0700`, files `0600` | `config.toml`, the install manifest `install.json`, and `server/` (`api-key`, `serve.env`) from `serve --init` |
 | the working tree's `.git` metadata and `.agentfeedback.toml` | read | the project context and the repository's narrowing rules |
 | harness session stores | read, by `sessions` only | below |
@@ -134,7 +140,7 @@ database is opened read-only, without creating any file beside it. The `[collect
 rules are applied per session before a log is opened, and a digest is
 bounded and scrubbed before it is shown. Only watermark and push-outcome
 metadata and what you file are stored in the data-directory database;
-transcripts are sent only by explicit `sessions push`, never spooled.
+transcripts are sent only by `sessions push` (manual or automatic), never spooled.
 A digest reaches the provider of the model that reads it
 ([sessions.md](sessions.md#provider-boundary)).
 

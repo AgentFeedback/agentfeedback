@@ -97,9 +97,9 @@ stdio MCP entry differs only in its argument (`mcp`, or `mcp --server
   that copies them ([Restore and migration](#restore-and-migration));
   nothing copies reports back from a server on its own.
 - **Session state** (`sessions`) stays in the data-directory database in
-  both modes. Explicit [`sessions push`](sessions.md#push) sends eligible,
-  scrubbed transcripts to a server whose organisation enables processing;
-  local digest and push watermarks remain separate.
+  both modes. [`sessions push`](sessions.md#push), run manually or by the
+  automatic sweep, sends eligible, scrubbed transcripts to a server whose
+  organisation enables processing; local digest and push watermarks remain separate.
 - **The file inbox** is delivered by local-mode commands only, and with a
   server by `agentfeedback ingest` alone ([File inbox](#file-inbox)).
 - **Delivering the spool**: with a server the end-of-turn hook sends due
@@ -660,8 +660,10 @@ are not wired on Windows; undo the steps by hand.
 
 - **Hooks.** Every hook runs `agentfeedback hook <harness> <event>` on the
   events in the table; `codex` and `devin` get the end-of-turn hook only,
-  which flushes; `kiro`, `cline`, `amp`, `vscode` and `gemini-cli` get none
-  yet. After upgrading from a release that wired `flush --hook`, run
+  which flushes and can trigger the [session sweep](sessions.md#automatic-sweep);
+  `kiro`, `cline`, `amp`, `vscode` and `gemini-cli` get none
+  yet. No new hook registrations are needed for the sweep.
+  After upgrading from a release that wired `flush --hook`, run
   `agentfeedback install <harness>` again: the older entries are replaced, and
   `agentfeedback doctor` names each harness that still runs one. The
   session-start hook (on by default, `--with-reminder=false` leaves it out)
@@ -1079,8 +1081,8 @@ status line on stderr; the other two print it on stdout. The org decides
 whether processing is enabled; no new consent question is asked. The line
 names the org, server, quiet period and retention, or explains why only
 friction reports apply. Missing retention metadata means "per the org's
-retention setting". These commands discover policy; they do not upload
-transcripts.
+retention setting". Policy discovery itself does not upload transcripts;
+an eligible CLI invocation can also trigger the [automatic sweep](sessions.md#automatic-sweep).
 
 The data-directory database caches policy per server and org in
 `capture_policy`, including the consent start and last printed notice
@@ -1098,8 +1100,10 @@ Use [`agentfeedback sessions push`](sessions.md#push) for manual transcript
 uploads. `--due` applies the configured quiet interval, batch and budget;
 named references bypass only the quiet interval. `sessions list` and
 `sessions status` show upload progress independently of digest/mark progress.
-The OSS server has no upload routes. These settings do not start a sweep,
-background job or hook upload.
+`doctor` and `sessions status` also expose the last automatic push record.
+The OSS server has no upload routes; its unsupported policy prevents the
+automatic sweep. See [Automatic sweep](sessions.md#automatic-sweep) for
+triggers and bounds.
 
 ### MCP and discovery
 

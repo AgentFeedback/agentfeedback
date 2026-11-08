@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/agentfeedback/agentfeedback/v4/internal/capture"
 	"github.com/agentfeedback/agentfeedback/v4/internal/harness"
 )
 
@@ -24,6 +25,15 @@ func TestMain(m *testing.M) {
 		main()
 	}
 	pathBinary = func() (string, bool) { return "", false }
+	// Sweep re-executes this binary; its children must dispatch the CLI, not
+	// recursively run the test suite.
+	captureSweep = func(cache, data string, opts capture.SweepOptions) error {
+		if opts.Env == nil {
+			opts.Env = os.Environ()
+		}
+		opts.Env = append(opts.Env, runMainEnv+"=1")
+		return capture.Sweep(cache, data, opts)
+	}
 	os.Exit(m.Run())
 }
 

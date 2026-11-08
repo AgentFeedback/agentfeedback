@@ -610,18 +610,24 @@ func runSessionsStatus(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return errSessions(err)
 	}
+	lastRun, err := lastCaptureRun(os.Getenv)
+	if err != nil {
+		return errSessions(err)
+	}
 	if *asJSON {
 		if err := writeJSON(stdout, struct {
 			sessions.StatusOutput
-			Capture capture.Policy     `json:"capture"`
-			Push    capture.PushStatus `json:"push"`
-		}{st, policy, pushStatus}); err != nil {
+			Capture  capture.Policy     `json:"capture"`
+			Push     capture.PushStatus `json:"push"`
+			LastPush capture.LastRun    `json:"last_push"`
+		}{st, policy, pushStatus, lastRun}); err != nil {
 			return err
 		}
 		return policyErr
 	}
 	var b strings.Builder
 	fmt.Fprintln(&b, capture.Status(policy))
+	printLastCaptureRun(&b, lastRun)
 	lastPush := "-"
 	if pushStatus.LastPush != nil {
 		lastPush = shownTime(*pushStatus.LastPush)

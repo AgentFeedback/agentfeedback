@@ -129,6 +129,7 @@ func runHook(args []string, stdin io.Reader, stdout, _ io.Writer) error {
 			fail(err)
 		} else if m.Mode == modeRemote {
 			boundedHook(start, "hook "+name+" "+oneLine(event), mf)
+			triggerCaptureSweep(os.Getenv, mf, start.Add(flushHookDeadline))
 		}
 	}
 	type result struct {

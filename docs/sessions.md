@@ -10,18 +10,19 @@ agentfeedback sessions mark claude-code:<session id> --outcome filed --ref <uid>
 
 `agentfeedback sessions` reads the session logs a coding-agent harness keeps
 on disk, on demand and read-only, so an agent can turn what went wrong in a
-past session into feedback. Nothing runs in the background. The policy of the
-config file's `[collect]` table is applied per session, by its recorded
-working directory, before the log is opened. Digesting and marking store only
-watermarks; [Push](#push) explicitly uploads eligible, scrubbed transcripts
-to a configured server whose organisation enables processing.
+past session into feedback. The policy of the config file's `[collect]`
+table is applied per session, by its recorded working directory, before the
+log is opened. Digesting and marking store only watermarks; [Push](#push)
+uploads eligible, scrubbed transcripts to a configured server whose
+organisation enables processing, manually or through the [automatic sweep](#automatic-sweep).
 
 Session state always lives in the data-directory database
 (`${XDG_DATA_HOME:-~/.local/share}/agentfeedback/agentfeedback.db`), in local
 and in remote mode. `sessions status` also reads the configured server's
 session policy, subject to its cache and backoff, and prints the org's
-processing status (`capture` in JSON). Listing, digesting and marking stay
-local; `submit` and `sessions push` send their respective content to the server.
+processing status (`capture` in JSON). Listing, digesting and marking do
+their own work locally; eligible CLI invocations can also trigger the sweep.
+`submit` and `sessions push` send their respective content to the server.
 See [Session policy settings](operate.md#session-policy-settings).
 Use `agentfeedback config` or `config set sessions.quiet 10m` to change this
 machine's quiet interval. The menu shows organisation policy and repository
@@ -40,7 +41,7 @@ Push supports Claude Code (`claude-code-jsonl`), Codex (`codex-rollout`)
 and OpenCode V1 (`opencode-virtual-log`). It sends the whole complete-line
 revision, not the digest or only new entries. The revision is the decimal
 source byte count. An unfinished last line is excluded; changes during
-capture defer the upload. No background sweep or hook uploads sessions.
+capture defer the upload.
 
 The configured server must enable processing. Collection rules and every
 recorded repository's `[sessions] push = false` veto apply before export.
@@ -82,6 +83,38 @@ persisted to the database, cache, log or spool. `too_large` is not retried unles
 shrinks or rotates, or the server's cap grows. `sessions list` shows the
 pushed revision; `sessions status` shows pushed, pending and skipped counts
 and the last push time for the current scope.
+
+### Automatic sweep
+
+In remote mode, existing turn-end hooks and eligible CLI invocations can
+launch a detached, short-lived `agentfeedback sessions push --due --json`.
+The trigger reads only cached policy matching the destination and credential;
+it makes no network request. Previously enabled consent can retry after a
+transient policy error or an elapsed `Retry-After`. A changed credential,
+authorization failure, disabled or unsupported policy cannot revive consent.
+The upload child always refreshes policy before uploading.
+
+Commands that open a validated remote API client can trigger the sweep,
+including `mcp` and `ui` startup. Commands with no such client, and the
+diagnostic `doctor`, explicit `sessions push`, `flush` and `ingest` paths, do
+not. Existing turn-end `hook` handling triggers after its bounded flush.
+No new hook registrations, resident daemon or scheduler are installed.
+
+A nonblocking `push.lock`, inherited by the child, allows at most one sweep
+at a time. `push.last-started` throttles launches by `sessions.quiet`.
+An abandoned run can be retried after `sessions.push_budget` plus one minute
+once the operating system has released its lock; an old timestamp never
+permits bypassing a still-running child's lock. Malformed, zero or future
+start timestamps are repaired only after acquiring the lock. The parent
+launches its own running executable, not a PATH lookup, and does not wait
+for uploads; the whole hook trigger shares the hook's deadline.
+Each child applies the quiet-session selection,
+`sessions.push_batch` and `sessions.push_budget` described above and exits.
+The cache's owner-only `push.last-run.json` records start and finish times,
+pushed, replayed, skipped, deferred and error counts, and any suspension
+deadline. `doctor` prints it as `last push`; both `doctor --json` and
+`sessions status --json` expose it as `last_push`. It contains no transcript
+text, credentials or session identifiers.
 
 ## Harnesses
 

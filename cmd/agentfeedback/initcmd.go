@@ -482,6 +482,7 @@ func hookDescriptions(st []harness.HarnessStatus, local bool) []string {
 				}
 			} else {
 				does = append(does, "at the end of a turn sends what the client spooled while the server was unreachable")
+				does = append(does, "when cached session policy permits, starts one detached, bounded session push after the quiet period")
 			}
 			out = append(out, h.Name+" hook: "+strings.Join(does, "; "))
 		}

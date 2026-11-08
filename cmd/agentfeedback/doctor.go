@@ -56,6 +56,7 @@ type doctorReport struct {
 	Path      pathCheck       `json:"path"`
 	Collect   collectCheck    `json:"collect"`
 	Capture   capture.Policy  `json:"capture"`
+	LastPush  capture.LastRun `json:"last_push"`
 }
 
 // harnessBinary is the binary one CLI-mode harness's hooks run, and when
@@ -207,6 +208,7 @@ func runDoctor(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		var b strings.Builder
 		printReport(&b, report)
 		fmt.Fprintln(&b, capture.Status(report.Capture))
+		printLastCaptureRun(&b, report.LastPush)
 		if err := writeCaptureOutput(os.Getenv, stdout, b.String(), report.Capture); err != nil {
 			return err
 		}
@@ -310,6 +312,10 @@ func diagnose(getenv func(string) string, mf modeFlags, clientVer string) (docto
 		problem(fmt.Errorf("session policy: %w", err))
 	} else if err := captureProblem(r.Capture); err != nil {
 		problem(err)
+	}
+	r.LastPush, err = lastCaptureRun(getenv)
+	if err != nil {
+		problem(fmt.Errorf("last session push: %w", err))
 	}
 
 	r.Versions = versionCheck{Client: clientVer, MinVersion: r.Meta.ClientMinVersion, Compare: "unknown"}
