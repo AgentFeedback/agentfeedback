@@ -42,31 +42,31 @@ func printInitOutcomeLocal(stdout io.Writer, path string, lr *localReports, err 
 
 // runDoctorInit writes the destination while retaining machine settings. Replacing
 // configured credentials requires force. The file is 0600 from creation.
-func runDoctorInit(getenv func(string) string, rawURL string, keyFromStdin, force bool, stdin io.Reader) (string, error) {
+func runDoctorInit(getenv func(string) string, rawURL string, keyFromStdin, force bool, stdin io.Reader) (path, server string, err error) {
 	if !keyFromStdin {
-		return "", errInitNeedsStdin()
+		return "", "", errInitNeedsStdin()
 	}
-	if err := checkInitURL(rawURL); err != nil {
-		return "", err
+	if rawURL == "" {
+		return "", "", errInitNeedsURL()
+	}
+	server = rawURL
+	if server == "cloud" {
+		server = cloudURL
+	}
+	// Config URLs need not satisfy the installer's shell/Markdown restrictions.
+	if err := checkBaseURL(server, errInitBadURL); err != nil {
+		return "", "", err
 	}
 	key, err := readKey(stdin, "doctor --init --key-from-stdin")
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	path, err := configPath(getenv)
+	path, err = configPath(getenv)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
-	return path, updateConfigDestination(path, rawURL, key, force)
-}
-
-func checkInitURL(raw string) error {
-	if raw == "" {
-		return errInitNeedsURL()
-	}
-
-	return checkBaseURL(raw, errInitBadURL)
+	return path, server, updateConfigDestination(path, server, key, force)
 }
 
 // checkBaseURL accepts an http or https URL with a host and no credentials,

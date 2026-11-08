@@ -38,7 +38,9 @@ a configured machine's key through email, run
 `agentfeedback login --email EMAIL --server cloud --json` (or a server URL).
 `login` also accepts an interactive email when `--email` is omitted.
 The key is saved through the existing `0600` config writer, not a browser
-session. `doctor --init` remains the existing paste-key configuration path.
+session. `doctor --init` remains the paste-key configuration path;
+`doctor --init --url cloud --key-from-stdin` saves the hosted service URL,
+just like `install --server cloud` and `migrate --to cloud`.
 Hosted credentials are saved before harness selection and wiring. If either
 later step fails, fix that setup problem and rerun `init` without an
 authentication flag; do not consume another enrolment token. Unset

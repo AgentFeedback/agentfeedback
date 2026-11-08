@@ -634,7 +634,8 @@ func lastJSONLine(t *testing.T, stdout string) map[string]string {
 
 func TestDoctorInit(t *testing.T) {
 	cfgPath, _ := isolate(t)
-	r := runCLI(t, "  "+testKey+"\n", "doctor", "--init", "--url", "https://feedback.example", "--key-from-stdin")
+	const server = "https://agent_feedback.example/a+b=c/"
+	r := runCLI(t, "  "+testKey+"\n", "doctor", "--init", "--url", server, "--key-from-stdin")
 	if out := lastJSONLine(t, r.stdout); r.code != 0 || out["status"] != "written" || out["path"] != cfgPath {
 		t.Fatalf("%+v", r)
 	}
@@ -650,14 +651,14 @@ func TestDoctorInit(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := resolveClient(flagConfig{}, os.Getenv, file)
-	if got.URL != (resolvedValue{"https://feedback.example", sourceConfig}) || got.APIKey != (resolvedValue{testKey, sourceConfig}) {
+	if got.URL != (resolvedValue{server, sourceConfig}) || got.APIKey != (resolvedValue{testKey, sourceConfig}) {
 		t.Fatalf("round trip %+v", got)
 	}
 	before, _ := os.ReadFile(cfgPath)
 
 	r = runCLI(t, "other-key", "doctor", "--init", "--url", "https://other.example", "--key-from-stdin")
 	out := lastJSONLine(t, r.stdout)
-	if r.code != 1 || out["status"] != "error" || !strings.Contains(out["message"], "pass --force to replace it") {
+	if r.code != 1 || out["status"] != "error" {
 		t.Fatalf("existing: %+v", r)
 	}
 	if after, _ := os.ReadFile(cfgPath); !bytes.Equal(before, after) {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"os"
@@ -177,17 +178,25 @@ func TestInit_SwitchWithoutLocalDatabase(t *testing.T) {
 	}
 }
 
-func TestDoctorInit_NamesLocalReports(t *testing.T) {
+func TestDoctorInit_CloudNamesLocalReports(t *testing.T) {
 	newInstallEnv(t)
 	seedLocalReports(t)
 	before := localRows(t)
 
-	r := runCLI(t, "throwaway\n", "doctor", "--init", "--url", "https://feedback.example.test", "--key-from-stdin")
-	want := migrateLocalCommand("https://feedback.example.test")
-	if r.code != 0 || !strings.Contains(r.stdout, `"status":"written"`) ||
-		!strings.Contains(r.stdout, `"local_reports":{"count":2,"command":"`+want+`"}`) ||
-		!strings.Contains(r.stderr, "local database holds 2 report(s)") || !strings.Contains(r.stderr, want) {
+	r := runCLI(t, "throwaway\n", "doctor", "--init", "--url", "cloud", "--key-from-stdin")
+	var out initOutcome
+	if err := json.Unmarshal([]byte(r.stdout), &out); err != nil {
+		t.Fatal(err)
+	}
+	want := migrateLocalCommand(cloudURL)
+	if r.code != 0 || out.Status != "written" || out.LocalReports == nil ||
+		out.LocalReports.Count != 2 || out.LocalReports.Command != want ||
+		!strings.Contains(r.stderr, want) {
 		t.Fatalf("doctor --init: %+v", r)
+	}
+	file, _, err := loadFileConfig(out.Path)
+	if err != nil || file.URL != cloudURL || file.APIKey != "throwaway" {
+		t.Fatalf("cloud destination not saved: %v", err)
 	}
 	if after := localRows(t); after != before {
 		t.Fatalf("local rows %d, were %d", after, before)

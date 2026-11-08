@@ -19,7 +19,7 @@ func TestConfigDestinationPreservesSettings(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := runDoctorInit(getenv, "https://new.example", true, force, strings.NewReader("new-test-key")); err != nil {
+			if _, _, err := runDoctorInit(getenv, "https://new.example", true, force, strings.NewReader("new-test-key")); err != nil {
 				t.Fatal(err)
 			}
 			after, err := configSettingsDocument(path)

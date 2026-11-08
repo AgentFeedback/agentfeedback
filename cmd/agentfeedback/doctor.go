@@ -181,10 +181,10 @@ func runDoctor(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		if fs.NArg() != 0 {
 			return printInitOutcome(stdout, "", errArgs("doctor", "doctor --init --url URL --key-from-stdin [--force]"))
 		}
-		path, err := runDoctorInit(os.Getenv, *urlFlag, *keyFromStdin, *force, stdin)
+		path, server, err := runDoctorInit(os.Getenv, *urlFlag, *keyFromStdin, *force, stdin)
 		var lr *localReports
 		if err == nil {
-			lr = doctorInitLocalReports(*urlFlag, stderr)
+			lr = doctorInitLocalReports(server, stderr)
 		}
 
 		return printInitOutcomeLocal(stdout, path, lr, err)
