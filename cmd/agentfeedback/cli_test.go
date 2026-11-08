@@ -333,6 +333,15 @@ func TestDoctor_ClientTooOld(t *testing.T) {
 	if r.code != 0 || rep.Versions.Compare != "unknown" {
 		t.Fatalf("dev build: %+v", r)
 	}
+
+	srv = metaServer(t, http.StatusOK, "v4.0.0")
+	for _, build := range []string{"v4.0.0-3-gabc1234", "v4.0.0-dirty", "v4.0.0-3-gabc1234-dirty"} {
+		version = build
+		rep, r = doctorJSON(t, "--url", srv.URL)
+		if r.code != 0 || rep.Versions.Compare != "unknown" {
+			t.Fatalf("%s: %+v", build, r)
+		}
+	}
 }
 
 // TestDoctor_AgainstServer: against the real v1 handler of a 4.0.1 server, a

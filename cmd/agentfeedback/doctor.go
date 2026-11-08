@@ -118,7 +118,7 @@ type metaCheck struct {
 type versionCheck struct {
 	Client     string `json:"client"`
 	MinVersion string `json:"min_version,omitempty"`
-	// Compare is ok, too_old, or unknown (a dev build, or no min_version).
+	// Compare is ok, too_old, or unknown (an uncomparable build, or no min_version).
 	Compare string `json:"compare"`
 }
 
@@ -585,6 +585,10 @@ func parseMeta(m metaCheck, body io.Reader, shown string, problem func(error)) m
 // unknown.
 var pseudoVersion = regexp.MustCompile(`[0-9]{14}-[0-9a-f]{12}$`)
 
+// gitBuildVersion identifies describe and dirty builds, whose distance from
+// a release cannot be expressed by prerelease ordering.
+var gitBuildVersion = regexp.MustCompile(`(-[0-9]+-g[0-9a-f]+|-dirty)$`)
+
 // semver is a parsed MAJOR.MINOR.PATCH with its prerelease identifiers.
 type semver struct {
 	core [3]int
@@ -592,11 +596,12 @@ type semver struct {
 }
 
 // parseVersion reads MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD] with an optional
-// leading "v"; build metadata is ignored. A Go pseudo-version is unparseable.
+// leading "v"; build metadata is ignored. Go pseudo-versions and git builds
+// are unparseable.
 func parseVersion(s string) (semver, bool) {
 	var out semver
 	s, _, _ = strings.Cut(s, "+")
-	if pseudoVersion.MatchString(s) {
+	if pseudoVersion.MatchString(s) || gitBuildVersion.MatchString(s) {
 		return out, false
 	}
 	s = strings.TrimPrefix(s, "v")

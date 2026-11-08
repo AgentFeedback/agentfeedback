@@ -973,6 +973,9 @@ metadata, so the version comes from the toolchain's build information and
 `agentfeedback version` prints `agentfeedback vX.Y.Z (commit unknown,
 go1.N.M)`: the tag with its `v`, no commit, and the Go version that built
 it. `doctor`'s minimum-version check reads both spellings.
+Git-describe builds (`v4.0.0-3-gabc1234`), versions ending in `-dirty`, and Go
+pseudo-versions compare as `unknown`, not as releases below the server's
+minimum. Use a tagged release when a definite compatibility check is needed.
 
 ## Deploy to a host
 
@@ -1296,7 +1299,8 @@ database, so a stale hook binary shows up in `agentfeedback doctor`, which
 lists the binary each harness's hook runs, its
 version, and the `agentfeedback` on `PATH`, and reports a hook binary that is
 missing, does not answer `version --json`, or is older than the one running
-`doctor`. Keep one binary per machine,
+`doctor` when both versions are comparable releases. Git-describe, dirty and
+Go pseudo-version builds also skip this hook-version comparison. Keep one binary per machine,
 and after an upgrade rerun `agentfeedback install <harness>` from it when
 `doctor` names an older one.
 
