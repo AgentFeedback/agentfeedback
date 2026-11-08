@@ -170,14 +170,10 @@ func TestInit_SwitchCopyFailureWarns(t *testing.T) {
 func TestInit_SwitchWithoutLocalDatabase(t *testing.T) {
 	newInstallEnv(t)
 	l := newLive(t, testKey)
-	path, _ := localDBPath(os.Getenv)
 
 	r, out := initRun(t, testKey+"\n", "--yes", "--server", l.srv.URL, "--key-from-stdin", "--harnesses", "none")
 	if r.code != 0 || out.Status != "ok" || out.LocalReports != nil || strings.Contains(r.stdout, "local_reports") {
 		t.Fatalf("init: %+v", r)
-	}
-	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("the local database exists: %v", err)
 	}
 }
 

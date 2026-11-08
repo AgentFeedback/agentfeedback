@@ -2,11 +2,14 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/pelletier/go-toml/v2"
 
+	"github.com/agentfeedback/agentfeedback/v4/internal/capture"
 	"github.com/agentfeedback/agentfeedback/v4/internal/detect"
 	"github.com/agentfeedback/agentfeedback/v4/pkg/collect"
 )
@@ -29,17 +32,18 @@ const (
 )
 
 // fileConfig is the config file: flat top-level keys plus the [collect],
-// [context] and [detect] tables. Keys and tables it does not name are ignored so newer
+// [context], [detect] and [sessions] tables. Keys and tables it does not name are ignored so newer
 // files stay readable.
 type fileConfig struct {
-	URL     string                `toml:"url"`
-	APIKey  string                `toml:"api_key"`
-	Machine string                `toml:"machine"`
-	Model   string                `toml:"model"`
-	Harness string                `toml:"harness"`
-	Collect collect.Policy        `toml:"collect"`
-	Context collect.ContextConfig `toml:"context"`
-	Detect  detectConfig          `toml:"detect"`
+	URL      string                `toml:"url"`
+	APIKey   string                `toml:"api_key"`
+	Machine  string                `toml:"machine"`
+	Model    string                `toml:"model"`
+	Harness  string                `toml:"harness"`
+	Collect  collect.Policy        `toml:"collect"`
+	Context  collect.ContextConfig `toml:"context"`
+	Detect   detectConfig          `toml:"detect"`
+	Sessions sessionsConfig        `toml:"sessions"`
 }
 
 // detectConfig is the [detect] table: the hook's nudge rule. An absent or
@@ -64,6 +68,53 @@ func (d detectConfig) config() detect.Config {
 	}
 
 	return c.Normalized()
+}
+
+// sessionsConfig is the [sessions] table. Non-positive values keep defaults.
+type sessionsConfig struct {
+	Quiet      *string `toml:"quiet"`
+	PolicyTTL  *string `toml:"policy_ttl"`
+	PushBatch  int     `toml:"push_batch"`
+	PushBudget *string `toml:"push_budget"`
+}
+
+func (s sessionsConfig) validate() error {
+	for _, setting := range []struct {
+		key   string
+		value *string
+	}{
+		{"quiet", s.Quiet},
+		{"policy_ttl", s.PolicyTTL},
+		{"push_budget", s.PushBudget},
+	} {
+		if setting.value != nil {
+			if _, err := time.ParseDuration(*setting.value); err != nil {
+				return fmt.Errorf("sessions.%s: want a duration: %w", setting.key, err)
+			}
+		}
+	}
+	return nil
+}
+
+func (s sessionsConfig) config() capture.Config {
+	duration := func(value *string, fallback time.Duration) time.Duration {
+		if value != nil {
+			if d, err := time.ParseDuration(*value); err == nil && d > 0 {
+				return d
+			}
+		}
+		return fallback
+	}
+	batch := s.PushBatch
+	if batch <= 0 {
+		batch = 5
+	}
+	return capture.Config{
+		Quiet:      duration(s.Quiet, 5*time.Minute),
+		PolicyTTL:  duration(s.PolicyTTL, 5*time.Minute),
+		PushBatch:  batch,
+		PushBudget: duration(s.PushBudget, 90*time.Second),
+	}
 }
 
 // flagConfig holds the values given on the command line. There is no API key
@@ -174,6 +225,9 @@ func loadFileConfig(path string) (cfg fileConfig, exists bool, err error) {
 		return fileConfig{}, true, errConfigRead(path, err)
 	}
 	if err := toml.Unmarshal(data, &cfg); err != nil {
+		return fileConfig{}, true, errConfigInvalid(path, err)
+	}
+	if err := cfg.Sessions.validate(); err != nil {
 		return fileConfig{}, true, errConfigInvalid(path, err)
 	}
 

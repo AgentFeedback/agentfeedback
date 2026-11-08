@@ -228,6 +228,12 @@ than reporting to it, a server already configured on this machine (in
 which to keep. For Claude Code or Codex, ask the human whether they prefer a
 plugin; if so, go to step 2.4 instead.
 
+`init` also prints a `sessions:` policy status line on stderr and includes
+`capture` in its JSON result. This is the org's setting, not another consent
+question; `--yes` does not change it. `doctor` and `sessions status` show
+the same policy. These commands send no transcript. See
+[Session policy settings](docs/operate.md#session-policy-settings).
+
 ```sh
 "<binary>" init --yes --harnesses <harness> --json
 ```

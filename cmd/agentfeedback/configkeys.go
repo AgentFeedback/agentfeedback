@@ -12,7 +12,7 @@ import (
 )
 
 // checkConfigKeys reports, as problems, the keys under the [collect],
-// [context] and [detect] tables of the config file at path that no setting reads: a
+// [context], [detect] and [sessions] tables of the config file at path that no setting reads: a
 // misspelt narrowing key is otherwise silently not applied. Unknown
 // top-level keys are left alone, so an older binary reads a newer file.
 func checkConfigKeys(path string, problem func(error)) {
@@ -25,9 +25,9 @@ func checkConfigKeys(path string, problem func(error)) {
 	}
 }
 
-// unknownConfigKeys lists, sorted, the keys under the collect, context and
-// detect tables of a config file that are not toml tags of collect.Policy,
-// collect.ContextConfig and detectConfig, as table.key.
+// unknownConfigKeys lists, sorted, the keys under the collect, context,
+// detect and sessions tables that are not TOML tags of their config structs,
+// as table.key.
 func unknownConfigKeys(data []byte) []string {
 	var doc map[string]any
 	if toml.Unmarshal(data, &doc) != nil {
@@ -35,9 +35,10 @@ func unknownConfigKeys(data []byte) []string {
 	}
 	var out []string
 	for table, known := range map[string][]string{
-		"collect": tomlKeys(reflect.TypeFor[collect.Policy]()),
-		"context": tomlKeys(reflect.TypeFor[collect.ContextConfig]()),
-		"detect":  tomlKeys(reflect.TypeFor[detectConfig]()),
+		"collect":  tomlKeys(reflect.TypeFor[collect.Policy]()),
+		"context":  tomlKeys(reflect.TypeFor[collect.ContextConfig]()),
+		"detect":   tomlKeys(reflect.TypeFor[detectConfig]()),
+		"sessions": tomlKeys(reflect.TypeFor[sessionsConfig]()),
 	} {
 		sub, ok := doc[table].(map[string]any)
 		if !ok {

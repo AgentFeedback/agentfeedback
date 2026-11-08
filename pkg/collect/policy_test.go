@@ -103,11 +103,15 @@ func TestCheckRepoFile(t *testing.T) {
 				"[collect]\nopt_in_paths = [\"/\"]\nopt_in_only = false\ndeny_paths = [\"vendor\"]\n" +
 				"[context]\ncwd = true\napp = \"a\"\ndrop = [\"git_tag\"]\n[future.nested]\nx = 1\n",
 			dir: sub, reason: ReasonRepoDenyPaths, drop: []string{"git_tag"},
-			warns: []string{`"url"`, `"api_key"`, `"key"`, `"machine"`, `"collect.opt_in_paths"`, `"collect.opt_in_only"`,
-				`"context.cwd"`, `"context.app"`, `"future.nested.x"`},
+			warns: []string{
+				`"url"`, `"api_key"`, `"key"`, `"machine"`, `"collect.opt_in_paths"`, `"collect.opt_in_only"`,
+				`"context.cwd"`, `"context.app"`, `"future.nested.x"`,
+			},
 		},
-		{name: "wrong type", body: "[collect]\ndisabled = \"yes\"\ndeny_paths = 5\n[context]\ndrop = [1]\n", dir: sub,
-			warns: []string{`"collect.disabled"`, `"collect.deny_paths"`, `"context.drop"`}},
+		{
+			name: "wrong type", body: "[collect]\ndisabled = \"yes\"\ndeny_paths = 5\n[context]\ndrop = [1]\n", dir: sub,
+			warns: []string{`"collect.disabled"`, `"collect.deny_paths"`, `"context.drop"`},
+		},
 		{name: "unparseable", body: "[collect\ndisabled = true\n", dir: sub, warns: []string{RepoFile + ": ignoring the file"}},
 		{name: "outside a repository", body: "[collect]\ndisabled = true\n", dir: outside},
 	}
@@ -134,7 +138,7 @@ func TestCheckRepoFile(t *testing.T) {
 
 	write(t, rf, "url = \"x\"\n")
 	d := Check(repo, base, Policy{})
-	want := `.agentfeedback.toml: ignoring "url": a repository file may only narrow (collect.disabled, collect.deny_paths, context.drop, detect.nudge)`
+	want := `.agentfeedback.toml: ignoring "url": a repository file may only narrow (collect.disabled, collect.deny_paths, context.drop, detect.nudge, sessions.push)`
 	if len(d.Warnings) != 1 || d.Warnings[0] != want {
 		t.Fatalf("warning %q, want %q", d.Warnings, want)
 	}
@@ -217,4 +221,88 @@ func TestCheckDetectNudge(t *testing.T) {
 			t.Errorf("%q: %+v", tt.body, d)
 		}
 	}
+}
+
+func TestSessionPush(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		body    string
+		allowed bool
+		warning string
+	}{
+		{"off", "[sessions]\npush = false\n", false, ""},
+		{"on", "[sessions]\npush = true\n", true, ""},
+		{"wrong type", "[sessions]\npush = \"false\"\n", false, "want a boolean"},
+		{"typo", "[sessions]\npuhs = false\n", true, "sessions.puhs"},
+		{"global setting", "[sessions]\nquiet = \"1m\"\n", true, "sessions.quiet"},
+		{"literal dotted key", "\"sessions.push\" = false\n", true, `\"sessions.push\"`},
+		{"malformed", "[sessions", false, "ignoring the file"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			root := minimalRepo(t, t.TempDir())
+			write(t, filepath.Join(root, RepoFile), tt.body)
+			allowed, warnings := SessionPush(root)
+			if allowed != tt.allowed {
+				t.Fatalf("allowed = %v, want %v", allowed, tt.allowed)
+			}
+			if tt.warning == "" {
+				if len(warnings) != 0 {
+					t.Fatalf("warnings = %q", warnings)
+				}
+			} else if len(warnings) != 1 || !strings.Contains(warnings[0], tt.warning) {
+				t.Fatalf("warnings = %q, want %q", warnings, tt.warning)
+			}
+			// Repository push=true never overrides an existing collection veto.
+			if d := Check(root, "", Policy{Disabled: true}); !d.Disabled {
+				t.Fatal("repository expanded the user policy")
+			}
+		})
+	}
+}
+
+func TestSessionPushReadProtection(t *testing.T) {
+	t.Run("missing", func(t *testing.T) {
+		allowed, warnings := SessionPush(t.TempDir())
+		if !allowed || len(warnings) != 0 {
+			t.Fatalf("allowed=%v warnings=%q", allowed, warnings)
+		}
+	})
+	t.Run("not regular", func(t *testing.T) {
+		root := t.TempDir()
+		if err := os.Mkdir(filepath.Join(root, RepoFile), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		allowed, warnings := SessionPush(root)
+		if allowed || len(warnings) != 1 || !strings.Contains(warnings[0], "not a regular file") {
+			t.Fatalf("allowed=%v warnings=%q", allowed, warnings)
+		}
+	})
+	t.Run("symlink", func(t *testing.T) {
+		root := t.TempDir()
+		target := filepath.Join(t.TempDir(), "policy.toml")
+		write(t, target, "[sessions]\npush = false\n")
+		if err := os.Symlink(target, filepath.Join(root, RepoFile)); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+		allowed, warnings := SessionPush(root)
+		if allowed || len(warnings) != 1 || !strings.Contains(warnings[0], "symlink") {
+			t.Fatalf("allowed=%v warnings=%q", allowed, warnings)
+		}
+	})
+	t.Run("unreadable", func(t *testing.T) {
+		root := t.TempDir()
+		path := filepath.Join(root, RepoFile)
+		write(t, path, "[sessions]\npush = false\n")
+		if err := os.Chmod(path, 0); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(path, 0o600) })
+		if _, err := os.ReadFile(path); err == nil {
+			t.Skip("process can read mode-000 files")
+		}
+		allowed, warnings := SessionPush(root)
+		if allowed || len(warnings) != 1 || !strings.Contains(warnings[0], "ignoring the file") {
+			t.Fatalf("allowed=%v warnings=%q", allowed, warnings)
+		}
+	})
 }

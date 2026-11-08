@@ -68,13 +68,13 @@ const (
 const RepoFile = ".agentfeedback.toml"
 
 // repoFileKeys are the only keys a repository file may set: each narrows.
-var repoFileKeys = []string{"collect.disabled", "collect.deny_paths", "context.drop", "detect.nudge"}
+var repoFileKeys = []string{"collect.disabled", "collect.deny_paths", "context.drop", "detect.nudge", "sessions.push"}
 
 // Check decides whether dir may be collected from under the user policy p and
 // the repository file of the repository dir is in. The rules apply in order:
 // p.Disabled, p.DenyPaths, p.OptInOnly with p.OptInPaths, then the
 // repository file (collect.disabled, collect.deny_paths, context.drop,
-// detect.nudge; any other key is ignored with a warning).
+// detect.nudge, sessions.push; any other key is ignored with a warning).
 //
 // An empty home means os.UserHomeDir(); "~" entries cannot be expanded
 // without one.
@@ -184,6 +184,15 @@ func Lint(dir, home string, p Policy) []string {
 	return out
 }
 
+// SessionPush reports whether the repository at root permits session uploads.
+// It only narrows an otherwise eligible session: true never grants consent or
+// overrides the user's collection policy. An unreadable or malformed repository
+// file blocks uploads because its veto cannot be established safely.
+func SessionPush(root string) (bool, []string) {
+	rf := readRepoFile(filepath.Join(root, RepoFile), root)
+	return !rf.pushOff && !rf.pushInvalid, rf.warnings
+}
+
 // userPathEntries expands the user config's entries under collect.<key>:
 // each must be absolute or ~/; any other is skipped with a warning.
 func userPathEntries(key string, entries []string, home string) (paths, warnings []string) {
@@ -206,11 +215,13 @@ func matchesAny(dir string, entries []string) bool {
 }
 
 type repoFile struct {
-	disabled  bool
-	denyPaths []string
-	drop      []string
-	nudgeOff  bool
-	warnings  []string
+	disabled    bool
+	denyPaths   []string
+	drop        []string
+	nudgeOff    bool
+	pushOff     bool
+	pushInvalid bool
+	warnings    []string
 }
 
 // readRepoFile reads a repository's .agentfeedback.toml. A missing file is
@@ -221,6 +232,7 @@ func readRepoFile(path, root string) repoFile {
 	data, err := readMeta(path, maxMetaBytes, true)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
+			rf.pushInvalid = true
 			rf.warnings = append(rf.warnings, fmt.Sprintf("%s: ignoring the file: %s", RepoFile, repoFileProblem(path, err)))
 		}
 
@@ -228,6 +240,7 @@ func readRepoFile(path, root string) repoFile {
 	}
 	var doc map[string]any
 	if err := toml.Unmarshal(data, &doc); err != nil {
+		rf.pushInvalid = true
 		rf.warnings = append(rf.warnings, fmt.Sprintf("%s: ignoring the file: %v", RepoFile, oneLine(err.Error())))
 
 		return rf
@@ -276,6 +289,14 @@ func readRepoFile(path, root string) repoFile {
 				continue
 			}
 			rf.nudgeOff = !b
+		case slices.Equal(l.path, []string{"sessions", "push"}):
+			b, ok := v.(bool)
+			if !ok {
+				rf.pushInvalid = true
+				wrongType(key, "a boolean")
+				continue
+			}
+			rf.pushOff = !b
 		default:
 			rf.warnings = append(rf.warnings, fmt.Sprintf("%s: ignoring %q: a repository file may only narrow (%s)",
 				RepoFile, key, strings.Join(repoFileKeys, ", ")))

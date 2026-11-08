@@ -18,8 +18,11 @@ the sessions you digest and mark, and the submissions you file.
 
 Session state always lives in the data-directory database
 (`${XDG_DATA_HOME:-~/.local/share}/agentfeedback/agentfeedback.db`), in local
-and in remote mode; with a server `url` configured, no `sessions` command
-contacts the server, and only what you file with `submit` reaches it.
+and in remote mode. `sessions status` also reads the configured server's
+session policy, subject to its cache and backoff, and prints the org's
+processing status (`capture` in JSON). Listing, digesting and marking stay
+local; only what you file with `submit` reaches the server.
+See [Session policy settings](operate.md#session-policy-settings).
 
 ## Harnesses
 

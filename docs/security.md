@@ -82,12 +82,22 @@ agent starts it, and exits when the command is done:
   harness CLIs during `install` (such as `claude mcp add`), and
   `agentfeedback version --json` of the binary each hook names (`doctor`).
 
+`init`, `doctor` and `sessions status` also read
+`GET /api/v1/sessions/policy` with the configured key. This policy request
+returns the org identifier, processing permission, notice version and upload
+bounds, with optional org name and retention; it sends no transcript.
+The response is cached in `capture_policy` in the data-directory database
+in remote mode. Local mode makes no request. Discovery does not add upload
+or background collection, and failures never grant permission. See
+[Session policy settings](operate.md#session-policy-settings) for cache and
+backoff behavior.
+
 Where it reads and writes (`XDG_*` unset or not absolute means the default
 under the home directory, on every operating system):
 
 | Location | Access | What |
 |---|---|---|
-| `${XDG_DATA_HOME:-~/.local/share}/agentfeedback/` | owned, `0700`, files `0600` | the database (local mode; session watermarks in both modes; when `init` or `doctor --init` switches to a server, read only to count its reports, which leave the machine only through `migrate` or init's copy after a yes), `spool/`, `rejected/`, `inbox/` ([operate.md](operate.md#data-directory)) |
+| `${XDG_DATA_HOME:-~/.local/share}/agentfeedback/` | owned, `0700`, files `0600` | the database (reports in local mode; session watermarks and policy cache in both modes; remote `init`, `doctor` and `sessions status` create it for policy discovery; when switching to a server, existing reports leave the machine only through `migrate` or init's copy after a yes), `spool/`, `rejected/`, `inbox/` ([operate.md](operate.md#data-directory)) |
 | `${XDG_CACHE_HOME:-~/.cache}/agentfeedback/` | owned, `0700`, files `0600` | `log/client.jsonl`, the hooks' per-session counters (`sessions/`, deleted after 7 days) and last-run records (`hooks/`), `filed/` markers, `digest/` output |
 | `${XDG_CONFIG_HOME:-~/.config}/agentfeedback/` | owned, `0700`, files `0600` | `config.toml`, the install manifest `install.json`, and `server/` (`api-key`, `serve.env`) from `serve --init` |
 | the working tree's `.git` metadata and `.agentfeedback.toml` | read | the project context and the repository's narrowing rules |

@@ -19,6 +19,9 @@ type Response struct {
 	Status    int
 	Body      []byte
 	RequestID string
+	// ContentType and RetryAfter retain policy negotiation and backoff metadata.
+	ContentType string
+	RetryAfter  string
 }
 
 // APIError is any non-2xx answer, 3xx included (redirects are never
@@ -30,7 +33,9 @@ type APIError struct {
 	RequestID string
 	Details   []json.RawMessage
 	// Location is the Location header of a 3xx, never followed.
-	Location string
+	Location    string
+	ContentType string
+	RetryAfter  string
 }
 
 func (e *APIError) Error() string {
@@ -117,7 +122,10 @@ func (c *Client) Send(ctx context.Context, method, path string, query url.Values
 		return nil, apiError(resp, rid, raw)
 	}
 
-	return &Response{Status: resp.StatusCode, Body: raw, RequestID: rid}, nil
+	return &Response{
+		Status: resp.StatusCode, Body: raw, RequestID: rid,
+		ContentType: resp.Header.Get("Content-Type"), RetryAfter: resp.Header.Get("Retry-After"),
+	}, nil
 }
 
 // Stream sends a GET without an overall timeout (the dial limit stays) and
@@ -214,6 +222,7 @@ func apiError(resp *http.Response, rid string, raw []byte) *APIError {
 
 	return &APIError{
 		Status: resp.StatusCode, Code: p.Error, Message: p.Message, RequestID: rid, Details: p.Details,
-		Location: resp.Header.Get("Location"),
+		Location:    resp.Header.Get("Location"),
+		ContentType: resp.Header.Get("Content-Type"), RetryAfter: resp.Header.Get("Retry-After"),
 	}
 }

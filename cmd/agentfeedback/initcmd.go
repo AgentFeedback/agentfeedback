@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/agentfeedback/agentfeedback/v4/internal/capture"
 	"github.com/agentfeedback/agentfeedback/v4/internal/harness"
 	"github.com/pelletier/go-toml/v2"
 	"golang.org/x/term"
@@ -39,11 +40,12 @@ type initResult struct {
 	E2E     []e2eStep `json:"e2e,omitempty"`
 	// LocalReports names the reports in the local database when this run
 	// switched the machine to a server; omitted when there are none.
-	LocalReports *localReports `json:"local_reports,omitempty"`
-	Next         []initNext    `json:"next,omitempty"`
-	Warnings     []string      `json:"warnings,omitempty"`
-	Manual       []manualStep  `json:"manual,omitempty"`
-	Message      string        `json:"message,omitempty"`
+	LocalReports *localReports  `json:"local_reports,omitempty"`
+	Next         []initNext     `json:"next,omitempty"`
+	Warnings     []string       `json:"warnings,omitempty"`
+	Manual       []manualStep   `json:"manual,omitempty"`
+	Message      string         `json:"message,omitempty"`
+	Capture      capture.Policy `json:"capture"`
 }
 
 // initNext is one command init suggests, with what it is for.
@@ -217,6 +219,23 @@ func runInit(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	}
 
 	mf := modeFlags{local: t.server == serverLocal}
+	configFile, loadErr := configPath(os.Getenv)
+	if loadErr != nil {
+		return finishInit(stdout, res, *asJSON, loadErr)
+	}
+	file, _, loadErr := loadFileConfig(configFile)
+	if loadErr != nil {
+		return finishInit(stdout, res, *asJSON, loadErr)
+	}
+	res.Capture, loadErr = capturePolicy(os.Getenv, mf, file)
+	if loadErr == nil {
+		loadErr = captureProblem(res.Capture)
+	}
+	if loadErr != nil {
+		w := "session policy: " + oneLine(loadErr.Error())
+		res.Warnings = append(res.Warnings, w)
+		fmt.Fprintf(stderr, "agentfeedback init: warning: %s\n", w)
+	}
 	noKey := false
 	// clientKey is the key the client resolves for the server (env over
 	// config): the one the check uses and the copy uses.
@@ -544,7 +563,9 @@ func finishInit(stdout io.Writer, res initResult, asJSON bool, err error) error 
 			// What was done before the failure; a failed check shows
 			// its step here, the router prints any other error.
 			if res.Mode != "" {
-				printInitSummary(stdout, res)
+				if werr := writeInitSummary(stdout, res); werr != nil {
+					return werr
+				}
 			}
 
 			return err
@@ -558,9 +579,16 @@ func finishInit(stdout io.Writer, res initResult, asJSON bool, err error) error 
 	if asJSON {
 		return writeJSON(stdout, res)
 	}
-	printInitSummary(stdout, res)
+	return writeInitSummary(stdout, res)
+}
 
-	return nil
+func writeInitSummary(w io.Writer, res initResult) error {
+	var b strings.Builder
+	printInitSummary(&b, res)
+	if res.Capture.State != "" {
+		fmt.Fprintln(&b, capture.Status(res.Capture))
+	}
+	return writeCaptureOutput(os.Getenv, w, b.String(), res.Capture)
 }
 
 func printInitSummary(w io.Writer, res initResult) {

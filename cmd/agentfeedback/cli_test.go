@@ -198,6 +198,10 @@ func writeFile(t *testing.T, path, body string, mode os.FileMode) {
 func metaServer(t *testing.T, status int, minVersion string) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/sessions/policy" {
+			http.NotFound(w, r)
+			return
+		}
 		if r.URL.Path != "/api/v1/meta" || r.Header.Get("Authorization") != "Bearer "+testKey ||
 			r.Header.Get("Accept") != "application/json" || !strings.HasPrefix(r.Header.Get("User-Agent"), "agentfeedback/") {
 			http.Error(w, "unexpected request", http.StatusTeapot)
@@ -703,11 +707,15 @@ func TestVersionFromBuildInfo(t *testing.T) {
 	}{
 		{"nil", nil, "dev", "unknown"},
 		{"devel", &debug.BuildInfo{Main: debug.Module{Version: "(devel)"}}, "dev", "unknown"},
-		{"module version", &debug.BuildInfo{Main: debug.Module{Version: "v4.1.0"},
-			Settings: []debug.BuildSetting{setting("vcs.revision", "abc"), setting("vcs.modified", "false")}}, "v4.1.0", "abc"},
+		{"module version", &debug.BuildInfo{
+			Main:     debug.Module{Version: "v4.1.0"},
+			Settings: []debug.BuildSetting{setting("vcs.revision", "abc"), setting("vcs.modified", "false")},
+		}, "v4.1.0", "abc"},
 		{"go install from the module proxy", &debug.BuildInfo{Main: debug.Module{Version: "v4.1.0"}}, "v4.1.0", "unknown"},
-		{"dirty", &debug.BuildInfo{Settings: []debug.BuildSetting{setting("vcs.revision", "abc"), setting("vcs.modified", "true")}},
-			"dev", "abc-dirty"},
+		{
+			"dirty", &debug.BuildInfo{Settings: []debug.BuildSetting{setting("vcs.revision", "abc"), setting("vcs.modified", "true")}},
+			"dev", "abc-dirty",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

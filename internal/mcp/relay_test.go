@@ -106,22 +106,25 @@ func TestRelay_ServesWhatStdioServes(t *testing.T) {
 // tools with no or a non-object input schema, and drop makes it answer 404
 // to the first session from then on, as a server that ended that session.
 type fakeRemote struct {
-	srv     *httptest.Server
-	drop    atomic.Bool
-	mu      sync.Mutex
-	first   string
-	calls   atomic.Int32
-	connect atomic.Int32
+	srv       *httptest.Server
+	drop      atomic.Bool
+	mu        sync.Mutex
+	first     string
+	calls     atomic.Int32
+	connect   atomic.Int32
+	connected chan struct{}
 }
 
 func newFakeRemote(t *testing.T) *fakeRemote {
 	t.Helper()
-	f := &fakeRemote{}
+	f := &fakeRemote{connected: make(chan struct{}, 1)}
 	s := sdk.NewServer(&sdk.Implementation{Name: "fake", Version: "1"}, &sdk.ServerOptions{Instructions: "fake instructions"})
 	s.AddTool(&sdk.Tool{Name: "echo", InputSchema: map[string]any{"type": "object"}}, func(_ context.Context, req *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
 		f.calls.Add(1)
-		return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: string(req.Params.Arguments)}},
-			StructuredContent: req.Params.Arguments}, nil
+		return &sdk.CallToolResult{
+			Content:           []sdk.Content{&sdk.TextContent{Text: string(req.Params.Arguments)}},
+			StructuredContent: req.Params.Arguments,
+		}, nil
 	})
 	s.AddTool(&sdk.Tool{Name: "boom", InputSchema: map[string]any{"type": "object"}}, func(context.Context, *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
 		return nil, errors.New("unreachable")
@@ -156,6 +159,7 @@ func newFakeRemote(t *testing.T) *fakeRemote {
 				f.first = issued
 			}
 			f.mu.Unlock()
+			f.connected <- struct{}{}
 		}
 	}))
 	t.Cleanup(f.srv.Close)
@@ -163,8 +167,14 @@ func newFakeRemote(t *testing.T) *fakeRemote {
 }
 
 func (f *fakeRemote) dial(ctx context.Context) (*sdk.ClientSession, error) {
-	return sdk.NewClient(&sdk.Implementation{Name: "test", Version: "1"}, &sdk.ClientOptions{Logger: mcp.DiscardLogger}).
+	cs, err := sdk.NewClient(&sdk.Implementation{Name: "test", Version: "1"}, &sdk.ClientOptions{Logger: mcp.DiscardLogger}).
 		Connect(ctx, &sdk.StreamableClientTransport{Endpoint: f.srv.URL, DisableStandaloneSSE: true, MaxRetries: -1}, nil)
+	if err == nil {
+		// The HTTP response can reach Connect before the handler records the
+		// session. Finish that bookkeeping before a test can drop or count it.
+		<-f.connected
+	}
+	return cs, err
 }
 
 // relayOver builds the relay over a session with f and connects to it.

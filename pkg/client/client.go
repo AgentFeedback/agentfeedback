@@ -3,6 +3,8 @@ package client
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -160,6 +162,13 @@ func New(cfg Config) (*Client, error) {
 	}
 
 	return c, nil
+}
+
+// CredentialFingerprint identifies the key actually used for authenticated
+// requests without exposing it. It is not an authentication credential.
+func (c *Client) CredentialFingerprint() string {
+	sum := sha256.Sum256([]byte(c.apiKey))
+	return hex.EncodeToString(sum[:])
 }
 
 // errBody is returned by PrepareBody for a body that is not a JSON object.

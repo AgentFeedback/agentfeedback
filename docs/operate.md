@@ -980,6 +980,47 @@ Compose-level variables (`infra/agentfeedback/.env`): `API_KEY`,
 `AGENTFEEDBACK_IMAGE` (deploy stack only), `AGENTFEEDBACK_BIND_ADDRESS`,
 `PUBLIC_URL`, `MCP_INSTRUCTIONS`, `INGEST_SCRUB`.
 
+### Session policy settings
+
+The client's `config.toml` accepts:
+
+```toml
+[sessions]
+quiet = "5m"
+policy_ttl = "5m"
+push_batch = 5
+push_budget = "90s"
+```
+
+These are the defaults: the quiet period, policy cache lifetime, batch limit
+and upload time budget. Durations use Go duration syntax; nonpositive values
+keep defaults and malformed durations are configuration errors. `doctor`
+reports unknown keys. A repository's `.agentfeedback.toml` accepts only
+`[sessions] push = false`: a veto, never permission to collect. An unreadable,
+malformed or symlinked repository file, or an invalid `sessions.push` value,
+blocks uploads rather than bypassing a possible veto.
+
+`init`, `doctor` and `sessions status` discover the configured server's
+session policy and include `capture` in JSON output. `init` prints the
+status line on stderr; the other two print it on stdout. The org decides
+whether processing is enabled; no new consent question is asked. The line
+names the org, server, quiet period and retention, or explains why only
+friction reports apply. Missing retention metadata means "per the org's
+retention setting". These commands discover policy; they do not upload
+transcripts.
+
+The data-directory database caches policy per server and org in
+`capture_policy`, including the consent start and last printed notice
+version. Cached permission is bound to the configured credential; changing
+the key requires fresh policy discovery. Concurrent refreshes cannot replace
+a newer policy response with an older one. Disabled-to-enabled starts a new
+consent period. Only successful enabled text output records the notice as
+printed; JSON output does not. Unsupported
+servers are retried no more than daily, even across these commands; a 429
+waits for `Retry-After` (60 seconds when absent). `doctor` reports
+unauthorized and suspended policy reads with a next step. Local mode makes
+no policy request.
+
 ### MCP and discovery
 
 - `POST /mcp`: remote MCP server over Streamable HTTP, stateless (no

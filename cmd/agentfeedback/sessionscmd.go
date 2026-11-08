@@ -14,6 +14,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/agentfeedback/agentfeedback/v4/internal/capture"
 	"github.com/agentfeedback/agentfeedback/v4/internal/localmode"
 	"github.com/agentfeedback/agentfeedback/v4/internal/mcp"
 	"github.com/agentfeedback/agentfeedback/v4/internal/sessions"
@@ -191,8 +192,10 @@ func (s *sessionsService) Digest(ctx context.Context, a mcp.SessionsDigestArgs) 
 	if err := checkRefs(a.Refs); err != nil {
 		return nil, mcp.InvalidArgument("refs", err.Error())
 	}
-	out, err := sessions.Digest(ctx, s.db, s.env, sessions.DigestRequest{Refs: a.Refs, Unprocessed: a.Unprocessed,
-		Harness: a.Harness, Limit: a.Limit})
+	out, err := sessions.Digest(ctx, s.db, s.env, sessions.DigestRequest{
+		Refs: a.Refs, Unprocessed: a.Unprocessed,
+		Harness: a.Harness, Limit: a.Limit,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -375,8 +378,10 @@ func runSessionsDigest(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	out, err := sessions.Digest(context.Background(), svc.db, svc.env, sessions.DigestRequest{Refs: refs, Unprocessed: *unprocessed,
-		Harness: *harness, Limit: *limit, AllowUnknownProject: *allowUnknown})
+	out, err := sessions.Digest(context.Background(), svc.db, svc.env, sessions.DigestRequest{
+		Refs: refs, Unprocessed: *unprocessed,
+		Harness: *harness, Limit: *limit, AllowUnknownProject: *allowUnknown,
+	})
 	if err != nil {
 		return errSessions(err)
 	}
@@ -559,17 +564,35 @@ func runSessionsStatus(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return errSessions(err)
 	}
+	path, err := configPath(os.Getenv)
+	if err != nil {
+		return err
+	}
+	file, _, err := loadFileConfig(path)
+	if err != nil {
+		return err
+	}
+	policy, policyErr := capturePolicy(os.Getenv, modeFlags{}, file)
 	if *asJSON {
-		return writeJSON(stdout, st)
+		if err := writeJSON(stdout, struct {
+			sessions.StatusOutput
+			Capture capture.Policy `json:"capture"`
+		}{st, policy}); err != nil {
+			return err
+		}
+		return policyErr
 	}
 	var b strings.Builder
+	fmt.Fprintln(&b, capture.Status(policy))
 	for _, h := range st.Harnesses {
 		fmt.Fprintf(&b, "%s: store %s (%s)\n", h.Harness, h.Location, h.Store)
 		for _, p := range h.Problems {
 			fmt.Fprintf(&b, "  not listed: %s\n", p)
 		}
-		for _, state := range []string{sessions.StateNew, sessions.StateChanged, sessions.StateProcessed, sessions.StateAbsent,
-			sessions.StateDisabled, sessions.StateDenied, sessions.StateUnknownProject, sessions.StateUnreadable, sessions.StateUnsupportedFormat} {
+		for _, state := range []string{
+			sessions.StateNew, sessions.StateChanged, sessions.StateProcessed, sessions.StateAbsent,
+			sessions.StateDisabled, sessions.StateDenied, sessions.StateUnknownProject, sessions.StateUnreadable, sessions.StateUnsupportedFormat,
+		} {
 			if n := h.States[state]; n > 0 {
 				fmt.Fprintf(&b, "  %-18s %d\n", state, n)
 			}
@@ -580,9 +603,9 @@ func runSessionsStatus(args []string, stdout, stderr io.Writer) error {
 	} else {
 		fmt.Fprintf(&b, "selection: harnesses %s, since %s, limit %d\n", dash(strings.Join(st.Selection.Harnesses, ",")), dash(st.Selection.Since), st.Selection.Limit)
 	}
-	_, err = io.WriteString(stdout, b.String())
+	err = writeCaptureOutput(os.Getenv, stdout, b.String(), policy)
 
-	return err
+	return errors.Join(err, policyErr)
 }
 
 // errSessions words a failure of internal/sessions.

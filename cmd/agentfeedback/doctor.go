@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agentfeedback/agentfeedback/v4/internal/capture"
 	"github.com/agentfeedback/agentfeedback/v4/internal/harness"
 	"github.com/agentfeedback/agentfeedback/v4/internal/localmode"
 	"github.com/agentfeedback/agentfeedback/v4/pkg/client"
@@ -54,6 +55,7 @@ type doctorReport struct {
 	Harnesses []harnessBinary `json:"harnesses"`
 	Path      pathCheck       `json:"path"`
 	Collect   collectCheck    `json:"collect"`
+	Capture   capture.Policy  `json:"capture"`
 }
 
 // harnessBinary is the binary one CLI-mode harness's hooks run, and when
@@ -202,7 +204,12 @@ func runDoctor(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 			return err
 		}
 	} else {
-		printReport(stdout, report)
+		var b strings.Builder
+		printReport(&b, report)
+		fmt.Fprintln(&b, capture.Status(report.Capture))
+		if err := writeCaptureOutput(os.Getenv, stdout, b.String(), report.Capture); err != nil {
+			return err
+		}
 	}
 	if report.Status != "ok" {
 		return &reportedError{errors.New("doctor found problems")}
@@ -217,8 +224,8 @@ func isInitArg(a string) bool {
 	return a == "-init" || a == "--init" || strings.HasPrefix(a, "-init=") || strings.HasPrefix(a, "--init=")
 }
 
-// redactURL is the only form in which doctor shows a URL: any userinfo is
-// replaced, and a URL that does not parse is not echoed at all.
+// redactURL is the only form in which doctor shows a URL: userinfo is replaced,
+// query and fragment credentials are omitted, and malformed URLs are not echoed.
 func redactURL(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil {
@@ -228,17 +235,20 @@ func redactURL(raw string) string {
 		// A user part alone can be a token, so the whole userinfo goes.
 		u.User = url.User("REDACTED")
 	}
+	u.RawQuery, u.Fragment, u.RawFragment = "", "", ""
+	u.ForceQuery = false
 
 	return u.String()
 }
 
-// diagnose runs every check. Only the /meta request touches the network (in
-// local mode it is served in-process), and nothing is created or delivered:
-// a missing local database is reported, not created, and the start-up pass
-// does not run.
+// diagnose checks the setup without delivering reports. Remote mode refreshes
+// the session policy cache; local mode still reports a missing database without
+// creating one.
 func diagnose(getenv func(string) string, mf modeFlags, clientVer string) (doctorReport, error) {
-	r := doctorReport{Problems: []string{}, Recent: recentOutcomes{Lines: []json.RawMessage{}},
-		Harnesses: []harnessBinary{}, Collect: collectCheck{Warnings: []string{}}}
+	r := doctorReport{
+		Problems: []string{}, Recent: recentOutcomes{Lines: []json.RawMessage{}},
+		Harnesses: []harnessBinary{}, Collect: collectCheck{Warnings: []string{}},
+	}
 	problem := func(err error) { r.Problems = append(r.Problems, err.Error()) }
 
 	path, err := configPath(getenv)
@@ -294,6 +304,12 @@ func diagnose(getenv func(string) string, mf modeFlags, clientVer string) (docto
 		problem(errKeyUnset())
 	default:
 		r.Meta = checkMeta(settings.URL.Value, settings.APIKey.Value, clientVer, problem)
+	}
+	r.Capture, err = capturePolicy(getenv, mf, file)
+	if err != nil {
+		problem(fmt.Errorf("session policy: %w", err))
+	} else if err := captureProblem(r.Capture); err != nil {
+		problem(err)
 	}
 
 	r.Versions = versionCheck{Client: clientVer, MinVersion: r.Meta.ClientMinVersion, Compare: "unknown"}

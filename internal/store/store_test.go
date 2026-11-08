@@ -43,8 +43,8 @@ func TestOpenAppliesSchemaAndIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("schema version: %v", err)
 	}
-	if got != known || known != 3 {
-		t.Fatalf("schema version %d, known %d, want both 3", got, known)
+	if got != known || known != 4 {
+		t.Fatalf("schema version %d, known %d, want both 4", got, known)
 	}
 	if err := db.Close(); err != nil {
 		t.Fatalf("close: %v", err)
@@ -73,7 +73,7 @@ func TestMigrationsAreNumberedConsecutively(t *testing.T) {
 	for _, e := range entries {
 		names = append(names, e.Name())
 	}
-	want := []string{"001_init.sql", "002_origin.sql", "003_sessions.sql"}
+	want := []string{"001_init.sql", "002_origin.sql", "003_sessions.sql", "004_capture.sql"}
 	if !slices.Equal(names, want) {
 		t.Fatalf("migrations/ holds %v, want %v", names, want)
 	}
@@ -227,8 +227,8 @@ func TestOpenResumesAfterAnInterruptedFirstOpen(t *testing.T) {
 		t.Fatalf("open after interrupted first open: %v", err)
 	}
 	defer func() { _ = db.Close() }()
-	if v, err := db.SchemaVersion(ctx); err != nil || v != 3 {
-		t.Fatalf("schema version %d, %v; want 3", v, err)
+	if v, err := db.SchemaVersion(ctx); err != nil || v != 4 {
+		t.Fatalf("schema version %d, %v; want 4", v, err)
 	}
 }
 
@@ -441,11 +441,13 @@ func TestOpenMigratesAPopulatedVersion1Database(t *testing.T) {
 		mustInsert(t, db, s)
 	}
 	// Back to the version-1 shape: no origin column, no origin index, no
-	// session tables.
+	// session or capture tables.
 	if err := db.Write(ctx, func(q Querier) error {
 		for _, stmt := range []string{
 			"DROP TABLE sessions_seen",
 			"DROP TABLE triage_state",
+			"DROP TABLE capture_policy",
+			"DROP TABLE capture_refresh",
 			"DROP INDEX ix_submissions_origin",
 			"ALTER TABLE submissions DROP COLUMN origin",
 			"UPDATE schema_version SET version = 1",
@@ -468,8 +470,8 @@ func TestOpenMigratesAPopulatedVersion1Database(t *testing.T) {
 		t.Fatalf("reopen: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	if v, err := db.SchemaVersion(ctx); err != nil || v != 3 {
-		t.Fatalf("schema version %d, %v; want 3", v, err)
+	if v, err := db.SchemaVersion(ctx); err != nil || v != 4 {
+		t.Fatalf("schema version %d, %v; want 4", v, err)
 	}
 	var n int
 	if err := db.reader.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type = 'index' AND name = 'ix_submissions_origin'").Scan(&n); err != nil || n != 1 {
