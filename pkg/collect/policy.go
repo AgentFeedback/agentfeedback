@@ -184,11 +184,18 @@ func Lint(dir, home string, p Policy) []string {
 	return out
 }
 
-// SessionPush reports whether the repository at root permits session uploads.
-// It only narrows an otherwise eligible session: true never grants consent or
-// overrides the user's collection policy. An unreadable or malformed repository
-// file blocks uploads because its veto cannot be established safely.
-func SessionPush(root string) (bool, []string) {
+// SessionPush reports whether the repository containing dir permits session
+// uploads. Outside a repository, dir itself is checked. It only narrows an
+// otherwise eligible session: true never grants consent or overrides the user's
+// collection policy. An unreadable or malformed file blocks uploads.
+func SessionPush(dir string) (bool, []string) {
+	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = resolved
+	}
+	root := dir
+	if r, ok := findRepo(dir); ok {
+		root = r.root
+	}
 	rf := readRepoFile(filepath.Join(root, RepoFile), root)
 	return !rf.pushOff && !rf.pushInvalid, rf.warnings
 }

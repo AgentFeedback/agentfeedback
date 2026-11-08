@@ -1,17 +1,23 @@
 package sessions
 
 import (
+	"bytes"
+	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/agentfeedback/agentfeedback/v4/internal/store"
 	"github.com/agentfeedback/agentfeedback/v4/pkg/collect"
@@ -681,6 +687,186 @@ func TestOpenCodeDigest(t *testing.T) {
 	}
 	if d.Start != "2026-10-08T07:00:01.000Z" || d.End != "2026-10-08T07:00:46.000Z" {
 		t.Fatalf("start %s end %s", d.Start, d.End)
+	}
+}
+
+func TestOpenCodeStreamingCaptureMetadata(t *testing.T) {
+	t.Parallel()
+	w := newOCWorld(t)
+	w.create(defaultCwd)
+	r := opencodeReader{}
+	candidates, _, err := r.candidates(w.env())
+	if err != nil || len(candidates) != 1 {
+		t.Fatalf("candidates=%v error=%v", candidates, err)
+	}
+	digest, err := r.load(w.env(), candidates[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, export := range []bool{false, true} {
+		env := w.env()
+		env.captureOnly = !export // Raw export must discard bodies on its own.
+		var raw bytes.Buffer
+		var captured *transcript
+		if export {
+			captured, err = r.loadCapture(env, candidates[0], &raw)
+		} else {
+			captured, err = r.loadCapture(env, candidates[0], nil)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		gotSummary, wantSummary := *captured, *digest
+		gotSummary.entries, wantSummary.entries = nil, nil
+		gotSummary.captureOnly, wantSummary.captureOnly = false, false
+		if !reflect.DeepEqual(gotSummary, wantSummary) || len(captured.entries) != len(digest.entries) {
+			t.Fatal("capture changed virtual offsets, counts, model, times or working directories")
+		}
+		if export && (int64(raw.Len()) != digest.size || bytes.Count(raw.Bytes(), []byte{'\n'}) != digest.parsed) {
+			t.Fatal("raw export differs from virtual record bookkeeping")
+		}
+		for i, want := range digest.entries {
+			want.text = ""
+			want.calls = slices.Clone(want.calls)
+			for j, c := range want.calls {
+				metadata := *c
+				metadata.input, metadata.command, metadata.content = nil, "", ""
+				metadata.hasCommand = false
+				want.calls[j] = &metadata
+			}
+			if !reflect.DeepEqual(captured.entries[i], want) {
+				t.Fatalf("entry %d retained a body or changed metadata", i)
+			}
+		}
+	}
+	if digest.entries[0].text == "" {
+		t.Fatal("digest lost prompt text")
+	}
+}
+
+func TestOpenCodeStreamingPartialInterrupt(t *testing.T) {
+	t.Parallel()
+	for _, interruptedTail := range []bool{false, true} {
+		t.Run(fmt.Sprint(interruptedTail), func(t *testing.T) {
+			w := newOCWorld(t)
+			w.create(defaultCwd)
+			w.exec(`DELETE FROM part; DELETE FROM message;
+DROP INDEX message_session_time_created_id_idx;
+DROP INDEX part_message_id_id_idx;
+DROP INDEX part_session_idx;
+INSERT INTO message VALUES ('m2', '` + ocSID + `', 1000, 3000, '{"role":"assistant","time":{"created":2000,"completed":3000},"modelID":"stable","error":{"name":"MessageAbortedError"}}');
+INSERT INTO message VALUES ('m1', '` + ocSID + `', 1000, 1000, '{"role":"user","time":{"created":1000}}');
+INSERT INTO message VALUES ('m3', '` + ocSID + `', 4000, 4000, '{"role":"user","time":{"created":4000}}');
+INSERT INTO part VALUES ('p11', 'm2', '` + ocSID + `', 2000, 2000, '{"type":"tool","state":{"status":"running","input":{"command":"unfinished"}}}');
+INSERT INTO part VALUES ('p10', 'm2', '` + ocSID + `', 2000, 2000, '{"type":"text","text":"prefix"}');
+INSERT INTO part VALUES ('p1', 'm1', '` + ocSID + `', 1000, 1000, '{"type":"text","text":"prompt"}');
+INSERT INTO part VALUES ('p3', 'm3', '` + ocSID + `', 4000, 4000, '{"type":"text","text":"after partial"}');`)
+			if interruptedTail {
+				w.exec(`INSERT INTO part VALUES ('p12', 'm2', '` + ocSID + `', 3000, 3000, '{"type":"tool","state":{"status":"error","error":"Tool execution aborted","time":{"start":9999}}}');`)
+			}
+			r := opencodeReader{}
+			candidates, _, err := r.candidates(w.env())
+			if err != nil || len(candidates) != 1 {
+				t.Fatalf("candidates=%v error=%v", candidates, err)
+			}
+			const first = "{\"id\":\"m1\",\"kind\":\"message\",\"role\":\"user\",\"time\":{\"created\":1000}}\n"
+			const prompt = "{\"id\":\"p1\",\"kind\":\"part\",\"text\":\"prompt\",\"type\":\"text\"}\n"
+			const assistant = "{\"error\":{\"name\":\"MessageAbortedError\"},\"id\":\"m2\",\"kind\":\"message\",\"modelID\":\"stable\",\"role\":\"assistant\",\"time\":{\"completed\":3000,\"created\":2000}}\n"
+			const answer = "{\"id\":\"p10\",\"kind\":\"part\",\"text\":\"prefix\",\"type\":\"text\"}\n"
+			const want = first + prompt + assistant + answer
+			for _, captureOnly := range []bool{false, true} {
+				env := w.env()
+				env.captureOnly = captureOnly
+				var raw bytes.Buffer
+				var tr *transcript
+				if captureOnly {
+					tr, err = r.loadCapture(env, candidates[0], &raw)
+				} else {
+					tr, err = r.load(env, candidates[0])
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				counts := Counts{Entries: 3, Prompts: 1}
+				if !interruptedTail {
+					counts.Interrupts = 1
+				}
+				if captureOnly && raw.String() != want {
+					t.Fatalf("incorrect complete prefix: %q", raw.String())
+				}
+				sum := sha256.Sum256([]byte(strings.TrimSuffix(first, "\n")))
+				if tr.size != int64(len(want)) || tr.head != hex.EncodeToString(sum[:]) || tr.parsed != 4 || tr.total != counts || tr.lastModel != "stable" || !tr.start.Equal(time.UnixMilli(1000)) || !tr.end.Equal(time.UnixMilli(2000)) {
+					t.Fatal("partial record changed complete-prefix metadata")
+				}
+				if len(tr.entries) != 3 || tr.entries[0].offset != 0 || tr.entries[1].offset != int64(len(first+prompt)) || tr.entries[2].offset != int64(len(first+prompt+assistant)) {
+					t.Fatal("partial record changed entry offsets")
+				}
+			}
+		})
+	}
+}
+
+type ocWriteFunc func([]byte) (int, error)
+
+func (f ocWriteFunc) Write(p []byte) (int, error) { return f(p) }
+
+func TestOpenCodeStreamingCancellation(t *testing.T) {
+	t.Parallel()
+	w := newOCWorld(t)
+	w.create(defaultCwd)
+	r := opencodeReader{}
+	candidates, _, err := r.candidates(w.env())
+	if err != nil || len(candidates) != 1 {
+		t.Fatalf("candidates=%v error=%v", candidates, err)
+	}
+	ctx, cancel := context.WithCancel(w.ctx)
+	defer cancel()
+	env := w.env()
+	env.ctx = ctx
+	writes := 0
+	_, err = r.loadCapture(env, candidates[0], ocWriteFunc(func(p []byte) (int, error) {
+		writes++
+		cancel()
+		return len(p), nil
+	}))
+	if !errors.Is(err, context.Canceled) || writes != 1 {
+		t.Fatalf("stream cancellation: writes=%d error=%v", writes, err)
+	}
+}
+
+func TestOpenCodeStreamingChangeDoesNotRetry(t *testing.T) {
+	// The stat seam is global; this test must not run in parallel.
+	w := newOCWorld(t)
+	path := w.create(defaultCwd)
+	r := opencodeReader{}
+	candidates, _, err := r.candidates(w.env())
+	if err != nil || len(candidates) != 1 {
+		t.Fatalf("candidates=%v error=%v", candidates, err)
+	}
+	var want bytes.Buffer
+	if _, err := r.loadCapture(w.env(), candidates[0], &want); err != nil {
+		t.Fatal(err)
+	}
+	old := opencodeStat
+	defer func() { opencodeStat = old }()
+	stats := 0
+	opencodeStat = func(name string) (os.FileInfo, error) {
+		info, err := os.Stat(name)
+		if err != nil || name != path {
+			return info, err
+		}
+		stats++
+		if stats > 1 {
+			return grownInfo{info, 1}, nil
+		}
+		return info, nil
+	}
+	var got bytes.Buffer
+	if _, err := r.loadCapture(w.env(), candidates[0], &got); !errors.Is(err, ErrCaptureChanged) {
+		t.Fatalf("changed stream: %v", err)
+	}
+	if stats != 2 || !bytes.Equal(got.Bytes(), want.Bytes()) {
+		t.Fatal("changed raw stream was retried after emission")
 	}
 }
 

@@ -27,6 +27,8 @@ VALUES
   ('opencode-v1', 'canonical-progress', 'new', 20, 300, 'h', 20, 20, 300, 20, 'h', 'filed', '["canonical"]'),
   ('opencode', 'rotated', 'old', 30, 50, 'rotated', 30, 30, 50, 30, 'rotated', 'nothing', '[]'),
   ('opencode-v1', 'rotated', 'new', 20, 300, 'h', 20, 20, 300, 20, 'h', 'filed', '["canonical"]');
+DROP TABLE sessions_pushed;
+DROP TABLE session_manifests;
 UPDATE schema_version SET version = 4`)
 		return err
 	}); err != nil {

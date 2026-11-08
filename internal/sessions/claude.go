@@ -31,6 +31,9 @@ func (claudeReader) location(env Env) string {
 // a session file whose entry cannot be read, is reported in problems and
 // its sessions are not listed.
 func (r claudeReader) candidates(env Env) ([]candidate, []problem, error) {
+	if err := env.context().Err(); err != nil {
+		return nil, nil, err
+	}
 	root := r.location(env)
 	dirs, err := os.ReadDir(root)
 	if err != nil {
@@ -39,6 +42,9 @@ func (r claudeReader) candidates(env Env) ([]candidate, []problem, error) {
 	var out []candidate
 	var problems []problem
 	for _, d := range dirs {
+		if err := env.context().Err(); err != nil {
+			return out, problems, err
+		}
 		if !d.IsDir() {
 			continue
 		}
@@ -50,6 +56,9 @@ func (r claudeReader) candidates(env Env) ([]candidate, []problem, error) {
 			continue
 		}
 		for _, f := range files {
+			if err := env.context().Err(); err != nil {
+				return out, problems, err
+			}
 			if !f.Type().IsRegular() || !strings.HasSuffix(f.Name(), ".jsonl") {
 				continue
 			}
@@ -174,7 +183,7 @@ func (r claudeReader) load(env Env, c candidate) (*transcript, error) {
 
 // parse reads the complete lines of r into a transcript.
 func (claudeReader) parse(r io.Reader) (*transcript, error) {
-	t := &transcript{}
+	t := &transcript{captureOnly: readerCaptureOnly(r)}
 	calls := map[string]*call{}
 	if err := scanJSONL(r, t, func(offset int64, body []byte) bool { return t.addLine(offset, body, calls) }); err != nil {
 		return nil, err
@@ -281,8 +290,11 @@ func (t *transcript) addLine(offset int64, body []byte, calls map[string]*call) 
 					continue
 				}
 				c.result, c.resultOffset = true, offset
-				c.content = resultText(it.Content)
-				c.status = resultStatus(c.content, it.IsError, interrupted)
+				content := resultText(it.Content)
+				c.status = resultStatus(content, it.IsError, interrupted)
+				if !t.captureOnly {
+					c.content = content
+				}
 			case "text":
 				texts = append(texts, it.Text)
 			}
@@ -295,7 +307,7 @@ func (t *transcript) addLine(offset int64, body []byte, calls map[string]*call) 
 	if e.kind == kindPrompt && strings.TrimSpace(e.text) == "" {
 		e.kind = kindOther
 	}
-	t.entries = append(t.entries, e)
+	t.addEntry(e)
 
 	return true
 }

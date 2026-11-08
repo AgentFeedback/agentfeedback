@@ -1,0 +1,173 @@
+[
+  {
+    "manifest": {
+      "capture_end": "2026-10-07T21:00:05Z",
+      "capture_start": "2026-10-07T21:00:00Z",
+      "content_bytes": "\u003cCONTENT_BYTES\u003e",
+      "content_sha256": "\u003cSHA256\u003e",
+      "envelope": {
+        "context": {
+          "detector": "codex-rollout/1",
+          "origin": "session-capture",
+          "session_harness": "codex",
+          "session_id": "0199c3a1-0000-7000-8000-000000000003"
+        },
+        "harness": "codex",
+        "key": "\u003cREVISION_KEY\u003e",
+        "kind": "session",
+        "machine": "\u003cMACHINE\u003e",
+        "model": "gpt-test-1",
+        "occurred_at": "2026-10-07T21:00:05Z",
+        "payload": {
+          "counts": {
+            "entries": 6,
+            "prompts": 1,
+            "tool_calls": 1,
+            "tool_errors": 0
+          },
+          "detector_version": "1",
+          "format": "codex-rollout",
+          "line_count": 6,
+          "revision": "\u003cSOURCE_BYTES\u003e",
+          "size": "\u003cSOURCE_BYTES\u003e"
+        },
+        "project": "golden-proj"
+      },
+      "envelope_bytes": "\u003cENVELOPE_BYTES\u003e",
+      "installation": "\u003cMACHINE\u003e",
+      "part_count": 1,
+      "revision": "\u003cSOURCE_BYTES\u003e",
+      "session_ref": "codex:0199c3a1-0000-7000-8000-000000000003"
+    },
+    "outcomes": [
+      {
+        "bytes": "\u003cENVELOPE_BYTES\u003e",
+        "part_count": 1,
+        "ref": "codex:0199c3a1-0000-7000-8000-000000000003",
+        "revision": "\u003cSOURCE_BYTES\u003e",
+        "status": "pushed",
+        "submission_uid": "11111111-1111-4111-8111-111111111111"
+      },
+      {
+        "reason": "already_pushed",
+        "ref": "codex:0199c3a1-0000-7000-8000-000000000003",
+        "revision": "\u003cSOURCE_BYTES\u003e",
+        "status": "replayed"
+      }
+    ]
+  },
+  {
+    "manifest": {
+      "capture_end": "2026-10-08T07:40:41Z",
+      "capture_start": "2026-10-08T07:39:40Z",
+      "content_bytes": "\u003cCONTENT_BYTES\u003e",
+      "content_sha256": "\u003cSHA256\u003e",
+      "envelope": {
+        "context": {
+          "detector": "codex-rollout/1",
+          "origin": "session-capture",
+          "session_harness": "codex",
+          "session_id": "0199c3a1-0000-7000-8000-000000000001"
+        },
+        "harness": "codex",
+        "key": "\u003cREVISION_KEY\u003e",
+        "kind": "session",
+        "machine": "\u003cMACHINE\u003e",
+        "model": "gpt-test-2",
+        "occurred_at": "2026-10-08T07:40:41Z",
+        "payload": {
+          "counts": {
+            "entries": 29,
+            "prompts": 2,
+            "tool_calls": 7,
+            "tool_errors": 3
+          },
+          "detector_version": "1",
+          "format": "codex-rollout",
+          "line_count": 30,
+          "revision": "\u003cSOURCE_BYTES\u003e",
+          "size": "\u003cSOURCE_BYTES\u003e"
+        },
+        "project": "golden-proj"
+      },
+      "envelope_bytes": "\u003cENVELOPE_BYTES\u003e",
+      "installation": "\u003cMACHINE\u003e",
+      "part_count": 1,
+      "revision": "\u003cSOURCE_BYTES\u003e",
+      "session_ref": "codex:0199c3a1-0000-7000-8000-000000000001"
+    },
+    "outcomes": [
+      {
+        "bytes": "\u003cENVELOPE_BYTES\u003e",
+        "part_count": 1,
+        "ref": "codex:0199c3a1-0000-7000-8000-000000000001",
+        "revision": "\u003cSOURCE_BYTES\u003e",
+        "status": "pushed",
+        "submission_uid": "11111111-1111-4111-8111-111111111111"
+      },
+      {
+        "reason": "already_pushed",
+        "ref": "codex:0199c3a1-0000-7000-8000-000000000001",
+        "revision": "\u003cSOURCE_BYTES\u003e",
+        "status": "replayed"
+      }
+    ]
+  },
+  {
+    "manifest": {
+      "capture_end": "2026-10-08T08:10:22Z",
+      "capture_start": "2026-10-08T08:10:00Z",
+      "content_bytes": "\u003cCONTENT_BYTES\u003e",
+      "content_sha256": "\u003cSHA256\u003e",
+      "envelope": {
+        "context": {
+          "detector": "codex-rollout/1",
+          "origin": "session-capture",
+          "session_harness": "codex",
+          "session_id": "0199c3a1-0000-7000-8000-000000000002_0199c3a1-0000-7000-8000-000000000008"
+        },
+        "harness": "codex",
+        "key": "\u003cREVISION_KEY\u003e",
+        "kind": "session",
+        "machine": "\u003cMACHINE\u003e",
+        "model": "gpt-test-3",
+        "occurred_at": "2026-10-08T08:10:22Z",
+        "payload": {
+          "counts": {
+            "entries": 18,
+            "prompts": 1,
+            "tool_calls": 5,
+            "tool_errors": 2
+          },
+          "detector_version": "1",
+          "format": "codex-rollout",
+          "line_count": 18,
+          "revision": "\u003cSOURCE_BYTES\u003e",
+          "size": "\u003cSOURCE_BYTES\u003e"
+        },
+        "project": "golden-proj"
+      },
+      "envelope_bytes": "\u003cENVELOPE_BYTES\u003e",
+      "installation": "\u003cMACHINE\u003e",
+      "part_count": 1,
+      "revision": "\u003cSOURCE_BYTES\u003e",
+      "session_ref": "codex:0199c3a1-0000-7000-8000-000000000002_0199c3a1-0000-7000-8000-000000000008"
+    },
+    "outcomes": [
+      {
+        "bytes": "\u003cENVELOPE_BYTES\u003e",
+        "part_count": 1,
+        "ref": "codex:0199c3a1-0000-7000-8000-000000000002_0199c3a1-0000-7000-8000-000000000008",
+        "revision": "\u003cSOURCE_BYTES\u003e",
+        "status": "pushed",
+        "submission_uid": "11111111-1111-4111-8111-111111111111"
+      },
+      {
+        "reason": "already_pushed",
+        "ref": "codex:0199c3a1-0000-7000-8000-000000000002_0199c3a1-0000-7000-8000-000000000008",
+        "revision": "\u003cSOURCE_BYTES\u003e",
+        "status": "replayed"
+      }
+    ]
+  }
+]

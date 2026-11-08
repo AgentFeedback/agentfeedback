@@ -37,7 +37,11 @@ type transcript struct {
 	end       time.Time
 	total     Counts // counts(0), kept when entries are dropped
 	lastModel string // model(), kept when entries are dropped
-	entries   []entry
+	// captureModel is Codex's last assistant activity model; a later
+	// turn_context without an assistant must not change upload metadata.
+	captureModel string
+	entries      []entry
+	captureOnly  bool // discard record content after classification
 }
 
 // summarise fills total and lastModel and drops the entries and the
@@ -74,6 +78,18 @@ type call struct {
 	// exitCode is the exit code the store records natively, nil when it
 	// records none.
 	exitCode *int
+}
+
+// addEntry retains the same count and status metadata in capture mode without
+// keeping transcript text or tool bodies reachable through entries or call maps.
+func (t *transcript) addEntry(e entry) {
+	if t.captureOnly {
+		e.text = ""
+		for _, c := range e.calls {
+			c.input, c.command, c.content = nil, "", ""
+		}
+	}
+	t.entries = append(t.entries, e)
 }
 
 // seen widens the transcript's start and end to at and returns at in UTC.

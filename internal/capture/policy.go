@@ -1,5 +1,5 @@
-// Package capture discovers the configured organisation's session policy. It
-// neither reads transcripts nor uploads them.
+// Package capture discovers organisation policy and uploads scrubbed sessions
+// only when the configured destination currently permits capture.
 package capture
 
 import (
@@ -45,12 +45,13 @@ type Config struct {
 // the database and client entirely. Clock defaults to time.Now, or a fixed Now
 // when supplied. Clock is sampled again when each HTTP response is received.
 type Options struct {
-	Server    string
-	Local     bool
-	Quiet     time.Duration
-	PolicyTTL time.Duration
-	Now       time.Time
-	Clock     func() time.Time
+	Server       string
+	Local        bool
+	Quiet        time.Duration
+	PolicyTTL    time.Duration
+	Now          time.Time
+	Clock        func() time.Time
+	forceRefresh bool
 }
 
 // Bounds are the supported hosted policy's upload limits, not client overrides.
@@ -83,6 +84,8 @@ type Policy struct {
 	RetryAt           time.Time  `json:"retry_at,omitempty"`
 	LastNoticeVersion string     `json:"-"`
 	Bounds
+	credentialFingerprint string
+	generation            int64
 }
 
 // Refresh returns a cached current policy or discovers it using the configured
@@ -223,6 +226,9 @@ func cacheCurrent(p store.CapturePolicy, opts Options) bool {
 	if p.State == Suspended {
 		return p.RetryAt != nil && opts.Now.Before(time.UnixMicro(*p.RetryAt))
 	}
+	if opts.forceRefresh && (p.State == Enabled || p.State == Disabled) {
+		return false
+	}
 	ttl := opts.PolicyTTL
 	switch p.State {
 	case Unsupported:
@@ -242,6 +248,7 @@ func fromStored(row store.CapturePolicy, quiet string) (Policy, error) {
 		State: row.State, Server: row.Server, OrgID: row.OrgID, OrgName: row.OrgName,
 		Enabled: row.Enabled && row.State == Enabled, NoticeVersion: row.NoticeVersion,
 		LastNoticeVersion: row.LastNoticeVersion, Quiet: quiet, CheckedAt: time.UnixMicro(row.CheckedAt).UTC(),
+		credentialFingerprint: row.CredentialFingerprint, generation: row.Generation,
 	}
 	if row.Since != nil {
 		p.Since = time.UnixMicro(*row.Since).UTC()

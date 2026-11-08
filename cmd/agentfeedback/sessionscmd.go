@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	sessionsSynopsis       = "sessions list|digest|mark|status [flags]"
+	sessionsSynopsis       = "sessions list|digest|mark|status|push [flags]"
 	sessionsListSynopsis   = "sessions list [--harness H] [--since T] [--unprocessed] [--json]"
 	sessionsDigestSynopsis = "sessions digest <harness:id>... | --unprocessed [--harness H] [--limit N] [--allow-unknown-project] [--json]"
 	sessionsMarkSynopsis   = "sessions mark <harness:id>... --outcome filed|nothing|skipped [--ref UID]... [--json]"
@@ -31,7 +31,7 @@ const (
 )
 
 // sessionsSubcommands are the subcommands of sessions, in help order.
-var sessionsSubcommands = []string{"list", "digest", "mark", "status"}
+var sessionsSubcommands = []string{"list", "digest", "mark", "status", "push"}
 
 // sessionsEnvFrom is the internal/sessions environment: the home directory,
 // the harnesses' store directories (each an absolute environment variable,
@@ -244,8 +244,8 @@ func runSessions(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	}
 	switch args[0] {
 	case "-h", "--help", "-help":
-		fmt.Fprintf(stderr, "usage: agentfeedback %s\n  %s\n  %s\n  %s\n  %s\n", sessionsSynopsis,
-			sessionsListSynopsis, sessionsDigestSynopsis, sessionsMarkSynopsis, sessionsStatusSynopsis)
+		fmt.Fprintf(stderr, "usage: agentfeedback %s\n  %s\n  %s\n  %s\n  %s\n  %s\n", sessionsSynopsis,
+			sessionsListSynopsis, sessionsDigestSynopsis, sessionsMarkSynopsis, sessionsStatusSynopsis, sessionsPushSynopsis)
 
 		return flag.ErrHelp
 	case "list":
@@ -256,6 +256,8 @@ func runSessions(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return runSessionsMark(args[1:], stdout, stderr)
 	case "status":
 		return runSessionsStatus(args[1:], stdout, stderr)
+	case "push":
+		return runSessionsPush(args[1:], stdout, stderr)
 	}
 
 	return usageErr(fmt.Sprintf("unknown sessions subcommand %q", args[0]), "use agentfeedback "+sessionsSynopsis)
@@ -294,11 +296,40 @@ func runSessionsList(args []string, stdout, stderr io.Writer) error {
 		return errSessions(err)
 	}
 	storeNotes(l.Stores, *harness != "", stderr)
+	path, err := configPath(os.Getenv)
+	if err != nil {
+		return err
+	}
+	file, _, err := loadFileConfig(path)
+	if err != nil {
+		return err
+	}
+	policy, err := resolveCapturePolicy(os.Getenv, modeFlags{}, file, true)
+	var pushed map[string]string
+	if err == nil {
+		pushed, err = capture.PushedRevisions(context.Background(), svc.db, policy)
+	}
+	if err != nil {
+		// Local discovery does not depend on a usable upload destination.
+		// Keep the optional column empty, but never hide its lookup failure.
+		fmt.Fprintln(stderr, "agentfeedback: pushed revisions unavailable; run agentfeedback doctor")
+	}
 	if *asJSON {
-		return writeJSON(stdout, l)
+		type listedSession struct {
+			sessions.Session
+			PushedRevision string `json:"pushed_revision,omitempty"`
+		}
+		rows := make([]listedSession, 0, len(l.Sessions))
+		for _, s := range l.Sessions {
+			rows = append(rows, listedSession{s, pushed[s.Ref]})
+		}
+		return writeJSON(stdout, struct {
+			sessions.Listing
+			Sessions []listedSession `json:"sessions"`
+		}{l, rows})
 	}
 	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "REF\tSTATE\tPROJECT\tSTART\tEND\tPROMPTS\tTOOL CALLS\tTOOL ERRORS")
+	fmt.Fprintln(tw, "REF\tSTATE\tPROJECT\tSTART\tEND\tPROMPTS\tTOOL CALLS\tTOOL ERRORS\tPUSHED REVISION")
 	for _, s := range l.Sessions {
 		state := s.State
 		if s.Reason != "" {
@@ -308,7 +339,7 @@ func runSessionsList(args []string, stdout, stderr io.Writer) error {
 		if s.Counts != nil {
 			prompts, calls, errs = strconv.Itoa(s.Counts.Prompts), strconv.Itoa(s.Counts.ToolCalls), strconv.Itoa(s.Counts.ToolErrors)
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", s.Ref, state, dash(s.Project), shownTime(s.Start), shownTime(s.End), prompts, calls, errs)
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", s.Ref, state, dash(s.Project), shownTime(s.Start), shownTime(s.End), prompts, calls, errs, dash(pushed[s.Ref]))
 	}
 
 	return tw.Flush()
@@ -575,17 +606,27 @@ func runSessionsStatus(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	policy, policyErr := capturePolicy(os.Getenv, modeFlags{}, file)
+	pushStatus, err := capture.PushSummary(ctx, svc.db, svc.env, policy)
+	if err != nil {
+		return errSessions(err)
+	}
 	if *asJSON {
 		if err := writeJSON(stdout, struct {
 			sessions.StatusOutput
-			Capture capture.Policy `json:"capture"`
-		}{st, policy}); err != nil {
+			Capture capture.Policy     `json:"capture"`
+			Push    capture.PushStatus `json:"push"`
+		}{st, policy, pushStatus}); err != nil {
 			return err
 		}
 		return policyErr
 	}
 	var b strings.Builder
 	fmt.Fprintln(&b, capture.Status(policy))
+	lastPush := "-"
+	if pushStatus.LastPush != nil {
+		lastPush = shownTime(*pushStatus.LastPush)
+	}
+	fmt.Fprintf(&b, "push: %d pushed, %d pending, %d skipped; last push %s\n", pushStatus.Pushed, pushStatus.Pending, pushStatus.Skipped, lastPush)
 	for _, h := range st.Harnesses {
 		fmt.Fprintf(&b, "%s: store %s (%s)\n", h.Harness, h.Location, h.Store)
 		for _, p := range h.Problems {

@@ -43,8 +43,8 @@ func TestOpenAppliesSchemaAndIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("schema version: %v", err)
 	}
-	if got != known || known != 5 {
-		t.Fatalf("schema version %d, known %d, want both 5", got, known)
+	if got != known {
+		t.Fatalf("schema version %d, want latest %d", got, known)
 	}
 	if err := db.Close(); err != nil {
 		t.Fatalf("close: %v", err)
@@ -210,8 +210,12 @@ func TestOpenResumesAfterAnInterruptedFirstOpen(t *testing.T) {
 		t.Fatalf("open after interrupted first open: %v", err)
 	}
 	defer func() { _ = db.Close() }()
-	if v, err := db.SchemaVersion(ctx); err != nil || v != 5 {
-		t.Fatalf("schema version %d, %v; want 5", v, err)
+	known, err := KnownSchemaVersion()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, err := db.SchemaVersion(ctx); err != nil || v != known {
+		t.Fatalf("schema version %d, %v; want %d", v, err, known)
 	}
 }
 
@@ -431,6 +435,8 @@ func TestOpenMigratesAPopulatedVersion1Database(t *testing.T) {
 			"DROP TABLE triage_state",
 			"DROP TABLE capture_policy",
 			"DROP TABLE capture_refresh",
+			"DROP TABLE sessions_pushed",
+			"DROP TABLE session_manifests",
 			"DROP INDEX ix_submissions_origin",
 			"ALTER TABLE submissions DROP COLUMN origin",
 			"UPDATE schema_version SET version = 1",
@@ -453,8 +459,12 @@ func TestOpenMigratesAPopulatedVersion1Database(t *testing.T) {
 		t.Fatalf("reopen: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	if v, err := db.SchemaVersion(ctx); err != nil || v != 5 {
-		t.Fatalf("schema version %d, %v; want 5", v, err)
+	known, err := KnownSchemaVersion()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, err := db.SchemaVersion(ctx); err != nil || v != known {
+		t.Fatalf("schema version %d, %v; want %d", v, err, known)
 	}
 	var n int
 	if err := db.reader.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type = 'index' AND name = 'ix_submissions_origin'").Scan(&n); err != nil || n != 1 {

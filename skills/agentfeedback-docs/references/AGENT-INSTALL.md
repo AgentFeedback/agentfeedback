@@ -233,6 +233,9 @@ plugin; if so, go to step 2.4 instead.
 question; `--yes` does not change it. `doctor` and `sessions status` show
 the same policy. These commands send no transcript. See
 [Session policy settings](docs/operate.md#session-policy-settings).
+Manual [`sessions push`](docs/sessions.md#push) can upload eligible,
+scrubbed transcripts when that policy is enabled; setup itself does not
+upload them or enable a background sweep.
 
 OpenCode's `opencode` input alias selects V1; with a 2.x binary on `PATH`,
 `install opencode` writes nothing and warns that V2 is not available.

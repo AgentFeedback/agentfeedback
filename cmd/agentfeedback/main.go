@@ -70,7 +70,7 @@ var commands = []command{
 	{"install", installSynopsis + ": wire the agentfeedback skill, hooks and the rule in each global instruction file (or with --mcp an MCP entry), and the agentfeedback-triage skill, into the coding-agent harnesses; no harness named lists them; --check reports the rule sections and changes nothing; --project writes the pointer section into the repository's instruction file", runInstall},
 	{"prime", primeSynopsis + ": print the short submission guidance a session starts with (what the session-start hooks run); --full prints all of it", runPrime},
 	{"uninstall", uninstallSynopsis + ": remove exactly what install added, restoring untouched files from their backups", runUninstall},
-	{"sessions", sessionsSynopsis + ": list, digest and mark the coding-agent session logs on this machine (read on demand, never sent anywhere; the watermarks live in the data-directory database)", runSessions},
+	{"sessions", sessionsSynopsis + ": list, digest and mark local coding-agent logs; push scrubbed sessions only to a configured server whose organisation enables capture (independent local digest and push watermarks)", runSessions},
 	{"mcp", mcpSynopsis + ": serve the MCP tools over stdio until stdin closes: over the local database, or relayed from the configured server with this machine's session tools; stdout carries only the protocol", runMcp},
 	{"ui", uiSynopsis + ": serve a read-only web page over the queue on loopback until Ctrl-C", runUI},
 	{"help", "print this help", nil},

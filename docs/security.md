@@ -87,10 +87,25 @@ agent starts it, and exits when the command is done:
 returns the org identifier, processing permission, notice version and upload
 bounds, with optional org name and retention; it sends no transcript.
 The response is cached in `capture_policy` in the data-directory database
-in remote mode. Local mode makes no request. Discovery does not add upload
-or background collection, and failures never grant permission. See
+in remote mode. Local mode makes no request. Discovery alone uploads nothing,
+and failures never grant permission. See
 [Session policy settings](operate.md#session-policy-settings) for cache and
 backoff behavior.
+
+`sessions push` sends eligible Claude Code, Codex and OpenCode V1 transcripts
+to that configured server when its organisation enables processing. These
+contain prompts, responses, tool calls and tool output. Collection rules,
+repository upload vetoes and the policy's consent cutoff apply. Every scrub
+class is applied before hashing and partitioning, with JSON strings decoded
+so escaping cannot hide credentials and multiline private keys redacted
+across records. Logs contain scrub counts, never transcript text. Scrubbing
+is not a guarantee that all sensitive prose is recognised. Uploads are
+explicit, not triggered by hooks or background jobs. See
+[Push](sessions.md#push) for timing, revision, size and retry rules. A dry-run
+preview stays in command output; it is not saved or sent to the upload
+routes. Pending uploads retain only their initial scrubbed manifest metadata
+and partition size in SQLite, never transcript content or parts. Source
+permissions and snapshot stability are checked again before each request.
 
 Where it reads and writes (`XDG_*` unset or not absolute means the default
 under the home directory, on every operating system):
@@ -117,10 +132,11 @@ stdio `sessions_*` tools and the stdio `submit_feedback`'s `context_from`
 from it is sent), on demand and never written; the OpenCode V1 (`opencode-v1`)
 database is opened read-only, without creating any file beside it. The `[collect]`
 rules are applied per session before a log is opened, and a digest is
-bounded and scrubbed before it is shown. Only the watermark rows and what
-you file are stored, in the data-directory database, in both modes; nothing
-of a session is sent to a server unless filed. A digest reaches the
-provider of the model that reads it ([sessions.md](sessions.md#provider-boundary)).
+bounded and scrubbed before it is shown. Only watermark and push-outcome
+metadata and what you file are stored in the data-directory database;
+transcripts are sent only by explicit `sessions push`, never spooled.
+A digest reaches the provider of the model that reads it
+([sessions.md](sessions.md#provider-boundary)).
 
 **What `install` writes.** The files of the harness table in
 [operate.md](operate.md#wire-the-harnesses), and in CLI mode one section in each

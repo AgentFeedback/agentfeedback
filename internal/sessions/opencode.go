@@ -2,12 +2,14 @@ package sessions
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"math"
 	"net/url"
@@ -81,6 +83,9 @@ func opencodeDBPath(env Env) string {
 // databases lists the database files from directory entries alone. No
 // database, or no absolute place to look for one, is fs.ErrNotExist.
 func (r opencodeReader) databases(env Env) ([]string, error) {
+	if err := env.context().Err(); err != nil {
+		return nil, err
+	}
 	if env.OpenCodeDB != "" {
 		p := opencodeDBPath(env)
 		if !filepath.IsAbs(p) {
@@ -106,6 +111,9 @@ func (r opencodeReader) databases(env Env) ([]string, error) {
 	}
 	var out []string
 	for _, e := range ents {
+		if err := env.context().Err(); err != nil {
+			return out, err
+		}
 		n := e.Name()
 		if !e.Type().IsRegular() || (n != "opencode.db" && !(strings.HasPrefix(n, "opencode-") && strings.HasSuffix(n, ".db"))) {
 			continue
@@ -139,14 +147,18 @@ var opencodeColumns = map[string][]string{
 
 // checkSchema reports errUnsupported when a needed table or column is
 // missing.
-func checkSchema(db *sql.DB) error {
+func checkSchema(ctx context.Context, db *sql.DB) error {
 	for _, table := range []string{"session", "message", "part"} {
-		rows, err := db.Query("SELECT name FROM pragma_table_info(?)", table)
+		rows, err := db.QueryContext(ctx, "SELECT name FROM pragma_table_info(?)", table)
 		if err != nil {
 			return err
 		}
 		have := map[string]bool{}
 		for rows.Next() {
+			if err := ctx.Err(); err != nil {
+				_ = rows.Close()
+				return err
+			}
 			var n string
 			if err := rows.Scan(&n); err != nil {
 				_ = rows.Close()
@@ -154,6 +166,10 @@ func checkSchema(db *sql.DB) error {
 				return err
 			}
 			have[n] = true
+		}
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			return err
 		}
 		if err := rows.Close(); err != nil {
 			return err
@@ -221,6 +237,9 @@ func readOpenCode(path string, fn func(db *sql.DB) error) error {
 			return err
 		}
 		err = withOpenCode(opencodeDSN(path), fn)
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return err
+		}
 		if after, serr := ocStampOf(path); serr == nil && after.equal(before) {
 			return err
 		}
@@ -245,6 +264,10 @@ func withOpenCode(dsn string, fn func(db *sql.DB) error) error {
 // session id already listed from an earlier database, is reported in
 // problems. When no database could be read the first error is returned.
 func (r opencodeReader) candidates(env Env) ([]candidate, []problem, error) {
+	ctx := env.context()
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
 	dbs, err := r.databases(env)
 	if err != nil {
 		return nil, nil, err
@@ -255,18 +278,24 @@ func (r opencodeReader) candidates(env Env) ([]candidate, []problem, error) {
 	read := 0
 	from := map[string]string{}
 	for _, p := range dbs {
+		if err := ctx.Err(); err != nil {
+			return out, problems, err
+		}
 		var cands []candidate
 		err := readOpenCode(p, func(db *sql.DB) error {
 			cands = nil
-			if err := checkSchema(db); err != nil {
+			if err := checkSchema(ctx, db); err != nil {
 				return err
 			}
-			rows, err := db.Query("SELECT id, directory, time_created, time_updated FROM session WHERE parent_id IS NULL")
+			rows, err := db.QueryContext(ctx, "SELECT id, directory, time_created, time_updated FROM session WHERE parent_id IS NULL")
 			if err != nil {
 				return err
 			}
 			defer func() { _ = rows.Close() }()
 			for rows.Next() {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
 				var id, dir string
 				var created, updated int64
 				if err := rows.Scan(&id, &dir, &created, &updated); err != nil {
@@ -278,6 +307,9 @@ func (r opencodeReader) candidates(env Env) ([]candidate, []problem, error) {
 			return rows.Err()
 		})
 		if err != nil {
+			if ctx.Err() != nil {
+				return out, problems, ctx.Err()
+			}
 			if first == nil {
 				first = err
 			}
@@ -313,8 +345,8 @@ func (opencodeReader) gate(env Env, c candidate) (state, reason string) {
 var opencodeLoadHook func(c candidate)
 
 type ocRow struct {
-	id, messageID string
-	data          []byte
+	id   string
+	data []byte
 }
 
 type ocTime struct {
@@ -374,18 +406,33 @@ const (
 
 // load reads the session's messages and parts and lays them out as the
 // virtual log.
-func (opencodeReader) load(_ Env, c candidate) (*transcript, error) {
+func (r opencodeReader) load(env Env, c candidate) (*transcript, error) {
+	return r.loadCapture(env, c, nil)
+}
+
+// loadCapture renders the same virtual records used for digest offsets.
+// Message and part cursors share one read transaction, so nested part reads
+// do not need another connection from the single-connection database.
+func (opencodeReader) loadCapture(env Env, c candidate, raw io.Writer) (*transcript, error) {
+	ctx := env.context()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if opencodeLoadHook != nil {
 		opencodeLoadHook(c)
 	}
-	var dir string
-	var messages, parts []ocRow
-	err := readOpenCode(c.path, func(db *sql.DB) error {
-		messages, parts = nil, nil
-		if err := checkSchema(db); err != nil {
+	var t *transcript
+	read := func(db *sql.DB) error {
+		if err := checkSchema(ctx, db); err != nil {
 			return err
 		}
-		if err := db.QueryRow("SELECT directory FROM session WHERE id = ?", c.sessionID).Scan(&dir); err != nil {
+		tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback() }()
+		var dir string
+		if err := tx.QueryRowContext(ctx, "SELECT directory FROM session WHERE id = ?", c.sessionID).Scan(&dir); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return fmt.Errorf("session %s: %w", c.sessionID, fs.ErrNotExist)
 			}
@@ -395,47 +442,40 @@ func (opencodeReader) load(_ Env, c candidate) (*transcript, error) {
 		if dir != c.cwd {
 			return errors.New("the session's directory changed since it was listed")
 		}
-		var err error
-		if messages, err = ocRows(db, "SELECT id, '', data FROM message WHERE session_id = ? ORDER BY time_created, id", c.sessionID); err != nil {
+		t = &transcript{sessionID: c.sessionID, captureOnly: env.captureOnly || raw != nil}
+		t.addCwd(dir)
+		if err := t.layout(ctx, tx, raw); err != nil {
 			return err
 		}
-		parts, err = ocRows(db, "SELECT id, message_id, data FROM part WHERE session_id = ? ORDER BY message_id, id", c.sessionID)
+		t.summarise(true)
 
-		return err
-	})
+		return tx.Commit()
+	}
+	var err error
+	if raw == nil {
+		err = readOpenCode(c.path, read)
+	} else {
+		// A stream cannot retract an earlier attempt. Reject a changed
+		// source instead of appending a retry to bytes already emitted.
+		var before, after ocStamp
+		before, err = ocStampOf(c.path)
+		if err == nil {
+			err = withOpenCode(opencodeDSN(c.path), read)
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return nil, err
+			}
+			var stampErr error
+			after, stampErr = ocStampOf(c.path)
+			if stampErr != nil || !after.equal(before) {
+				err = ErrCaptureChanged
+			}
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
-	t := &transcript{sessionID: c.sessionID}
-	t.addCwd(dir)
-	byMessage := map[string][]ocRow{}
-	for _, p := range parts {
-		byMessage[p.messageID] = append(byMessage[p.messageID], p)
-	}
-	t.layout(messages, byMessage)
-	t.summarise(true)
 
 	return t, nil
-}
-
-func ocRows(db *sql.DB, query, sessionID string) ([]ocRow, error) {
-	rows, err := db.Query(query, sessionID)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-	var out []ocRow
-	for rows.Next() {
-		var r ocRow
-		var data string
-		if err := rows.Scan(&r.id, &r.messageID, &data); err != nil {
-			return nil, err
-		}
-		r.data = []byte(data)
-		out = append(out, r)
-	}
-
-	return out, rows.Err()
 }
 
 // The fields of a message and of a part that the virtual log records:
@@ -536,132 +576,209 @@ func ocPut(rec map[string]any, path []string, v json.RawMessage) {
 	rec[path[len(path)-1]] = v
 }
 
-// layout adds the complete records of the virtual log to t: the line
-// bookkeeping of scanJSONL, and the entries.
-func (t *transcript) layout(messages []ocRow, parts map[string][]ocRow) {
-	var offset int64
-	// add counts one complete record and reports whether the log goes on.
-	add := func(rec []byte, ok bool) int64 {
-		at := offset
-		if offset == 0 {
-			sum := sha256.Sum256(rec[:len(rec)-1])
-			t.head = hex.EncodeToString(sum[:])
-		}
-		if ok {
-			t.parsed++
-		} else {
-			t.badLines = append(t.badLines, at)
-		}
-		offset += int64(len(rec))
-
-		return at
+// layout adds complete virtual records and their entry metadata to t.
+// Ordered cursors carry IDs only: even without ordering indexes, SQLite
+// cannot buffer or spill transcript bodies in its sort. Prepared lookups
+// decode only the current message and part in the same read snapshot.
+func (t *transcript) layout(ctx context.Context, tx *sql.Tx, raw io.Writer) error {
+	messageData, err := tx.PrepareContext(ctx, "SELECT data FROM message WHERE id = ?")
+	if err != nil {
+		return err
 	}
-	defer func() { t.size = offset }()
-	for _, m := range messages {
-		rec, ok := ocRecord("message", m.id, m.data)
-		var msg ocMessage
-		if ok && json.Unmarshal(m.data, &msg) != nil {
-			msg = ocMessage{}
+	defer func() { _ = messageData.Close() }()
+	partData, err := tx.PrepareContext(ctx, "SELECT data FROM part WHERE id = ?")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = partData.Close() }()
+	messages, err := tx.QueryContext(ctx, "SELECT id FROM message WHERE session_id = ? ORDER BY time_created, id", t.sessionID)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = messages.Close() }()
+	for messages.Next() {
+		if err := ctx.Err(); err != nil {
+			return err
 		}
-		mine := parts[m.id]
-		if ok && (msg.Role == "assistant" && msg.Time.Completed == nil || msg.Role == "user" && len(mine) == 0) {
-			return
+		var m ocRow
+		if err := messages.Scan(&m.id); err != nil {
+			return err
 		}
-		// The parts of the message that are complete, up to the first
-		// that is not.
-		type parsedPart struct {
-			row ocRow
-			rec []byte
-			ok  bool
-			p   ocPart
+		if err := messageData.QueryRowContext(ctx, m.id).Scan(&m.data); err != nil {
+			return err
 		}
-		var done []parsedPart
-		complete := true
-		for _, pr := range mine {
-			prec, pok := ocRecord("part", pr.id, pr.data)
-			var p ocPart
-			if pok && json.Unmarshal(pr.data, &p) != nil {
-				p = ocPart{}
-			}
-			if pok && p.Type == "tool" && p.State.Status != "completed" && p.State.Status != "error" {
-				complete = false
+		parts, err := tx.QueryContext(ctx, "SELECT id FROM part WHERE session_id = ? AND message_id = ? ORDER BY id", t.sessionID, m.id)
+		if err != nil {
+			return err
+		}
+		hasParts := parts.Next()
+		complete, err := t.layoutMessage(ctx, m, parts, partData, hasParts, raw)
+		_ = parts.Close()
+		if err != nil {
+			return err
+		}
+		if !complete {
+			return nil
+		}
+	}
 
+	return messages.Err()
+}
+
+// ocAdd counts a record only after its bytes have been emitted.
+func (t *transcript) ocAdd(raw io.Writer, rec []byte, ok bool) (int64, error) {
+	at := t.size
+	if raw != nil {
+		if _, err := raw.Write(rec); err != nil {
+			return at, err
+		}
+	}
+	if at == 0 {
+		sum := sha256.Sum256(rec[:len(rec)-1])
+		t.head = hex.EncodeToString(sum[:])
+	}
+	if ok {
+		t.parsed++
+	} else {
+		t.badLines = append(t.badLines, at)
+	}
+	t.size += int64(len(rec))
+
+	return at, nil
+}
+
+// layoutMessage returns false at the first incomplete virtual record.
+// An aborted assistant still inspects later parts for an interrupted tool:
+// those parts suppress a duplicate message interrupt even beyond the prefix.
+func (t *transcript) layoutMessage(ctx context.Context, m ocRow, parts *sql.Rows, partData *sql.Stmt, hasParts bool, raw io.Writer) (bool, error) {
+	if err := parts.Err(); err != nil {
+		return false, err
+	}
+	rec, ok := ocRecord("message", m.id, m.data)
+	var msg ocMessage
+	if ok && json.Unmarshal(m.data, &msg) != nil {
+		msg = ocMessage{}
+	}
+	if ok && (msg.Role == "assistant" && msg.Time.Completed == nil || msg.Role == "user" && !hasParts) {
+		return false, nil
+	}
+	at, err := t.ocAdd(raw, rec, ok)
+	if err != nil {
+		return false, err
+	}
+	messageEntry := len(t.entries)
+	aborted := ok && msg.Role == "assistant" && msg.Error != nil && msg.Error.Name == ocAborted
+	if ok {
+		e := entry{offset: at, span: m.id, kind: kindOther, cwd: t.lastCwd}
+		if msg.Time.Created != nil {
+			e.at = t.seen(time.UnixMilli(*msg.Time.Created))
+		}
+		if msg.Role == "assistant" {
+			e.model = msg.ModelID
+			if cwd := t.addCwd(msg.Path.Cwd); cwd != "" {
+				e.cwd = cwd
+			}
+		}
+		t.addEntry(e)
+	}
+	var texts []string
+	prompt, interrupted, complete := false, false, true
+	for more := hasParts; more; more = parts.Next() {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+		var pr ocRow
+		if err := parts.Scan(&pr.id); err != nil {
+			return false, err
+		}
+		if err := partData.QueryRowContext(ctx, pr.id).Scan(&pr.data); err != nil {
+			return false, err
+		}
+		var p ocPart
+		if json.Unmarshal(pr.data, &p) != nil {
+			p = ocPart{}
+		} else if aborted && p.Type == "tool" && ocInterrupted(&p) {
+			interrupted = true
+		}
+		if !complete {
+			if interrupted {
 				break
 			}
-			done = append(done, parsedPart{pr, prec, pok, p})
+			continue
 		}
-
-		at := add(rec, ok)
-		if ok {
-			e := entry{offset: at, span: m.id, kind: kindOther, cwd: t.lastCwd}
-			if msg.Time.Created != nil {
-				e.at = t.seen(time.UnixMilli(*msg.Time.Created))
+		prec, pok := ocRecord("part", pr.id, pr.data)
+		if pok && p.Type == "tool" && p.State.Status != "completed" && p.State.Status != "error" {
+			complete = false
+			if !aborted || interrupted {
+				break
 			}
-			switch msg.Role {
-			case "user":
-				var texts []string
-				for _, d := range done {
-					if d.ok && d.p.Type == "text" && !d.p.Synthetic && !d.p.Ignored {
-						texts = append(texts, d.p.Text)
-					}
-				}
-				if s := strings.Join(texts, "\n"); strings.TrimSpace(s) != "" {
-					e.kind, e.text = kindPrompt, s
-				}
-			case "assistant":
-				e.model = msg.ModelID
-				if cwd := t.addCwd(msg.Path.Cwd); cwd != "" {
-					e.cwd = cwd
-				}
-				if msg.Error != nil && msg.Error.Name == ocAborted && !slices.ContainsFunc(mine, func(pr ocRow) bool {
-					var p ocPart
-
-					return json.Unmarshal(pr.data, &p) == nil && p.Type == "tool" && ocInterrupted(&p)
-				}) {
-					e.kind = kindInterrupt
-				}
-			}
-			t.entries = append(t.entries, e)
+			continue
 		}
-		for _, d := range done {
-			pat := add(d.rec, d.ok)
-			if !d.ok {
-				continue
+		pat, err := t.ocAdd(raw, prec, pok)
+		if err != nil {
+			return false, err
+		}
+		if !pok {
+			continue
+		}
+		if msg.Role == "user" && p.Type == "text" {
+			if !p.Synthetic && !p.Ignored {
+				prompt = prompt || strings.TrimSpace(p.Text) != ""
+				if !t.captureOnly {
+					texts = append(texts, p.Text)
+				}
 			}
-			if msg.Role == "user" && d.p.Type == "text" {
-				continue
-			}
-			e := entry{offset: pat, span: d.row.id, kind: kindOther, cwd: t.lastCwd}
-			switch d.p.Type {
-			case "tool":
-				c := &call{id: d.p.CallID, tool: d.p.Tool, input: d.p.State.Input, result: true, resultOffset: pat}
-				c.status, c.exitCode = toolStatus(&d.p)
+			continue
+		}
+		e := entry{offset: pat, span: pr.id, kind: kindOther, cwd: t.lastCwd}
+		switch p.Type {
+		case "tool":
+			c := &call{id: p.CallID, tool: p.Tool, result: true, resultOffset: pat}
+			c.status, c.exitCode = toolStatus(&p)
+			if !t.captureOnly {
+				c.input = p.State.Input
 				var in struct {
 					Command *string `json:"command"`
 				}
-				if json.Unmarshal(d.p.State.Input, &in) == nil && in.Command != nil {
+				if json.Unmarshal(p.State.Input, &in) == nil && in.Command != nil {
 					c.command, c.hasCommand = *in.Command, true
 				}
-				if d.p.State.Status == "completed" {
-					c.content = d.p.State.Output
+				if p.State.Status == "completed" {
+					c.content = p.State.Output
 				} else {
-					c.content = d.p.State.Error
-				}
-				if d.p.State.Time.Start != nil {
-					e.at = t.seen(time.UnixMilli(*d.p.State.Time.Start))
-				}
-				e.kind, e.calls = kindToolCall, []*call{c}
-			case "text":
-				if msg.Role == "assistant" && !d.p.Synthetic && !d.p.Ignored && strings.TrimSpace(d.p.Text) != "" {
-					e.kind, e.text = kindAssistantText, d.p.Text
+					c.content = p.State.Error
 				}
 			}
-			t.entries = append(t.entries, e)
+			if p.State.Time.Start != nil {
+				e.at = t.seen(time.UnixMilli(*p.State.Time.Start))
+			}
+			e.kind, e.calls = kindToolCall, []*call{c}
+		case "text":
+			if msg.Role == "assistant" && !p.Synthetic && !p.Ignored && strings.TrimSpace(p.Text) != "" {
+				e.kind = kindAssistantText
+				if !t.captureOnly {
+					e.text = p.Text
+				}
+			}
 		}
-		if !complete {
-			return
+		t.addEntry(e)
+	}
+	if err := parts.Err(); err != nil {
+		return false, err
+	}
+	if ok {
+		e := &t.entries[messageEntry]
+		if prompt {
+			e.kind = kindPrompt
+			if !t.captureOnly {
+				e.text = strings.Join(texts, "\n")
+			}
+		} else if aborted && !interrupted {
+			e.kind = kindInterrupt
 		}
 	}
+
+	return complete, nil
 }
 
 func ocInterrupted(p *ocPart) bool {

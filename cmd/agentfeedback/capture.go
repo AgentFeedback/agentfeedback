@@ -13,6 +13,12 @@ import (
 // capturePolicy never uses the submission client or its start-up delivery pass.
 // Only the local policy cache is written; no session content is read here.
 func capturePolicy(getenv func(string) string, mf modeFlags, file fileConfig) (capture.Policy, error) {
+	return resolveCapturePolicy(getenv, mf, file, false)
+}
+
+// resolveCapturePolicy keeps sessions list offline with cacheOnly; all consent
+// decisions use Refresh instead.
+func resolveCapturePolicy(getenv func(string) string, mf modeFlags, file fileConfig, cacheOnly bool) (capture.Policy, error) {
 	m, err := resolveModeFrom(mf, getenv, file)
 	if err != nil {
 		return capture.Policy{}, err
@@ -54,6 +60,9 @@ func capturePolicy(getenv func(string) string, mf modeFlags, file fileConfig) (c
 		return capture.Policy{}, errLocalOpen(path, err)
 	}
 	defer func() { _ = target.Close() }()
+	if cacheOnly {
+		return capture.CachedPolicy(ctx, target.DB(), c, opts)
+	}
 	return capture.Refresh(ctx, target.DB(), c, opts)
 }
 

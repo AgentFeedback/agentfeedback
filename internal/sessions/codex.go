@@ -87,6 +87,9 @@ func codexSessionID(name string) (id string, compressed, ok bool) {
 // that cannot be listed, or a rollout whose entry cannot be read, is
 // reported in problems and its sessions are not listed.
 func (r codexReader) candidates(env Env) ([]candidate, []problem, error) {
+	if err := env.context().Err(); err != nil {
+		return nil, nil, err
+	}
 	root := r.location(env)
 	archived := filepath.Join(env.CodexHome, "archived_sessions")
 	var out []candidate
@@ -116,6 +119,9 @@ func (r codexReader) candidates(env Env) ([]candidate, []problem, error) {
 	}
 	if rootErr == nil {
 		err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+			if err := env.context().Err(); err != nil {
+				return err
+			}
 			if err != nil {
 				if p == root {
 					return err
@@ -131,7 +137,7 @@ func (r codexReader) candidates(env Env) ([]candidate, []problem, error) {
 			return nil
 		})
 		if err != nil {
-			return nil, nil, err
+			return out, problems, err
 		}
 	} else if !errors.Is(rootErr, fs.ErrNotExist) {
 		return nil, nil, rootErr
@@ -142,6 +148,9 @@ func (r codexReader) candidates(env Env) ([]candidate, []problem, error) {
 			problems = append(problems, problem{path: archived, dir: true, reason: ioReason(err)})
 		}
 		for _, f := range files {
+			if err := env.context().Err(); err != nil {
+				return out, problems, err
+			}
 			add(archived, f)
 		}
 	} else if !errors.Is(archErr, fs.ErrNotExist) {
@@ -282,7 +291,7 @@ func (r codexReader) load(env Env, c candidate) (*transcript, error) {
 			return nil, errCodexChanged
 		}
 
-		return r.parse(io.MultiReader(bytes.NewReader(first), f))
+		return r.parse(env.reader(io.MultiReader(bytes.NewReader(first), f)))
 	})
 }
 
@@ -339,11 +348,12 @@ type codexParse struct {
 	t     *transcript
 	calls map[string]*call
 	open  []*call // calls without a result, in order
+	model string  // latest model named by turn metadata
 }
 
 // parse reads the complete lines of r into a transcript.
 func (codexReader) parse(r io.Reader) (*transcript, error) {
-	p := &codexParse{t: &transcript{}, calls: map[string]*call{}}
+	p := &codexParse{t: &transcript{captureOnly: readerCaptureOnly(r)}, calls: map[string]*call{}}
 	if err := scanJSONL(r, p.t, p.line); err != nil {
 		return nil, err
 	}
@@ -387,16 +397,25 @@ func (p *codexParse) line(offset int64, body []byte) bool {
 	case "turn_context":
 		t.addCwd(pl.Cwd)
 		e.model = pl.Model
+		if pl.Model != "" {
+			p.model = pl.Model
+		}
 	case "response_item":
 		p.responseItem(&e, offset, pl)
+		if pl.Type == "message" && pl.Role == "assistant" || e.kind == kindToolCall || pl.Type == "reasoning" {
+			t.captureModel = p.model
+		}
 	case "event_msg":
 		p.eventMsg(&e, offset, pl)
+		if pl.Type == "agent_message" {
+			t.captureModel = p.model
+		}
 	}
 	e.cwd = t.lastCwd
 	if e.kind == kindPrompt && strings.TrimSpace(e.text) == "" {
 		e.kind = kindOther
 	}
-	t.entries = append(t.entries, e)
+	t.addEntry(e)
 
 	return true
 }
@@ -454,7 +473,10 @@ func (p *codexParse) responseItem(e *entry, offset int64, pl cxPayload) {
 		}
 		content, status, exit := codexOutput(pl.Output)
 		c.result, c.resultOffset = true, offset
-		c.content, c.status, c.exitCode = content, status, exit
+		c.status, c.exitCode = status, exit
+		if !p.t.captureOnly {
+			c.content = content
+		}
 	}
 }
 
@@ -570,7 +592,7 @@ func (p *codexParse) refine(id string, offset int64, status string, exit *int, c
 	if exit != nil {
 		c.exitCode = exit
 	}
-	if c.content == "" {
+	if !p.t.captureOnly && c.content == "" {
 		c.content = content
 	}
 }

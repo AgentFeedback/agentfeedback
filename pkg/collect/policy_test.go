@@ -306,3 +306,19 @@ func TestSessionPushReadProtection(t *testing.T) {
 		}
 	})
 }
+
+func TestSessionPushFromNestedAndSymlinkCwd(t *testing.T) {
+	root := minimalRepo(t, t.TempDir())
+	cwd := mkdir(t, filepath.Join(root, "nested", "project"))
+	write(t, filepath.Join(root, RepoFile), "[sessions]\npush = false\n")
+	if allowed, warnings := SessionPush(cwd); allowed || len(warnings) != 0 {
+		t.Fatalf("nested cwd bypassed veto: allowed=%v warnings=%q", allowed, warnings)
+	}
+	link := filepath.Join(t.TempDir(), "linked-project")
+	if err := os.Symlink(cwd, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if allowed, warnings := SessionPush(link); allowed || len(warnings) != 0 {
+		t.Fatalf("symlink cwd bypassed veto: allowed=%v warnings=%q", allowed, warnings)
+	}
+}

@@ -1,0 +1,63 @@
+[
+  {
+    "manifest": {
+      "capture_end": "2026-10-08T07:00:46Z",
+      "capture_start": "2026-10-08T07:00:01Z",
+      "content_bytes": "\u003cCONTENT_BYTES\u003e",
+      "content_sha256": "\u003cSHA256\u003e",
+      "envelope": {
+        "context": {
+          "arch": "amd64",
+          "client": "agentfeedback/dev",
+          "detector": "opencode-sqlite/1",
+          "folder": "golden-proj",
+          "origin": "session-capture",
+          "os": "linux",
+          "session_harness": "opencode-v1",
+          "session_id": "ses_golden0001"
+        },
+        "harness": "opencode-v1",
+        "key": "\u003cREVISION_KEY\u003e",
+        "kind": "session",
+        "machine": "\u003cMACHINE\u003e",
+        "model": "test-model-2",
+        "occurred_at": "2026-10-08T07:00:46Z",
+        "payload": {
+          "counts": {
+            "entries": 21,
+            "prompts": 4,
+            "tool_calls": 9,
+            "tool_errors": 5
+          },
+          "detector_version": "1",
+          "format": "opencode-virtual-log",
+          "line_count": 26,
+          "revision": "\u003cSOURCE_BYTES\u003e",
+          "size": "\u003cSOURCE_BYTES\u003e"
+        },
+        "project": "golden-proj"
+      },
+      "envelope_bytes": "\u003cENVELOPE_BYTES\u003e",
+      "installation": "\u003cMACHINE\u003e",
+      "part_count": 1,
+      "revision": "\u003cSOURCE_BYTES\u003e",
+      "session_ref": "opencode-v1:ses_golden0001"
+    },
+    "outcomes": [
+      {
+        "bytes": "\u003cENVELOPE_BYTES\u003e",
+        "part_count": 1,
+        "ref": "opencode-v1:ses_golden0001",
+        "revision": "\u003cSOURCE_BYTES\u003e",
+        "status": "pushed",
+        "submission_uid": "11111111-1111-4111-8111-111111111111"
+      },
+      {
+        "reason": "already_pushed",
+        "ref": "opencode-v1:ses_golden0001",
+        "revision": "\u003cSOURCE_BYTES\u003e",
+        "status": "replayed"
+      }
+    ]
+  }
+]

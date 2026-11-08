@@ -97,7 +97,9 @@ stdio MCP entry differs only in its argument (`mcp`, or `mcp --server
   that copies them ([Restore and migration](#restore-and-migration));
   nothing copies reports back from a server on its own.
 - **Session state** (`sessions`) stays in the data-directory database in
-  both modes and never reaches a server ([sessions.md](sessions.md)).
+  both modes. Explicit [`sessions push`](sessions.md#push) sends eligible,
+  scrubbed transcripts to a server whose organisation enables processing;
+  local digest and push watermarks remain separate.
 - **The file inbox** is delivered by local-mode commands only, and with a
   server by `agentfeedback ingest` alone ([File inbox](#file-inbox)).
 - **Delivering the spool**: with a server the end-of-turn hook sends due
@@ -1040,6 +1042,13 @@ servers are retried no more than daily, even across these commands; a 429
 waits for `Retry-After` (60 seconds when absent). `doctor` reports
 unauthorized and suspended policy reads with a next step. Local mode makes
 no policy request.
+
+Use [`agentfeedback sessions push`](sessions.md#push) for manual transcript
+uploads. `--due` applies the configured quiet interval, batch and budget;
+named references bypass only the quiet interval. `sessions list` and
+`sessions status` show upload progress independently of digest/mark progress.
+The OSS server has no upload routes. These settings do not start a sweep,
+background job or hook upload.
 
 ### MCP and discovery
 

@@ -12,17 +12,72 @@ agentfeedback sessions mark claude-code:<session id> --outcome filed --ref <uid>
 on disk, on demand and read-only, so an agent can turn what went wrong in a
 past session into feedback. Nothing runs in the background. The policy of the
 config file's `[collect]` table is applied per session, by its recorded
-working directory, before the log is opened. Nothing from a log is stored or
-sent anywhere: the data-directory database keeps only the watermark rows of
-the sessions you digest and mark, and the submissions you file.
+working directory, before the log is opened. Digesting and marking store only
+watermarks; [Push](#push) explicitly uploads eligible, scrubbed transcripts
+to a configured server whose organisation enables processing.
 
 Session state always lives in the data-directory database
 (`${XDG_DATA_HOME:-~/.local/share}/agentfeedback/agentfeedback.db`), in local
 and in remote mode. `sessions status` also reads the configured server's
 session policy, subject to its cache and backoff, and prints the org's
 processing status (`capture` in JSON). Listing, digesting and marking stay
-local; only what you file with `submit` reaches the server.
+local; `submit` and `sessions push` send their respective content to the server.
 See [Session policy settings](operate.md#session-policy-settings).
+
+## Push
+
+```bash
+agentfeedback sessions push claude-code:<session-id> --json
+agentfeedback sessions push --due --limit 10 --json
+agentfeedback sessions push codex:<session-id> --since 2026-01-01T00:00:00Z --dry-run --json
+```
+
+Push supports Claude Code (`claude-code-jsonl`), Codex (`codex-rollout`)
+and OpenCode V1 (`opencode-virtual-log`). It sends the whole complete-line
+revision, not the digest or only new entries. The revision is the decimal
+source byte count. An unfinished last line is excluded; changes during
+capture defer the upload. No background sweep or hook uploads sessions.
+
+The configured server must enable processing. Collection rules and every
+recorded repository's `[sessions] push = false` veto apply before export.
+Unreadable, unsupported, unknown-project, disabled and denied sessions do
+not upload. The last entry must be at or after this machine first observed
+enabled policy; `--since` explicitly replaces that cutoff. `--due` selects
+quiet sessions oldest-last-entry first, up to `--limit` (default
+`sessions.push_batch`); named references bypass quiet time, not safety checks.
+The run respects `sessions.push_budget` and ten-second request timeouts.
+
+All transcript text is scrubbed before hashing or splitting into parts of
+at most 4 MiB, at line boundaries where possible. JSON string values are
+decoded for scrubbing, including escaped credentials; multiline private
+keys are redacted across records. Capture processes records incrementally,
+retaining bounded scrubbed output rather than the whole raw transcript.
+Individual records still require record-sized decoding buffers. The
+assembled canonical envelope must fit the server's size cap; there is no
+separate raw-source size cap. Uploads resume acknowledged parts and complete
+as one `kind: session` submission. An unchanged successful revision is
+`replayed` without sending parts again.
+
+Outcomes are `pushed`, `replayed`, `skipped` with a reason, `deferred`,
+`suspended`, or `error`. Dry runs report `dry-run`, revision, byte and part
+counts, and at most 2 KiB of scrubbed preview; they discover policy but send
+no transcript. A named session that cannot be pushed makes the command exit
+1. A 429 suspends the run and policy until retry is allowed; network and
+server failures leave it for a later invocation. A begin conflict is
+`replay_mismatch` and is not retried at that source size.
+
+`sessions_pushed` stores only upload metadata and outcomes, scoped to the
+destination, organisation, credential and consent period, separately from
+digest watermarks. `session_manifests` retains the initial scrubbed upload
+metadata and partition size while an upload is pending, so retries do not
+change identity when repository facts or file timestamps change. Current
+collection rules and repository vetoes still apply before each request.
+Pending metadata is removed on completion, terminal rejection, a new
+revision or a changed consent scope. Transcript text and previews are never
+persisted to the database, cache, log or spool. `too_large` is not retried unless the source
+shrinks or rotates, or the server's cap grows. `sessions list` shows the
+pushed revision; `sessions status` shows pushed, pending and skipped counts
+and the last push time for the current scope.
 
 ## Harnesses
 

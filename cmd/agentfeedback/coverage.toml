@@ -234,6 +234,14 @@ command = "sessions status"
 flags = ["--set-selection", "--harness", "--since", "--limit", "--json"]
 args = []
 
+# Hosted-only transport: the OSS API does not serve these upload routes.
+# POST /api/v1/sessions/uploads, PUT .../{id}/parts/{part},
+# POST .../{id}/complete are exercised by the push transport regressions.
+[local.sessions_push]
+command = "sessions push"
+flags = ["--due", "--since", "--dry-run", "--limit", "--json"]
+args = ["<harness:id>..."]
+
 [local.install]
 command = "install"
 flags = ["--server", "--mcp", "--docs", "--with-triage", "--with-reminder", "--no-hooks", "--dry-run", "--list", "--json", "--check", "--project", "--yes", "--uninstall"]

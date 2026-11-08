@@ -266,6 +266,8 @@ Then run client step 2.3 (or 2.4 or 2.5, as that step routes), client step
 The OSS server does not offer transcript processing: the client reports
 `capture.state: unsupported` and "this server does not process sessions".
 This is an expected policy status, not a failed installation check.
+Manual [`sessions push`](docs/sessions.md#push) therefore sends no transcript
+to this stack; it requires a server whose organisation enables processing.
 
 **Outcome:**
 

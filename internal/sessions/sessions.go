@@ -96,6 +96,10 @@ type Env struct {
 	// Open opens a session file for reading; nil means os.Open. Every
 	// session file is opened through it.
 	Open func(path string) (io.ReadCloser, error)
+	// ctx is set by capture operations and propagated through readers.
+	ctx context.Context
+	// captureOnly keeps reader metadata, not transcript text or tool bodies.
+	captureOnly bool
 }
 
 func (e Env) now() time.Time {
@@ -106,12 +110,36 @@ func (e Env) now() time.Time {
 	return time.Now()
 }
 
-func (e Env) open(path string) (io.ReadCloser, error) {
-	if e.Open != nil {
-		return e.Open(path)
+func (e Env) context() context.Context {
+	if e.ctx != nil {
+		return e.ctx
 	}
+	return context.Background()
+}
 
-	return os.Open(path)
+func (e Env) reader(r io.Reader) io.Reader {
+	if e.ctx == nil && !e.captureOnly {
+		return r
+	}
+	return &captureContextReader{Reader: r, ctx: e.context(), captureOnly: e.captureOnly}
+}
+
+func (e Env) open(path string) (io.ReadCloser, error) {
+	if err := e.context().Err(); err != nil {
+		return nil, err
+	}
+	open := e.Open
+	if open == nil {
+		open = func(path string) (io.ReadCloser, error) { return os.Open(path) }
+	}
+	f, err := open(path)
+	if err != nil {
+		return nil, err
+	}
+	if e.ctx == nil && !e.captureOnly {
+		return f, nil
+	}
+	return &captureTee{Reader: e.reader(f), Closer: f}, nil
 }
 
 // reader is one session log format.

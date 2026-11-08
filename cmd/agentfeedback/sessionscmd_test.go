@@ -75,6 +75,22 @@ func decodeJSON(t *testing.T, s string, v any) {
 	}
 }
 
+func TestSessionsListWithInvalidRemoteDestination(t *testing.T) {
+	cfg := sessionsWorld(t)
+	putSession(t, cfg, "s1", t.TempDir())
+	t.Setenv(envURL, "not-a-server")
+	t.Setenv(envAPIKey, testKey)
+	r := runCLI(t, "", "sessions", "list", "--json")
+	var listing sessions.Listing
+	decodeJSON(t, r.stdout, &listing)
+	if r.code != 0 || len(listing.Sessions) != 1 || listing.Sessions[0].Ref != "claude-code:s1" {
+		t.Fatalf("local listing depends on remote configuration: %+v", r)
+	}
+	if !strings.Contains(r.stderr, "pushed revisions unavailable") {
+		t.Fatalf("missing enrichment warning: %+v", r)
+	}
+}
+
 func TestSessions_ListDigestMarkStatus(t *testing.T) {
 	cfg := sessionsWorld(t)
 	cwd := filepath.Join(t.TempDir(), "proj")
@@ -132,11 +148,17 @@ func TestSessions_ListDigestMarkStatus(t *testing.T) {
 	}
 
 	for _, args := range [][]string{
-		{"sessions"}, {"sessions", "nope"}, {"sessions", "digest"}, {"sessions", "digest", "claude-code:s1", "--unprocessed"},
-		{"sessions", "digest", "claude-code:s1", "--limit", "2"}, {"sessions", "digest", "amp:s1"},
-		{"sessions", "mark", "claude-code:s1", "--outcome", "maybe"}, {"sessions", "list", "--harness", "amp"},
+		{"sessions"},
+		{"sessions", "nope"},
+		{"sessions", "digest"},
+		{"sessions", "digest", "claude-code:s1", "--unprocessed"},
+		{"sessions", "digest", "claude-code:s1", "--limit", "2"},
+		{"sessions", "digest", "amp:s1"},
+		{"sessions", "mark", "claude-code:s1", "--outcome", "maybe"},
+		{"sessions", "list", "--harness", "amp"},
 		{"sessions", "mark", "claude-code:s1", "--outcome", "filed", "--ref", "uid-1"},
-		{"sessions", "list", "--since", "yesterday"}, {"sessions", "status", "--limit", "3"},
+		{"sessions", "list", "--since", "yesterday"},
+		{"sessions", "status", "--limit", "3"},
 	} {
 		if r := runCLI(t, "", args...); r.code != 2 {
 			t.Errorf("%v: %+v", args, r)

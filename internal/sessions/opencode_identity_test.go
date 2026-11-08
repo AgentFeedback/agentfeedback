@@ -21,7 +21,7 @@ func TestOpenCodeLegacyIdentityRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := w.db.Write(w.ctx, func(q store.Querier) error {
-		_, err := q.ExecContext(w.ctx, `UPDATE sessions_seen SET harness = 'opencode'; UPDATE schema_version SET version = 4`)
+		_, err := q.ExecContext(w.ctx, `DROP TABLE session_manifests; DROP TABLE sessions_pushed; UPDATE sessions_seen SET harness = 'opencode'; UPDATE schema_version SET version = 4`)
 		if err != nil {
 			return err
 		}
