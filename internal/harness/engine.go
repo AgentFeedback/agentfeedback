@@ -97,8 +97,8 @@ type Manifest struct {
 	Version int    `json:"version"`
 	Server  string `json:"server"`
 	Binary  string `json:"binary"`
-	// CodexHome, ClaudeConfigDir and GeminiCLIHome (Gemini CLI's .gemini
-	// directory) are the locations the run resolved, so a later run under
+	// CodexHome, ClaudeConfigDir, GeminiCLIHome (Gemini CLI's .gemini
+	// directory) and CopilotHome are the locations the run resolved, so a later run under
 	// another environment still finds what it wrote.
 	// ClaudeConfigDirSet records whether CLAUDE_CONFIG_DIR was set, which
 	// decides where .claude.json lives even when the directory is ~/.claude.
@@ -106,6 +106,7 @@ type Manifest struct {
 	ClaudeConfigDir    string                    `json:"claude_config_dir,omitempty"`
 	ClaudeConfigDirSet bool                      `json:"claude_config_dir_set,omitempty"`
 	GeminiCLIHome      string                    `json:"gemini_cli_home,omitempty"`
+	CopilotHome        string                    `json:"copilot_home,omitempty"`
 	Harnesses          map[string]*HarnessRecord `json:"harnesses"`
 	Files              map[string]*FileRecord    `json:"files"`
 	DirsCreated        []string                  `json:"dirs_created"`

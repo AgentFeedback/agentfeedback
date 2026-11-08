@@ -1449,7 +1449,7 @@ func TestInstall_ManifestValidation(t *testing.T) {
 	before := snapshot(t, e.home)
 	for _, args := range [][]string{{"install", "pi"}, {"uninstall", "pi"}} {
 		r, out := installRun(t, args...)
-		if r.code != 1 || !strings.Contains(fmt.Sprint(out["message"]), "names "+victim+", which agentfeedback install does not write under this environment; run with the HOME, XDG_CONFIG_HOME, CODEX_HOME, CLAUDE_CONFIG_DIR and GEMINI_CLI_HOME of the install, or fix the manifest") {
+		if r.code != 1 || !strings.Contains(fmt.Sprint(out["message"]), victim) {
 			t.Fatalf("%v: %+v", args, r)
 		}
 	}

@@ -683,7 +683,7 @@ are not wired on Windows; undo the steps by hand.
 | `opencode-v1` | `opencode` reporting 1.x, or `${XDG_CONFIG_HOME:-~/.config}/opencode` with no binary | `<opencode>/skills/agentfeedback/SKILL.md` | plugin `<opencode>/plugins/agentfeedback.js` (on `tool.execute.after` for `bash`, and `session.idle`, which delivers the note) | not supported | `<opencode>/AGENTS.md` | `mcp.agentfeedback` in the first of `opencode.jsonc`, `opencode.json` that has an `mcp` member, else an existing `opencode.jsonc`, else `opencode.json` | live-checked 2026-10-07 |
 | `omp` | `omp`, `~/.omp` | `~/.omp/agent/skills/agentfeedback/SKILL.md` | extension `~/.omp/agent/extensions/agentfeedback.ts` (on `tool_result` errors, with the note, and `agent_end`, not for subagents) | not supported | `~/.omp/agent/AGENTS.md` | `~/.omp/agent/mcp.json` `mcpServers.agentfeedback` | documented 2026-10-07 |
 | `pi` | `pi`, `~/.pi` | `~/.pi/agent/skills/agentfeedback/SKILL.md` | extension `~/.pi/agent/extensions/agentfeedback.ts` (on `tool_result` errors, with the note as a next-turn message, and `agent_settled`) | not supported | `~/.pi/agent/AGENTS.md` | `~/.pi/agent/mcp.json` `mcpServers.agentfeedback`; needs pi 0.99.0 or later | documented 2026-10-07 |
-| `copilot` | `copilot`, `~/.copilot` | `~/.copilot/skills/agentfeedback/SKILL.md` | file `~/.copilot/hooks/agentfeedback.json` (`postToolUseFailure`, with the note on exit 2, and `agentStop`) | not supported | `~/.copilot/copilot-instructions.md` | `~/.copilot/mcp-config.json` `mcpServers.agentfeedback` | documented 2026-10-07 |
+| `copilot` | `copilot`, `$COPILOT_HOME` (default `~/.copilot`) | `$COPILOT_HOME/skills/agentfeedback/SKILL.md` | file `$COPILOT_HOME/hooks/agentfeedback.json` (`postToolUseFailure`, with the note on exit 2, and `agentStop`) | not supported | `$COPILOT_HOME/copilot-instructions.md` | `$COPILOT_HOME/mcp-config.json` `mcpServers.agentfeedback` | documented 2026-10-07 |
 | `antigravity` | `agy`, `~/.gemini/antigravity-cli` or `~/.gemini/antigravity` | `~/.gemini/config/skills/agentfeedback/SKILL.md` and `~/.gemini/antigravity-cli/skills/agentfeedback/SKILL.md` | `~/.gemini/config/hooks.json` `agentfeedback` (on `PostToolUse`, `PreInvocation`, which delivers the note, and `Stop`) | not supported | `~/.gemini/GEMINI.md` (shared with gemini-cli unless `$GEMINI_CLI_HOME` is set) | `~/.gemini/config/mcp_config.json` `mcpServers.agentfeedback`; a URL entry's key reference in the header may not be expanded | documented 2026-10-07 |
 | `devin` | `devin`, `~/.config/devin` | `~/.config/devin/skills/agentfeedback/SKILL.md` | `~/.config/devin/config.json` `hooks.Stop` (flush only) | not supported | `~/.config/devin/AGENTS.md` | `~/.config/devin/mcp_config.json` `mcpServers.agentfeedback` | documented 2026-10-07 |
 | `kiro` | `kiro-cli`, `~/.kiro` | `~/.kiro/skills/agentfeedback/SKILL.md` | none | not supported | `~/.kiro/steering/AGENTS.md` | `~/.kiro/settings/mcp.json` `mcpServers.agentfeedback` | documented 2026-10-07 |
@@ -870,15 +870,15 @@ are not wired on Windows; undo the steps by hand.
   not rewritten, no backup, and removed by uninstall. A skill directory the
   manifest records nothing of is taken over that way only when it holds
   nothing but such files. The manifest records the Codex home, Claude Code configuration
-  directory and Gemini CLI `.gemini` directory of the harnesses it keeps; a
-  later run under another `CODEX_HOME`, `CLAUDE_CONFIG_DIR` or
-  `GEMINI_CLI_HOME` keeps using the recorded location for
+  directory, Gemini CLI `.gemini` directory and Copilot home of the harnesses it keeps; a
+  later run under another `CODEX_HOME`, `CLAUDE_CONFIG_DIR`,
+  `GEMINI_CLI_HOME` or `COPILOT_HOME` keeps using the recorded location for
   that harness, notes it, and runs `claude` with `CLAUDE_CONFIG_DIR` as
   recorded: set to the recorded directory when it was set at install, even
   to `~/.claude`, and unset when it was unset. Install refuses a
   manifest that names a path it does not write under the current
   environment: run it with the `HOME`, `XDG_CONFIG_HOME`, `CODEX_HOME`,
-  `CLAUDE_CONFIG_DIR` and `GEMINI_CLI_HOME` of the install, or fix the
+  `CLAUDE_CONFIG_DIR`, `GEMINI_CLI_HOME` and `COPILOT_HOME` of the install, or fix the
   manifest.
   Empty directories install created go, and so does the manifest when
   no harness is left. What a harness added to a file install created (OpenCode
@@ -913,6 +913,11 @@ are not wired on Windows; undo the steps by hand.
   then keeps its skills and `GEMINI.md` in `$GEMINI_CLI_HOME/.gemini`;
   `install gemini-cli` follows an absolute value and ignores a relative one.
   Antigravity does not read it and keeps `~/.gemini`.
+- **`COPILOT_HOME`** replaces `~/.copilot` for Copilot CLI's skills, hooks,
+  instructions and MCP entry. Install follows an absolute value and ignores a
+  relative one. Reinstall, check and uninstall use the recorded location even
+  after the variable changes; manifests without a recorded Copilot location
+  retain `~/.copilot`.
 - **Claude Code's MCP entry** is checked against `.claude.json`
   (`~/.claude.json`, or `$CLAUDE_CONFIG_DIR/.claude.json` when the variable
   is set; read only): an entry removed by hand is added again by install

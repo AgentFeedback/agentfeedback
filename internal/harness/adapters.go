@@ -67,11 +67,11 @@ type Env struct {
 	// Status fills HarnessStatus.BinaryVersion with it.
 	Version func(path string) string
 
-	// codexAt, claudeAt and geminiAt are the locations a manifest
+	// codexAt, claudeAt, geminiAt and copilotAt are the locations a manifest
 	// recorded, used instead of the environment's for a harness it records;
 	// claudeAtSet is whether CLAUDE_CONFIG_DIR was set at that install.
-	codexAt, claudeAt, geminiAt string
-	claudeAtSet                 bool
+	codexAt, claudeAt, geminiAt, copilotAt string
+	claudeAtSet                            bool
 
 	// Only production environments opt in; manually constructed test Envs
 	// probe their current Exec on every call.
@@ -187,7 +187,7 @@ func (e Env) claudeJSON() string {
 	return filepath.Join(e.Home, ".claude.json")
 }
 
-// withRecorded returns e using the Codex, Claude Code and Gemini CLI
+// withRecorded returns e using the Codex, Claude Code, Gemini CLI and Copilot
 // locations the manifest recorded for the harnesses it records, with a note
 // per harness whose location differs from the environment's.
 func (e Env) withRecorded(m *Manifest) (Env, map[string]string) {
@@ -205,6 +205,15 @@ func (e Env) withRecorded(m *Manifest) (Env, map[string]string) {
 	if m.Harnesses["gemini-cli"] != nil && gemini != e.geminiCLIDir() {
 		e.geminiAt = gemini
 		notes["gemini-cli"] = "gemini-cli was installed into " + gemini + "; using that location"
+	}
+	// Legacy manifests always installed Copilot into ~/.copilot.
+	copilot := m.CopilotHome
+	if copilot == "" {
+		copilot = filepath.Join(e.Home, ".copilot")
+	}
+	if m.Harnesses["copilot"] != nil && copilot != e.copilotDir() {
+		e.copilotAt = copilot
+		notes["copilot"] = "copilot was installed into " + copilot + "; using that location"
 	}
 	// A manifest without claude_config_dir_set names a directory other
 	// than ~/.claude only when CLAUDE_CONFIG_DIR was set.
@@ -226,6 +235,10 @@ func (e Env) withRecorded(m *Manifest) (Env, map[string]string) {
 // manifest keeps.
 func (e Env) recordLocations(m *Manifest) {
 	m.CodexHome, m.ClaudeConfigDir, m.ClaudeConfigDirSet, m.GeminiCLIHome = "", "", false, ""
+	m.CopilotHome = ""
+	if m.Harnesses["copilot"] != nil {
+		m.CopilotHome = e.copilotDir()
+	}
 	if m.Harnesses["codex"] != nil {
 		m.CodexHome = e.codexHome()
 	}
@@ -1073,7 +1086,7 @@ func (e Env) validateManifest(m *Manifest, mpath string) error {
 	bad := func(x string) error {
 		return &Refusal{
 			Problem: "the install manifest " + mpath + " names " + x + ", which agentfeedback install does not write under this environment",
-			Next:    "run with the HOME, XDG_CONFIG_HOME, CODEX_HOME, CLAUDE_CONFIG_DIR and GEMINI_CLI_HOME of the install, or fix the manifest",
+			Next:    "run with the HOME, XDG_CONFIG_HOME, CODEX_HOME, CLAUDE_CONFIG_DIR, GEMINI_CLI_HOME and COPILOT_HOME of the install, or fix the manifest",
 		}
 	}
 	for _, n := range sortedKeys(m.Harnesses) {

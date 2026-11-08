@@ -233,10 +233,20 @@ func undocumentedEnvNote(name string) string {
 	return name + " documents no environment-variable syntax for MCP headers; check that it connects (a 401 means the key reference was not expanded)"
 }
 
-func (e Env) copilotDir() string { return filepath.Join(e.Home, ".copilot") }
-func (e Env) geminiDir() string  { return filepath.Join(e.Home, ".gemini") }
-func (e Env) devinDir() string   { return filepath.Join(e.Home, ".config", "devin") }
-func (e Env) ampDir() string     { return filepath.Join(e.xdgConfig(), "amp") }
+func (e Env) copilotDir() string {
+	if e.copilotAt != "" {
+		return e.copilotAt
+	}
+	if d := e.Getenv("COPILOT_HOME"); d != "" && filepath.IsAbs(d) {
+		return filepath.Clean(d)
+	}
+
+	return filepath.Join(e.Home, ".copilot")
+}
+
+func (e Env) geminiDir() string { return filepath.Join(e.Home, ".gemini") }
+func (e Env) devinDir() string  { return filepath.Join(e.Home, ".config", "devin") }
+func (e Env) ampDir() string    { return filepath.Join(e.xdgConfig(), "amp") }
 func (e Env) clineMCPFile() string {
 	return filepath.Join(e.Home, ".cline", "data", "settings", "cline_mcp_settings.json")
 }
@@ -573,8 +583,7 @@ var registry = []Adapter{
 		},
 		MCP:      MCP{File: func(e Env) string { return filepath.Join(e.copilotDir(), "mcp-config.json") }, Path: []string{"mcpServers"}, EnvRef: "${AGENT_FEEDBACK_API_KEY}"},
 		Sessions: Sessions{Locations: []string{"<copilot home>/session-state/<id>/events.jsonl"}, Reader: "copilot-events", Verified: Verified{Level: LevelFixtureTested, Date: verifiedDate, Note: "fixtures written from upstream source: Copilot CLI 1.0.92 session-events schema"}},
-		Caveats:  []string{"install does not follow COPILOT_HOME; sessions do"},
-		Verified: documented(),
+		Verified: Verified{Level: LevelDocumented, Date: verifiedDate, Note: "installer tests cover absolute COPILOT_HOME and recorded locations; Copilot CLI consumption is not live-checked"},
 		hook: func(p *plan, o Options) ([]Item, []string) {
 			return []Item{fileItem(KindPluginFile, RoleHook, p.env.copilotHookFile(), copilotHook(o.Binary))}, nil
 		},
@@ -588,12 +597,12 @@ var registry = []Adapter{
 			return []string{filepath.Join(e.copilotDir(), "mcp-config.json")}, []string{e.copilotHookFile()}
 		},
 		row: docsRow{
-			detected: "`copilot`, `~/.copilot`",
-			skill:    "`~/.copilot/skills/agentfeedback/SKILL.md`",
-			hook:     "file `~/.copilot/hooks/agentfeedback.json` (`postToolUseFailure`, with the note on exit 2, and `agentStop`)",
+			detected: "`copilot`, `$COPILOT_HOME` (default `~/.copilot`)",
+			skill:    "`$COPILOT_HOME/skills/agentfeedback/SKILL.md`",
+			hook:     "file `$COPILOT_HOME/hooks/agentfeedback.json` (`postToolUseFailure`, with the note on exit 2, and `agentStop`)",
 			reminder: "not supported",
-			rule:     "`~/.copilot/copilot-instructions.md`",
-			mcp:      "`~/.copilot/mcp-config.json` `mcpServers.agentfeedback`",
+			rule:     "`$COPILOT_HOME/copilot-instructions.md`",
+			mcp:      "`$COPILOT_HOME/mcp-config.json` `mcpServers.agentfeedback`",
 		},
 	},
 	{

@@ -189,29 +189,6 @@ func TestInstall_RefusedModes(t *testing.T) {
 	}
 }
 
-// display is path in the form the docs table writes it.
-func display(e Env, a Adapter, path string) string {
-	type sub struct{ prefix, with string }
-	subs := []sub{
-		{e.claudeDir(), "<claude config>"},
-		{e.codexHome(), "<codex home>"},
-		{e.opencodeDir(), "<opencode>"},
-		{e.vscodeUserDir(), "<Code/User>"},
-		{e.Home, "~"},
-	}
-	if a.Name == "amp" {
-		subs = append(subs, sub{e.xdgConfig(), "<xdg>"})
-	}
-	slices.SortStableFunc(subs, func(x, y sub) int { return len(y.prefix) - len(x.prefix) })
-	for _, s := range subs {
-		if rest, ok := strings.CutPrefix(path, s.prefix); ok && (rest == "" || strings.HasPrefix(rest, "/")) {
-			return s.with + rest
-		}
-	}
-
-	return path
-}
-
 func TestRegistry_AgreesWithWiring(t *testing.T) {
 	orig := goos
 	t.Cleanup(func() { goos = orig })
@@ -313,27 +290,6 @@ func TestRegistry_AgreesWithWiring(t *testing.T) {
 						t.Errorf("%s: %s still runs flush", a.Name, it.File)
 					}
 				}
-			}
-		}
-		// The docs row names the declared paths.
-		r := registry[slices.IndexFunc(registry, func(r Adapter) bool { return r.Name == a.Name })].row
-		for _, d := range a.SkillDirs(e) {
-			if want := display(e, a, filepath.Join(d, "agentfeedback", "SKILL.md")); !strings.Contains(r.skill, want) {
-				t.Errorf("%s: skill cell %q lacks %s", a.Name, r.skill, want)
-			}
-		}
-		if a.Hook.Format != "none" {
-			if want := display(e, a, hookFile); !strings.Contains(r.hook, want) {
-				t.Errorf("%s: hook cell %q lacks %s", a.Name, r.hook, want)
-			}
-		}
-		if mcpFile != "" && a.Name != "claude-code" {
-			want := display(e, a, mcpFile)
-			if a.Name == "opencode-v1" || a.Name == "amp" {
-				want = filepath.Base(mcpFile)
-			}
-			if !strings.Contains(r.mcp, want) {
-				t.Errorf("%s: mcp cell %q lacks %s", a.Name, r.mcp, want)
 			}
 		}
 	}

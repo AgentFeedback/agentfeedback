@@ -765,6 +765,94 @@ func TestInstall_GeminiCLIHome(t *testing.T) {
 	}
 }
 
+func TestInstall_CopilotHome(t *testing.T) {
+	for _, name := range []string{"absolute", "unset", "relative", "legacy"} {
+		t.Run(name, func(t *testing.T) {
+			e := testEnv(t)
+			home := ""
+			want := filepath.Join(e.Home, ".copilot")
+			if name == "absolute" {
+				home = filepath.Join(e.Home, "copilot-a")
+				want = home
+			} else if name == "relative" {
+				home = "copilot-relative"
+			}
+			e.Getenv = func(k string) string {
+				if k == "COPILOT_HOME" {
+					return home
+				}
+				return ""
+			}
+			if _, err := e.Run(cliRequest("copilot")); err != nil {
+				t.Fatal(err)
+			}
+			for _, file := range []string{"skills/agentfeedback/SKILL.md", "hooks/agentfeedback.json", "copilot-instructions.md"} {
+				if _, err := os.Stat(filepath.Join(want, file)); err != nil {
+					t.Fatalf("%s: %v", file, err)
+				}
+			}
+			if name == "legacy" {
+				data, err := os.ReadFile(e.ManifestPath())
+				if err != nil {
+					t.Fatal(err)
+				}
+				var doc map[string]any
+				if err := json.Unmarshal(data, &doc); err != nil {
+					t.Fatal(err)
+				}
+				delete(doc, "copilot_home")
+				data, err = json.Marshal(doc)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(e.ManifestPath(), data, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			home = filepath.Join(e.Home, "copilot-b")
+			if got := ruleState(t, e, "copilot"); got != RuleCurrent {
+				t.Fatalf("recorded rule: %s", got)
+			}
+			if _, err := e.Run(cliRequest("antigravity")); err != nil {
+				t.Fatalf("unrelated install: %v", err)
+			}
+			if _, err := e.Run(cliRequest("copilot")); err != nil {
+				t.Fatalf("reinstall: %v", err)
+			}
+			if _, err := os.Stat(home); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("reinstall wrote into changed COPILOT_HOME: %v", err)
+			}
+			m, _, err := LoadManifest(e.ManifestPath())
+			if err != nil || m.CopilotHome != want {
+				t.Fatalf("recorded home: %+v, %v", m, err)
+			}
+			if _, err := e.Run(uninstallRequest("copilot")); err != nil {
+				t.Fatal(err)
+			}
+			for _, file := range []string{"skills/agentfeedback/SKILL.md", "hooks/agentfeedback.json", "copilot-instructions.md"} {
+				if _, err := os.Stat(filepath.Join(want, file)); !errors.Is(err, os.ErrNotExist) {
+					t.Errorf("uninstall left %s: %v", file, err)
+				}
+			}
+			req := cliRequest("copilot")
+			req.Options.Mode = ModeMCP
+			if _, err := e.Run(req); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Stat(filepath.Join(home, "mcp-config.json")); err != nil {
+				t.Fatalf("MCP entry at new home: %v", err)
+			}
+			home = ""
+			if _, err := e.Run(uninstallRequest("copilot")); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Stat(filepath.Join(e.Home, "copilot-b", "mcp-config.json")); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("MCP entry not removed from recorded home: %v", err)
+			}
+		})
+	}
+}
+
 // TestUninstall_RecordedGeminiCLIHome: uninstall under another
 // GEMINI_CLI_HOME uses the recorded location and notes it.
 func TestUninstall_RecordedGeminiCLIHome(t *testing.T) {
