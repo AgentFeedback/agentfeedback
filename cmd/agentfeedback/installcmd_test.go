@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -2105,12 +2106,16 @@ func TestInstall_ClaudeLegacyRelocatedManifest(t *testing.T) {
 // The manifest written before claude mcp remove still names the location,
 // so an uninstall interrupted there is retried against the same file.
 func TestUninstall_CheckpointKeepsClaudeLocation(t *testing.T) {
+	cp, err := exec.LookPath("cp")
+	if err != nil {
+		t.Fatal(err)
+	}
 	e := newInstallEnv(t)
 	dir := filepath.Join(e.home, ".claude")
 	t.Setenv("CLAUDE_CONFIG_DIR", dir)
 	mpath := filepath.Join(e.home, ".config", "agentfeedback", "install.json")
 	seen := filepath.Join(filepath.Dir(e.bin), "manifest-at-remove.json")
-	putFile(t, filepath.Join(e.bin, "claude"), "#!/bin/sh\nif [ \"$2\" = remove ]; then /bin/cp "+mpath+" "+seen+"; fi\nexit 0\n", 0o755)
+	putFile(t, filepath.Join(e.bin, "claude"), "#!/bin/sh\nif [ \"$2\" = remove ]; then '"+cp+"' '"+mpath+"' '"+seen+"'; fi\nexit 0\n", 0o755)
 	if r, _ := installRun(t, "install", "claude-code", "--mcp", "--server", "https://feedback.example.test"); r.code != 0 {
 		t.Fatalf("%+v", r)
 	}

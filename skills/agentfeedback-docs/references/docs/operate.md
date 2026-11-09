@@ -1002,6 +1002,22 @@ Git-describe builds (`v4.0.0-3-gabc1234`), versions ending in `-dirty`, and Go
 pseudo-versions compare as `unknown`, not as releases below the server's
 minimum. Use a tagged release when a definite compatibility check is needed.
 
+### Nix
+
+With Nix flakes enabled, build or run the source package:
+
+```bash
+nix run github:AgentFeedback/agentfeedback -- version
+nix build github:AgentFeedback/agentfeedback
+```
+
+The flake provides native x86-64 and ARM64 packages for Linux and macOS.
+Pin a release by appending `/vX.Y.Z` to the repository reference (choose a
+release containing `flake.nix`). In a checkout, use `nix build` and
+`nix run . -- version`. The pinned nixpkgs toolchain and dependency hash
+make this a source build, not a download of the release binary; it is not
+byte-identical to the release archive.
+
 ## Deploy to a host
 
 Prerequisites on the host: Docker with Compose, `curl` 7.71 or newer, `openssl`, SSH access. The

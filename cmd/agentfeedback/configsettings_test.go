@@ -263,7 +263,13 @@ answer = 42
 name = 'first'
 `
 	getenv, path := configSettingsTestEnv(t, body)
-	before, err := os.Stat(path)
+	// Retain the inode across replacements so the filesystem cannot recycle it.
+	original, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer original.Close()
+	before, err := original.Stat()
 	if err != nil {
 		t.Fatal(err)
 	}

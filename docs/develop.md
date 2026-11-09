@@ -66,9 +66,10 @@ and pushes the image.
 
 ```bash
 just ci             # the merge gate, on the host: build, lint, unit tests, renders, docs; there is no hosted CI
-just ci-full        # the release gate: ci-host inside the toolchain container, then just live-harness; just release runs it
+just ci-full        # the release gate: ci-host inside the toolchain container, live-harness, then nix-check; just release runs it
 just box <recipe|command> [args]  # run a recipe or a command inside the toolchain container: just box test, just box go test ./pkg/client; just box -- <command> for a command named like a recipe
 just live-harness   # the real Claude Code CLI against this tree's binary in a network-less container (tests/live/claude-code.sh)
+just nix-check      # build and verify the Nix package version in a native-architecture Linux container
 just ci-host        # just ci, then the heavy gates, on the machine it runs on (ci-full runs it in the container): bare on the host for debugging only
 just check          # gofmt, go vet, go mod tidy, build — the pre-commit gate
 just staticcheck    # staticcheck at the version pinned in the justfile
@@ -101,6 +102,24 @@ shellcheck -x -P SCRIPTDIR skills/*/scripts/*.sh tests/skill/*.sh
 shellcheck -x scripts/*.sh tests/live/*.sh     # the repository scripts, release.sh included
 python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remote>... [--live]   # cluster.py calibration
 ```
+
+### Nix package checks
+
+`just nix-check` builds the flake and runs `version` in a pinned Nix Docker
+image without installing Nix on the host. It also runs in `just ci-full`.
+The check fails if `vendorHash` is stale and Nix prints the expected hash.
+After changing dependencies, set `vendorHash` in `flake.nix` to
+`pkgs.lib.fakeHash`, run the check, copy the reported `got: sha256-...`
+value into the flake, and rerun. Stage new source files first: Git flakes
+include tracked files only, never ignored local credentials.
+
+The flake uses Go 1.27 explicitly; nixpkgs' default Go may be older than
+`go.mod`. To upgrade nixpkgs, change its revision in `flake.nix`, then run
+`nix flake update` to record that revision in `flake.lock`.
+The package build runs the `cmd/agentfeedback` tests. The container check
+exercises its native Linux architecture only. On macOS with Nix installed,
+run `nix build` and `nix run . -- version` natively; the Linux container
+check does not verify Darwin execution.
 
 ## Rules that are not visible in the code
 

@@ -92,6 +92,11 @@ if [ -n "$module_major" ]; then
 elif [ "$tag_major" != 0 ] && [ "$tag_major" != 1 ]; then
     die "tag $tag is major version $tag_major but go.mod's module path has no /v$tag_major suffix; add it to the module path and every import path first, then tag"
 fi
+# Nix source builds cannot recover a Git tag from GitHub's source archive.
+# Keep their explicit version equal to the immutable release tag.
+flake_version=$(sed -n 's/^[[:space:]]*version = "\([^"]*\)";$/\1/p' "$root/flake.nix")
+[ "$flake_version" = "$version" ] ||
+    die "flake.nix version is '$flake_version', expected '$version'; update it before releasing"
 prerelease=false
 if [[ $tag == *-rc.* ]]; then prerelease=true; fi
 [ -n "${title//[[:space:]]/}" ] || die "a release title is required"
@@ -138,9 +143,8 @@ fi
 [ "$(gh api "repos/$repo" --jq .permissions.push)" = true ] ||
     die "gh is authenticated as $(gh api user --jq .login), which cannot push to $repo"
 
-# The pinned toolchain is go.mod's toolchain line, whatever go is on PATH. The
-# tag is named explicitly: GoReleaser would otherwise pick among the tags on
-# HEAD, and a stable tag usually shares its commit with the last rc.
+# The pinned toolchain is go.mod's toolchain line, whatever go is on PATH.
+# Name the tag explicitly so GoReleaser never selects another tag on HEAD.
 GOTOOLCHAIN=$(awk '$1 == "toolchain" { print $2 }' go.mod)
 [ -n "$GOTOOLCHAIN" ] || die "go.mod has no toolchain line"
 export GOTOOLCHAIN GORELEASER_CURRENT_TAG=$tag RELEASE_TITLE=$title

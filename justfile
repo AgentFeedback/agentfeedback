@@ -167,10 +167,15 @@ ci:
         exit 1
     fi
 
-# The release gate: ci-host inside the toolchain container, then the live Claude Code check. `just release` runs it; run it before a deploy. Touches nothing on the machine but the repository and Docker.
+# The release gate: ci-host inside the toolchain container, the live Claude Code check, and the Nix package check. `just release` runs it; run it before a deploy. Touches nothing on the machine but the repository and Docker.
 ci-full:
     bash scripts/in-container.sh just ci-host
     bash scripts/live-harness.sh
+    bash scripts/gate-nix.sh
+
+# Build and run the Nix package in an isolated Linux container.
+nix-check:
+    bash scripts/gate-nix.sh
 
 # Run a recipe or a command inside the toolchain container: `just box test`, `just box go test ./pkg/client`; `just box -- <command>` when the command shares a recipe's name. Recipes that start containers themselves run on the host instead.
 [positional-arguments]
@@ -179,7 +184,7 @@ box +args:
     set -euo pipefail
     case "$1" in
         --) shift; exec bash scripts/in-container.sh "$@" ;;
-        ci-full|live-harness|playbooks|docker-build|release|release-check|box)
+        ci-full|live-harness|nix-check|playbooks|docker-build|release|release-check|box)
             echo "just box: $1 starts its own containers; run just $1 on the host" >&2
             exit 2 ;;
     esac

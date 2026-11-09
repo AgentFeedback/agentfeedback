@@ -71,8 +71,11 @@ flags.
 ### Cutting a release
 
 1. Update the stable version link in `README.md` (stable releases only) and
-   add notes to this file. The service version is the build version; nothing
-   in the code holds it.
+   add notes to this file. Set `version` in `flake.nix` to the tag without
+   its `v` prefix; the release preflight rejects a mismatch. Nix source
+   archives do not contain Git tags, so they need this explicit version.
+   Promoting an RC to stable requires a new commit updating this value;
+   the RC and stable tags cannot share a commit and report distinct versions.
 2. Run `just ci`, commit, push `main`.
 3. Write the release notes to a file outside the checkout or under the
    gitignored `.private/`. Start with a short summary, then describe the
