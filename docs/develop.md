@@ -103,6 +103,16 @@ shellcheck -x scripts/*.sh tests/live/*.sh     # the repository scripts, release
 python3 scripts/eval-cluster.py <export.ndjson> <labels.json> --allow-repo <remote>... [--live]   # cluster.py calibration
 ```
 
+`go test ./pkg/envelope -run '^TestDecodeDifferential$' -count=1` compares
+over 1,000 deterministic raw bodies against the independent Python decoder:
+status, warning multisets and canonical stored bytes. It covers duplicate
+members, moves, wraps, coercions, malformed UTF-8 and rejected JSON. The
+test runs with `just test` (and `just ci`) when `python3` is available;
+otherwise it skips. Comparison failures print the seed, case and raw body;
+replay one with `-run '^TestDecodeDifferential$/seed_66/case_4$'`.
+Resolve disagreements against the contract and retain a conformance fixture
+before changing either implementation.
+
 ### Nix package checks
 
 `just nix-check` builds the flake and runs `version` in a pinned Nix Docker
