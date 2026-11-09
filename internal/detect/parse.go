@@ -299,7 +299,34 @@ func parse(harness, event string, payload []byte) (Event, bool) {
 		case "Stop":
 			return turnEnd(o.str("session_id"), o.str("cwd")), true
 		}
-	case "codex", "devin":
+	case "devin":
+		switch event {
+		case "PostToolUse":
+			response := o.sub("tool_response")
+			if string(response.raw("success")) != "false" {
+				return Event{SessionID: o.str("session_id"), Cwd: o.str("cwd"), ExitCode: -1}, true
+			}
+			return failure(o.str("session_id"), o.str("cwd"), o.str("tool_name"), o.raw("tool_input"), commandOf(o.sub("tool_input"), "command")), true
+		case "Stop":
+			return turnEnd(o.str("session_id"), o.str("cwd")), true
+		}
+	case "amp", "cline":
+		sid, cwd := o.str("session_id"), o.str("cwd")
+		switch {
+		case harness == "amp" && event == "tool.result":
+			if o.str("status") != "error" {
+				return Event{SessionID: sid, Cwd: cwd, ExitCode: -1}, true
+			}
+			return failure(sid, cwd, o.str("tool"), o.raw("input"), commandOf(o.sub("input"), "command")), true
+		case harness == "cline" && event == "afterTool":
+			if !o.boolean("is_error") {
+				return Event{SessionID: sid, Cwd: cwd, ExitCode: -1}, true
+			}
+			return failure(sid, cwd, o.str("tool"), o.raw("input"), commandOf(o.sub("input"), "command")), true
+		case harness == "amp" && event == "agent.end", harness == "cline" && event == "afterRun":
+			return turnEnd(sid, cwd), true
+		}
+	case "codex":
 		if event == "Stop" {
 			return turnEnd(o.str("session_id"), o.str("cwd")), true
 		}
@@ -414,6 +441,7 @@ func parse(harness, event string, payload []byte) (Event, bool) {
 func CanDeliver(harness, event string) bool {
 	switch harness + " " + event {
 	case "claude-code PostToolUseFailure", "cursor postToolUseFailure", "copilot postToolUseFailure", "copilot PostToolUseFailure",
+		"devin PostToolUse", "amp tool.result", "cline afterTool",
 		"omp tool_result", "pi tool_result", "antigravity PreInvocation", "opencode-v1 session.idle", "opencode session.idle":
 		return true
 	}

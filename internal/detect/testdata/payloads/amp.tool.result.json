@@ -1,0 +1,9 @@
+{
+  "session_id": "amp-1",
+  "cwd": "/repo",
+  "tool": "Bash",
+  "input": {
+    "command": "npm test"
+  },
+  "status": "error"
+}

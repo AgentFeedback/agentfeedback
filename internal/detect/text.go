@@ -179,13 +179,15 @@ func Render(harness, event, text string) ([]byte, int) {
 	switch harness + " " + event {
 	case "claude-code PostToolUseFailure":
 		return enc(map[string]any{"hookSpecificOutput": map[string]string{"hookEventName": "PostToolUseFailure", "additionalContext": text}}), 0
+	case "devin PostToolUse":
+		return enc(map[string]any{"hookSpecificOutput": map[string]string{"hookEventName": event, "additionalContext": text}}), 0
 	case "cursor postToolUseFailure":
 		return enc(map[string]string{"additional_context": text}), 0
 	case "copilot postToolUseFailure", "copilot PostToolUseFailure":
 		return []byte(text + "\n"), 2
 	case "antigravity PreInvocation":
 		return enc(map[string]any{"injectSteps": []map[string]string{{"ephemeralMessage": text}}}), 0
-	case "opencode-v1 session.idle", "opencode session.idle", "omp tool_result", "pi tool_result":
+	case "opencode-v1 session.idle", "opencode session.idle", "omp tool_result", "pi tool_result", "amp tool.result", "cline afterTool":
 		return enc(map[string]string{"additionalContext": text}), 0
 	}
 

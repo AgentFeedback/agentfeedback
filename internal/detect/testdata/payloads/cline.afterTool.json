@@ -1,0 +1,9 @@
+{
+  "session_id": "cline-1",
+  "cwd": "/repo",
+  "tool": "execute_command",
+  "input": {
+    "command": "npm test"
+  },
+  "is_error": true
+}

@@ -128,8 +128,16 @@ func runHook(args []string, stdin io.Reader, stdout, _ io.Writer) error {
 		if m, err := resolveMode(mf, os.Getenv); err != nil {
 			fail(err)
 		} else if m.Mode == modeRemote {
-			boundedHook(start, "hook "+name+" "+oneLine(event), mf)
-			triggerCaptureSweep(os.Getenv, mf, start.Add(flushHookDeadline))
+			sendWait, flushWait, sweepWait := flushHookSend, flushHookDeadline, flushHookDeadline
+			if name == "cline" {
+				// The plugin's two-second subprocess budget must leave time
+				// for cancelled-send bookkeeping and the capture trigger.
+				sendWait = min(sendWait, time.Second)
+				flushWait = min(flushWait, 1500*time.Millisecond)
+				sweepWait = min(sweepWait, 1800*time.Millisecond)
+			}
+			boundedHook(start.Add(sendWait), start.Add(flushWait), "hook "+name+" "+oneLine(event), mf)
+			triggerCaptureSweep(os.Getenv, mf, start.Add(sweepWait))
 		}
 	}
 	type result struct {

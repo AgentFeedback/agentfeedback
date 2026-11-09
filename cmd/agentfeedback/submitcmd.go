@@ -894,14 +894,14 @@ var flushHookFlush = func(ctx context.Context, c *client.Client) client.FlushRep
 // never a failing exit. An empty spool returns before the config is read;
 // any failure, the deadline included, is one error line in the client log.
 func runFlushHook(mf modeFlags) {
-	boundedHook(time.Now(), "flush --hook", mf)
+	start := time.Now()
+	boundedHook(start.Add(flushHookSend), start.Add(flushHookDeadline), "flush --hook", mf)
 }
 
-// boundedHook runs flushHookBody under the flush --hook deadlines counted
-// from start; a failure is one client-log error line whose reason starts
-// with label.
-func boundedHook(start time.Time, label string, mf modeFlags) {
-	ctx, cancel := context.WithDeadline(context.Background(), start.Add(flushHookSend))
+// boundedHook cancels sending at sendDeadline and waits until deadline for
+// bookkeeping; a failure is one client-log error line starting with label.
+func boundedHook(sendDeadline, deadline time.Time, label string, mf modeFlags) {
+	ctx, cancel := context.WithDeadline(context.Background(), sendDeadline)
 	defer cancel()
 	cache, err := cacheDir(os.Getenv)
 	if err != nil {
@@ -916,7 +916,7 @@ func boundedHook(start time.Time, label string, mf modeFlags) {
 	}
 	done := make(chan error, 1)
 	go func() { done <- flushHookBody(ctx, data, mf) }()
-	timer := time.NewTimer(time.Until(start.Add(flushHookDeadline)))
+	timer := time.NewTimer(time.Until(deadline))
 	defer timer.Stop()
 	select {
 	case err := <-done:

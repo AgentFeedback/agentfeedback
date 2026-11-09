@@ -281,6 +281,8 @@ is a no-op; both require a server whose organisation enables processing.
 `agentfeedback-triage` processes the queue with the human, only when they
 invoke it (`/agentfeedback-triage`). Client step 2.3 installed it with the
 rest of the wiring, unless the human declined and it ran with `--no-triage`.
+Use client step 2.3's hook verification for each harness; Cline's plugin
+hooks apply to its SDK/CLI, not its IDE extension.
 Check it:
 
 ```sh

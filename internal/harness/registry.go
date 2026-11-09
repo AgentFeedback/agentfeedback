@@ -668,18 +668,21 @@ var registry = []Adapter{
 			Project: []string{"AGENTS.md"},
 		},
 		Hook: Hook{
-			File:      func(e Env) string { return filepath.Join(e.devinDir(), "config.json") },
-			Format:    "json-element",
-			Events:    events("PostToolUse", "Stop", "SessionStart"),
-			Deliver:   "none",
-			NoDeliver: "nudge not wired yet",
+			File:    func(e Env) string { return filepath.Join(e.devinDir(), "config.json") },
+			Format:  "json-element",
+			Events:  events("PostToolUse", "Stop", "SessionStart"),
+			Deliver: "PostToolUse",
 		},
 		MCP:      MCP{File: func(e Env) string { return filepath.Join(e.devinDir(), "mcp_config.json") }, Path: []string{"mcpServers"}, EnvRef: "${env:AGENT_FEEDBACK_API_KEY}"},
 		Sessions: Sessions{Reader: "none", NoReader: "Devin documents no local session location", Verified: documented()},
 		Caveats:  []string{"Devin also runs Claude Code's hooks from ~/.claude/settings.json, so a double flush is possible and harmless"},
 		Verified: documented(),
 		hook: func(p *plan, o Options) ([]Item, []string) {
-			return []Item{element(filepath.Join(p.env.devinDir(), "config.json"), []string{"hooks", "Stop"}, commandHook(hookCmd(o, "devin", "Stop")), RoleHook)}, nil
+			path := filepath.Join(p.env.devinDir(), "config.json")
+			return []Item{
+				element(path, []string{"hooks", "PostToolUse"}, commandHook(hookCmd(o, "devin", "PostToolUse")), RoleHook),
+				element(path, []string{"hooks", "Stop"}, commandHook(hookCmd(o, "devin", "Stop")), RoleHook),
+			}, nil
 		},
 		mcpValue: func(u string) string {
 			return string(obj("url", str(u), "transport", str("http"), "headers", bearer("${env:AGENT_FEEDBACK_API_KEY}")))
@@ -691,7 +694,7 @@ var registry = []Adapter{
 		row: docsRow{
 			detected: "`devin`, `~/.config/devin`",
 			skill:    "`~/.config/devin/skills/agentfeedback/SKILL.md`",
-			hook:     "`~/.config/devin/config.json` `hooks.Stop` (flush only)",
+			hook:     "`~/.config/devin/config.json` `hooks.PostToolUse` (failed responses, with additional context) and `hooks.Stop`",
 			reminder: "not supported",
 			rule:     "`~/.config/devin/AGENTS.md`",
 			mcp:      "`~/.config/devin/mcp_config.json` `mcpServers.agentfeedback`",
@@ -736,19 +739,30 @@ var registry = []Adapter{
 			Global:  dirs(homePath(".cline", "rules", "agentfeedback.md")),
 			Project: []string{".clinerules/"},
 		},
-		Hook:     Hook{Format: "none", NoHook: "the skill, the MCP entry and the instruction file carry it", Events: events("none", "none", "none"), Deliver: "none", NoDeliver: noHookDeliver},
+		Hook: Hook{
+			File:    homePath(".cline", "plugins", "agentfeedback.ts"),
+			Format:  "plugin",
+			Events:  events("afterTool", "afterRun", "none"),
+			Deliver: "afterTool",
+		},
 		MCP:      MCP{File: Env.clineMCPFile, Path: []string{"mcpServers"}, EnvRef: "${AGENT_FEEDBACK_API_KEY}"},
 		Sessions: Sessions{Locations: []string{"~/.cline/data/sessions/"}, Reader: "none", NoReader: "no reader yet; the documented locations disagree", Verified: documented()},
 		Verified: documented(),
+		Caveats:  []string{"hooks require the Cline SDK/CLI plugin runtime; VS Code and JetBrains do not load this plugin"},
+		hook: func(p *plan, o Options) ([]Item, []string) {
+			return []Item{fileItem(KindPluginFile, RoleHook, filepath.Join(p.env.Home, ".cline", "plugins", "agentfeedback.ts"), clinePlugin(o.Binary, p.env.SpawnErrorPath("cline")))}, nil
+		},
 		mcpValue: func(u string) string {
 			return string(obj("type", str("streamableHttp"), "url", str(u), "headers", bearer("${AGENT_FEEDBACK_API_KEY}")))
 		},
 		mcpStdio: plainStdio,
-		files:    func(e Env) ([]string, []string) { return []string{e.clineMCPFile()}, nil },
+		files: func(e Env) ([]string, []string) {
+			return []string{e.clineMCPFile()}, []string{filepath.Join(e.Home, ".cline", "plugins", "agentfeedback.ts")}
+		},
 		row: docsRow{
 			detected: "`cline`, `~/.cline`",
 			skill:    "`~/.cline/skills/agentfeedback/SKILL.md`",
-			hook:     "none",
+			hook:     "SDK/CLI plugin `~/.cline/plugins/agentfeedback.ts` (`afterTool` errors via `appendContext`, and `afterRun`); not VS Code/JetBrains",
 			reminder: "not supported",
 			rule:     "`~/.cline/rules/agentfeedback.md`",
 			mcp:      "`~/.cline/data/settings/cline_mcp_settings.json` `mcpServers.agentfeedback`; a URL entry's key reference in the header may not be expanded",
@@ -763,21 +777,29 @@ var registry = []Adapter{
 			Global:  func(e Env) []string { return []string{filepath.Join(e.ampDir(), "AGENTS.md")} },
 			Project: []string{"AGENTS.md"},
 		},
-		Hook:     Hook{Format: "none", NoHook: "Amp hooks are TypeScript plugins, not wired yet", Events: events("none", "none", "none"), Deliver: "none", NoDeliver: noHookDeliver},
+		Hook: Hook{
+			File:    func(e Env) string { return filepath.Join(e.ampDir(), "plugins", "agentfeedback.ts") },
+			Format:  "plugin",
+			Events:  events("tool.result", "agent.end", "none"),
+			Deliver: "tool.result",
+		},
 		MCP:      MCP{File: func(e Env) string { return filepath.Join(e.ampDir(), "settings.json") }, Path: []string{"amp.mcpServers"}, EnvRef: "${AGENT_FEEDBACK_API_KEY}"},
 		Sessions: Sessions{Reader: "none", NoReader: "Amp keeps its threads on its server", Verified: documented()},
 		Verified: documented(),
+		hook: func(p *plan, o Options) ([]Item, []string) {
+			return []Item{fileItem(KindPluginFile, RoleHook, filepath.Join(p.env.ampDir(), "plugins", "agentfeedback.ts"), ampPlugin(o.Binary, p.env.SpawnErrorPath("amp")))}, nil
+		},
 		mcpValue: func(u string) string {
 			return string(obj("url", str(u), "headers", bearer("${AGENT_FEEDBACK_API_KEY}")))
 		},
 		mcpStdio: plainStdio,
 		files: func(e Env) ([]string, []string) {
-			return []string{filepath.Join(e.ampDir(), "settings.jsonc"), filepath.Join(e.ampDir(), "settings.json")}, nil
+			return []string{filepath.Join(e.ampDir(), "settings.jsonc"), filepath.Join(e.ampDir(), "settings.json")}, []string{filepath.Join(e.ampDir(), "plugins", "agentfeedback.ts")}
 		},
 		row: docsRow{
 			detected: "`amp`, `<xdg>/amp` (`<xdg>` is `${XDG_CONFIG_HOME:-~/.config}`)",
 			skill:    "`<xdg>/amp/skills/agentfeedback/SKILL.md`",
-			hook:     "none",
+			hook:     "plugin `<xdg>/amp/plugins/agentfeedback.ts` (`tool.result` errors, preserving the failed result and appending the note, and `agent.end`)",
 			reminder: "not supported",
 			rule:     "`<xdg>/amp/AGENTS.md`",
 			mcp:      "`amp.mcpServers` member `agentfeedback` in `<xdg>/amp/settings.jsonc` when it exists, else `settings.json`",

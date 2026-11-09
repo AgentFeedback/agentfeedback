@@ -694,19 +694,23 @@ are not wired on Windows; undo the steps by hand.
 | `pi` | `pi`, `~/.pi` | `~/.pi/agent/skills/agentfeedback/SKILL.md` | extension `~/.pi/agent/extensions/agentfeedback.ts` (on `tool_result` errors, with the note as a next-turn message, and `agent_settled`) | not supported | `~/.pi/agent/AGENTS.md` | `~/.pi/agent/mcp.json` `mcpServers.agentfeedback`; needs pi 0.99.0 or later | documented 2026-10-07 |
 | `copilot` | `copilot`, `$COPILOT_HOME` (default `~/.copilot`) | `$COPILOT_HOME/skills/agentfeedback/SKILL.md` | file `$COPILOT_HOME/hooks/agentfeedback.json` (`postToolUseFailure`, with the note on exit 2, and `agentStop`) | not supported | `$COPILOT_HOME/copilot-instructions.md` | `$COPILOT_HOME/mcp-config.json` `mcpServers.agentfeedback` | documented 2026-10-07 |
 | `antigravity` | `agy`, `~/.gemini/antigravity-cli` or `~/.gemini/antigravity` | `~/.gemini/config/skills/agentfeedback/SKILL.md` and `~/.gemini/antigravity-cli/skills/agentfeedback/SKILL.md` | `~/.gemini/config/hooks.json` `agentfeedback` (on `PostToolUse`, `PreInvocation`, which delivers the note, and `Stop`) | not supported | `~/.gemini/GEMINI.md` (shared with gemini-cli unless `$GEMINI_CLI_HOME` is set) | `~/.gemini/config/mcp_config.json` `mcpServers.agentfeedback`; a URL entry's key reference in the header may not be expanded | documented 2026-10-07 |
-| `devin` | `devin`, `~/.config/devin` | `~/.config/devin/skills/agentfeedback/SKILL.md` | `~/.config/devin/config.json` `hooks.Stop` (flush only) | not supported | `~/.config/devin/AGENTS.md` | `~/.config/devin/mcp_config.json` `mcpServers.agentfeedback` | documented 2026-10-07 |
+| `devin` | `devin`, `~/.config/devin` | `~/.config/devin/skills/agentfeedback/SKILL.md` | `~/.config/devin/config.json` `hooks.PostToolUse` (failed responses, with additional context) and `hooks.Stop` | not supported | `~/.config/devin/AGENTS.md` | `~/.config/devin/mcp_config.json` `mcpServers.agentfeedback` | documented 2026-10-07 |
 | `kiro` | `kiro-cli`, `~/.kiro` | `~/.kiro/skills/agentfeedback/SKILL.md` | none | not supported | `~/.kiro/steering/AGENTS.md` | `~/.kiro/settings/mcp.json` `mcpServers.agentfeedback` | documented 2026-10-07 |
-| `cline` | `cline`, `~/.cline` | `~/.cline/skills/agentfeedback/SKILL.md` | none | not supported | `~/.cline/rules/agentfeedback.md` | `~/.cline/data/settings/cline_mcp_settings.json` `mcpServers.agentfeedback`; a URL entry's key reference in the header may not be expanded | documented 2026-10-07 |
-| `amp` | `amp`, `<xdg>/amp` (`<xdg>` is `${XDG_CONFIG_HOME:-~/.config}`) | `<xdg>/amp/skills/agentfeedback/SKILL.md` | none | not supported | `<xdg>/amp/AGENTS.md` | `amp.mcpServers` member `agentfeedback` in `<xdg>/amp/settings.jsonc` when it exists, else `settings.json` | documented 2026-10-07 |
+| `cline` | `cline`, `~/.cline` | `~/.cline/skills/agentfeedback/SKILL.md` | SDK/CLI plugin `~/.cline/plugins/agentfeedback.ts` (`afterTool` errors via `appendContext`, and `afterRun`); not VS Code/JetBrains | not supported | `~/.cline/rules/agentfeedback.md` | `~/.cline/data/settings/cline_mcp_settings.json` `mcpServers.agentfeedback`; a URL entry's key reference in the header may not be expanded | documented 2026-10-07 |
+| `amp` | `amp`, `<xdg>/amp` (`<xdg>` is `${XDG_CONFIG_HOME:-~/.config}`) | `<xdg>/amp/skills/agentfeedback/SKILL.md` | plugin `<xdg>/amp/plugins/agentfeedback.ts` (`tool.result` errors, preserving the failed result and appending the note, and `agent.end`) | not supported | `<xdg>/amp/AGENTS.md` | `amp.mcpServers` member `agentfeedback` in `<xdg>/amp/settings.jsonc` when it exists, else `settings.json` | documented 2026-10-07 |
 | `vscode` | `code`, `<Code/User>`: `<xdg>/Code/User` on Linux, `~/Library/Application Support/Code/User` on macOS | none: VS Code reads the skill the `copilot` or `claude-code` adapter installs | none | not supported | none: VS Code has no CLI mode | `<Code/User>/mcp.json` `servers.agentfeedback` | documented 2026-10-07 |
 | `gemini-cli` | `gemini` (`~/.gemini` is shared with antigravity unless `$GEMINI_CLI_HOME` is set) | `$GEMINI_CLI_HOME/.gemini/skills/agentfeedback/SKILL.md` (default `~/.gemini/skills/agentfeedback/SKILL.md`) | none | not supported | `$GEMINI_CLI_HOME/.gemini/GEMINI.md` (default `~/.gemini/GEMINI.md`) | none | documented 2026-10-07 |
 <!-- harness-table:end -->
 
 - **Hooks.** Every hook runs `agentfeedback hook <harness> <event>` on the
-  events in the table; `codex` and `devin` get the end-of-turn hook only,
+  events in the table; `codex` gets the end-of-turn hook only,
   which flushes and can trigger the [session sweep](sessions.md#automatic-sweep);
-  `kiro`, `cline`, `amp`, `vscode` and `gemini-cli` get none
-  yet. No new hook registrations are needed for the sweep.
+  `kiro`, `vscode` and `gemini-cli` get none yet.
+  Devin counts only explicitly unsuccessful tool responses. Amp preserves
+  the failed result and appends the note to its error; cancelled results do
+  not count. Cline adds model-visible context without replacing the result,
+  and its subprocess budget is two seconds, below the SDK's three-second
+  hook deadline. No new hook registrations are needed for the sweep.
   After upgrading from a release that wired `flush --hook`, run
   `agentfeedback install <harness>` again: the older entries are replaced, and
   `agentfeedback doctor` names each harness that still runs one. The
@@ -763,8 +767,11 @@ are not wired on Windows; undo the steps by hand.
   included), logging one error line and giving no note. At the end of a turn in
   remote mode the hook then sends the spool's due entries, as
   `flush --hook` does: it stops sending 3.5 seconds after it starts and
-  returns by 4.5 seconds (inside the 5-second timeout the hook is given);
-  local mode needs no flush and opens no database. The hook prints nothing
+  returns by 4.5 seconds (inside the 5-second timeout the hook is given).
+  Cline's plugin allows two seconds: sending stops at one second,
+  bookkeeping waits until 1.5 seconds, and the capture trigger has until
+  1.8 seconds. Cancelled sends remain spooled for a later retry.
+  Local mode needs no flush and opens no database. The hook prints nothing
   but the note, never writes to stderr, logs any failure to `client.jsonl`
   and otherwise exits 0. `agentfeedback flush --hook`, which older installs
   wired, still works in remote mode; in local mode it does nothing, and the
@@ -786,8 +793,8 @@ are not wired on Windows; undo the steps by hand.
   (the session id cut to 40 bytes, then 16 hex digits of its SHA-256), with
   a `.lock` file beside each, owner-only, and are deleted 7 days after their
   last change, as are `filed/` markers. Every run
-  writes `hooks/<harness>.json` (`ts`, `event`) beside them; the OpenCode,
-  omp and pi plugins write `hooks/<harness>.spawn-error.json` when they
+  writes `hooks/<harness>.json` (`ts`, `event`) beside them; the Amp, Cline,
+  OpenCode, omp and pi plugins write `hooks/<harness>.spawn-error.json` when they
   cannot start the binary. `agentfeedback doctor` prints when each
   harness's hook last ran and reports a spawn error newer than that.
 - **`--docs`.** The `agentfeedback-docs` skill goes to

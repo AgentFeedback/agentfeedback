@@ -26,6 +26,11 @@ func TestParse_Fixtures(t *testing.T) {
 		{"claude-code", "Stop", Event{Class: ClassTurnEnd, SessionID: "abc123", Cwd: "/Users/x/project", ExitCode: -1, EndsTurn: true}},
 		{"codex", "Stop", Event{Class: ClassTurnEnd, SessionID: "019a-thread", Cwd: "/work/repo", ExitCode: -1, EndsTurn: true}},
 		{"devin", "Stop", Event{Class: ClassTurnEnd, SessionID: "devin-1", Cwd: "/work/repo", ExitCode: -1, EndsTurn: true}},
+		{"devin", "PostToolUse", Event{Class: ClassToolFailed, SessionID: "devin-1", Cwd: "/work/repo", Tool: "Bash", Command: "npm test", ExitCode: -1, ErrorClass: "error"}},
+		{"amp", "tool.result", Event{Class: ClassToolFailed, SessionID: "amp-1", Cwd: "/repo", Tool: "Bash", Command: "npm test", ExitCode: -1, ErrorClass: "error"}},
+		{"amp", "agent.end", Event{Class: ClassTurnEnd, SessionID: "amp-1", Cwd: "/repo", ExitCode: -1, EndsTurn: true}},
+		{"cline", "afterTool", Event{Class: ClassToolFailed, SessionID: "cline-1", Cwd: "/repo", Tool: "execute_command", Command: "npm test", ExitCode: -1, ErrorClass: "error"}},
+		{"cline", "afterRun", Event{Class: ClassTurnEnd, SessionID: "cline-1", Cwd: "/repo", ExitCode: -1, EndsTurn: true}},
 		{"cursor", "postToolUseFailure", Event{Class: ClassToolFailed, SessionID: "conv-1", Cwd: "/project", Tool: "Shell", Command: "npm test", ExitCode: -1, ErrorClass: "timeout"}},
 		{"cursor", "stop", Event{Class: ClassTurnEnd, SessionID: "conv-1", Cwd: "/project", ExitCode: -1, EndsTurn: true}},
 		{"copilot", "postToolUseFailure", Event{Class: ClassToolFailed, SessionID: "cp-1", Cwd: "/repo", Tool: "bash", Command: "make test", ExitCode: 2, ErrorClass: "exit"}},
@@ -52,6 +57,21 @@ func TestParse_Fixtures(t *testing.T) {
 		got.ArgsDigest = ""
 		if got != tt.want {
 			t.Errorf("%s %s:\n got %+v\nwant %+v", tt.harness, tt.event, got, tt.want)
+		}
+	}
+}
+
+func TestNewHookSuccessDoesNotCount(t *testing.T) {
+	for _, tt := range []struct{ harness, event, payload string }{
+		{"devin", "PostToolUse", `{"tool_response":{"success":true}}`},
+		{"devin", "PostToolUse", `{"tool_response":{}}`},
+		{"amp", "tool.result", `{"status":"done"}`},
+		{"amp", "tool.result", `{"status":"cancelled"}`},
+		{"cline", "afterTool", `{"is_error":false}`},
+	} {
+		ev, ok := Parse(tt.harness, tt.event, []byte(tt.payload))
+		if !ok || ev.Class == ClassToolFailed {
+			t.Errorf("%s %s: %+v, recognized=%v", tt.harness, tt.payload, ev, ok)
 		}
 	}
 }

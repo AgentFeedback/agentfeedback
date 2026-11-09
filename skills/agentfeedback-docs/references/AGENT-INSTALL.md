@@ -293,7 +293,8 @@ OpenCode's `opencode` input alias selects V1; with a 2.x binary on `PATH`,
 **Verify:** the last line is JSON with `"status": "ok"`, `"mode": "local"`
 (or `"remote"` with `"server": "<URL>"` after step 2.2), your harness with
 `"skill": "wired"`, `"hook": "wired"` where the harness has a hook (`"-"`
-for `kiro`, `cline`, `amp` and `gemini-cli`), and `"rule": "wired"` where
+for `kiro` and `gemini-cli`; Cline hooks require its SDK/CLI, not the IDE
+extension), and `"rule": "wired"` where
 it has a global instruction file (`"-"` for `cursor`), `"triage": "wired"`
 where it has a skills directory (`"-"` with `--no-triage` or for `vscode`;
 `"external"` with a note when a triage skill installed another way is

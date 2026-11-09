@@ -310,6 +310,41 @@ func TestHook_RemoteStopFlushes(t *testing.T) {
 	}
 }
 
+func TestHook_ClineSlowFlushReleasesClaim(t *testing.T) {
+	isolate(t)
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { <-release }))
+	defer srv.Close()
+	defer close(release)
+	t.Setenv(envURL, srv.URL)
+	t.Setenv(envAPIKey, "throwaway")
+	data := dataRoot(t)
+	spoolOne(t, data, srv.URL)
+	start := time.Now()
+	r := runCLI(t, `{"session_id":"cline-slow"}`, "hook", "cline", "afterRun")
+	if elapsed := time.Since(start); elapsed >= 2*time.Second {
+		t.Fatalf("hook exceeded plugin subprocess budget: %v", elapsed)
+	}
+	if r.code != 0 || r.stdout != "" || r.stderr != "" {
+		t.Fatalf("%+v", r)
+	}
+	entries, err := os.ReadDir(client.SpoolDir(data))
+	if err != nil || len(entries) != 1 || strings.Contains(entries[0].Name(), "inflight") {
+		t.Fatalf("spool claim not released: %v, %v", entries, err)
+	}
+	raw, err := os.ReadFile(filepath.Join(client.SpoolDir(data), entries[0].Name()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var entry struct {
+		Attempts  int       `json:"attempts"`
+		NotBefore time.Time `json:"not_before"`
+	}
+	if err := json.Unmarshal(raw, &entry); err != nil || entry.Attempts != 1 || !entry.NotBefore.After(start) {
+		t.Fatalf("cancelled send not rescheduled: %s, %v", raw, err)
+	}
+}
+
 func TestHook_PrunesOldSessions(t *testing.T) {
 	_, cache := isolate(t)
 	if err := detect.Update(cache, "claude-code", "old", time.Now().Add(10*time.Second), func(*detect.State) {}); err != nil {

@@ -854,7 +854,7 @@ func (p *plan) opencodeConfig() (string, error) {
 
 // pluginHelper is the code every plugin and extension shares: run spawns
 // the hook with the payload on stdin, collects its stdout and resolves with
-// it, or with "" after 5 s or on any failure; a failure to start the hook
+// it, or with "" after 5 s (2 s for Cline) or on any failure; a failure to start the hook
 // is recorded in SPAWN_ERR for doctor. It never throws. typed adds the
 // TypeScript annotations.
 func pluginHelper(bin, spawnErr, harness string, typed bool) string {
@@ -864,6 +864,11 @@ func pluginHelper(bin, spawnErr, harness string, typed bool) string {
 		}
 
 		return ""
+	}
+	timeout := "5000"
+	if harness == "cline" {
+		// Cline gives hooks three seconds; return before its hook timeout.
+		timeout = "2000"
 	}
 
 	return `// Written by agentfeedback install; agentfeedback uninstall removes it.
@@ -902,7 +907,7 @@ function run(event` + t(": string") + `, payload` + t(": unknown") + `)` + t(": 
         child?.kill();
       } catch {}
       finish("");
-    }, 5000);
+    }, ` + timeout + `);
     try {
       child = spawn(BIN, ["hook", HARNESS, event], { stdio: ["pipe", "pipe", "ignore"] });
       child.on("error", (err` + t(": unknown") + `) => {
@@ -932,6 +937,65 @@ function note(out` + t(": string") + `)` + t(": string") + ` {
   }
 }
 `
+}
+
+func ampPlugin(bin, spawnErr string) []byte {
+	return []byte(pluginHelper(bin, spawnErr, "amp", true) + `
+export default function (amp: any) {
+  const cwd = amp.system.workspaceRoot
+    ? amp.helpers.filePathFromURI(amp.system.workspaceRoot) : undefined;
+  amp.on("tool.result", async (event: any) => {
+    if (event.status !== "error") return;
+    const text = note(await run("tool.result", {
+      session_id: event.thread.id,
+      cwd,
+      tool: event.tool,
+      input: event.input,
+      status: event.status,
+    }));
+    if (text) return {
+      status: event.status,
+      output: event.output,
+      error: (event.error ? event.error + "\n\n" : "") + text,
+    };
+  });
+  amp.on("agent.end", async (event: any) => {
+    await run("agent.end", { session_id: event.thread.id, cwd });
+  });
+}
+`)
+}
+
+func clinePlugin(bin, spawnErr string) []byte {
+	return []byte(pluginHelper(bin, spawnErr, "cline", true) + `
+// Cline loads a fresh plugin worker for each session.
+let sessionID: string | undefined;
+let cwd: string | undefined;
+export default {
+  name: "agentfeedback",
+  manifest: { capabilities: ["hooks"] },
+  setup(_api: any, ctx: any) {
+    sessionID = ctx.session?.sessionId;
+    cwd = ctx.cwd;
+  },
+  hooks: {
+    async afterTool(ctx: any) {
+      if (!ctx.result.isError) return;
+      const text = note(await run("afterTool", {
+        session_id: sessionID,
+        cwd,
+        tool: ctx.toolCall.toolName,
+        input: ctx.input,
+        is_error: true,
+      }));
+      if (text) return { appendContext: text };
+    },
+    async afterRun() {
+      await run("afterRun", { session_id: sessionID, cwd });
+    },
+  },
+};
+`)
 }
 
 func opencodePlugin(bin, spawnErr string) []byte {
