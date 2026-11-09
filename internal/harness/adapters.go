@@ -268,6 +268,13 @@ func (e Env) Detect(name string) string {
 			return "no"
 		}
 	}
+	if name == "opencode-v2" {
+		// The shared config directory alone detects V1, never V2.
+		if _, err := e.LookPath("opencode"); err == nil && e.OpenCodeMajor() == 2 {
+			return "binary"
+		}
+		return "no"
+	}
 	a := adapterOf(name)
 	if a == nil {
 		return "no"
@@ -298,7 +305,7 @@ func (e Env) Detect(name string) string {
 }
 
 // OpenCodeUnknownVersion explains the fail-closed automatic detection policy.
-const OpenCodeUnknownVersion = "cannot determine the installed OpenCode version; automatic OpenCode V1 wiring was skipped; if you have verified that it is V1, run agentfeedback install opencode-v1"
+const OpenCodeUnknownVersion = "cannot determine a supported OpenCode version (1.x or 2.x); automatic OpenCode wiring was skipped; name opencode-v1 or opencode-v2 explicitly once you have verified the version"
 
 type openCodeVersionCache struct {
 	once  sync.Once
@@ -1017,6 +1024,81 @@ export const AgentFeedback = async ({ client, directory }) => ({
     } catch {}
   },
 });
+`)
+}
+
+// opencodeV2Plugin is the OpenCode 2 plugin: a plain { id, setup } default
+// export (Plugin.define is the identity, so no dependency is needed).
+func opencodeV2Plugin(bin, spawnErr string) []byte {
+	return []byte(pluginHelper(bin, spawnErr, "opencode-v2", false) + `
+// The event stream reaches every loaded location instance of the plugin, so
+// each turn end arrives once per instance with the same event id; the first
+// instance that resolves the session's directory claims and handles it.
+const SEEN = new Set();
+const SEEN_MAX = 256;
+function firstSeen(id) {
+  if (id === undefined || id === null) return true;
+  if (SEEN.has(id)) return false;
+  SEEN.add(id);
+  if (SEEN.size > SEEN_MAX) SEEN.delete(SEEN.values().next().value);
+  return true;
+}
+
+export default {
+  id: "agentfeedback",
+  async setup(ctx) {
+    const cwd = ctx.location?.directory;
+    // Session-scoped: fires in the instance that owns the session, so its
+    // location is the session's directory.
+    // setup never throws. A failure here is not a failure to start the
+    // hook, so it is not recorded as a spawn error.
+    try {
+      await ctx.tool.hook("execute.after", async (event) => {
+        if (event?.tool !== "shell" && event?.tool !== "bash") return;
+        const exit = event.result?.metadata?.exit;
+        if (typeof exit !== "number" || exit === 0) return;
+        await run("tool.execute.after", { sessionID: event.sessionID, tool: event.tool, args: event.input, exit, cwd });
+      });
+    } catch {}
+    // session.idle is deprecated and not emitted by OpenCode 2.2.6; the turn
+    // ends with session.execution.succeeded, failed or interrupted.
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        for await (const ev of ctx.event.subscribe({
+          types: ["session.execution.succeeded", "session.execution.failed", "session.execution.interrupted"],
+          signal: controller.signal,
+        })) {
+          const sessionID = ev?.data?.sessionID;
+          if (!sessionID) continue;
+          // This instance's location may be another project's: the hook
+          // gets the session's own directory.
+          let dir;
+          try {
+            dir = (await ctx.session.get({ sessionID }))?.location?.directory;
+          } catch {}
+          // Without the session's directory the hook is not run at all: a
+          // run without a cwd would consume the pending note undelivered.
+          // Not claimed, so an instance that resolves it still delivers.
+          if (!dir) continue;
+          if (!firstSeen(ev?.id)) continue;
+          const text = note(await run("session.idle", { sessionID, cwd: dir }));
+          if (!text) continue;
+          // An instructions entry reaches the next model request once without
+          // a model call; session.synthetic or a prompt loop the agent or
+          // hold opencode run open.
+          try {
+            await ctx.session.instructions.entry.put({ sessionID, key: "agentfeedback", value: text });
+          } catch {}
+        }
+      } catch {
+        // A dead stream is not a failure to start the hook; doctor shows it
+        // as a stale "hook last ran at".
+      }
+    })();
+    return () => controller.abort();
+  },
+};
 `)
 }
 

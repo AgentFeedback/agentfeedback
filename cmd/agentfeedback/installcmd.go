@@ -169,7 +169,7 @@ func runInstall(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 		return printInstallOutcome(stdout, installOutcome{}, err)
 	}
 	if *check {
-		return runInstallCheck(env, pos, *project, *asJSON, stdout)
+		return runInstallCheck(env, pos, *project, *asJSON, stdout, stderr)
 	}
 	if len(pos) == 0 || *list {
 		return listHarnesses(env, *asJSON, stdout)
@@ -200,25 +200,21 @@ func wireHarnesses(env harness.Env, pos []string, o wireOptions, resolve func() 
 		fmt.Fprintf(stderr, "agentfeedback %s: warning: %s\n", command, message)
 	}
 	if slices.Contains(pos, "opencode") || slices.Contains(pos, "all") {
-		major := env.OpenCodeMajor()
-		skipAlias := major == 2
-		if major == 2 && slices.Contains(pos, "opencode") {
-			warn("OpenCode 2 detected; `opencode-v2` is not available in this release yet")
-		} else if major == 0 {
-			if _, err := env.LookPath("opencode"); err == nil {
-				warn(harness.OpenCodeUnknownVersion)
-				skipAlias = true
-			}
+		var skipped bool
+		pos, skipped = resolveOpenCodeAlias(env, pos)
+		// Under all an unknown version wires neither variant (Detect).
+		if !skipped && slices.Contains(pos, "all") && openCodeVariant(env) == "" {
+			skipped = true
 		}
-		if skipAlias {
-			pos = slices.DeleteFunc(pos, func(name string) bool { return name == "opencode" })
-			if len(pos) == 0 {
-				status := "unchanged"
-				if o.dryRun {
-					status = "dry_run"
-				}
-				return installOutcome{Status: status}, nil
+		if skipped {
+			warn(harness.OpenCodeUnknownVersion)
+		}
+		if len(pos) == 0 {
+			status := "unchanged"
+			if o.dryRun {
+				status = "dry_run"
 			}
+			return installOutcome{Status: status}, nil
 		}
 	}
 	canonicalHarnessNames(pos)
@@ -366,7 +362,6 @@ func runUninstall(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if err := checkHarnessNames(pos); err != nil {
 		return printInstallOutcome(stdout, installOutcome{}, err)
 	}
-	canonicalHarnessNames(pos)
 	env, err := harnessEnv()
 	if err != nil {
 		return printInstallOutcome(stdout, installOutcome{}, err)
@@ -376,6 +371,18 @@ func runUninstall(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return printInstallOutcome(stdout, installOutcome{}, installErr(err))
 	}
 	defer unlock()
+	if slices.Contains(pos, "opencode") {
+		variant, err := uninstallOpenCodeVariant(env)
+		if err != nil {
+			return printInstallOutcome(stdout, installOutcome{}, installErr(err))
+		}
+		for i, name := range pos {
+			if name == "opencode" {
+				pos[i] = variant
+			}
+		}
+	}
+	canonicalHarnessNames(pos)
 	names := pos
 	if slices.Contains(pos, "all") {
 		if names, err = env.Recorded(); err != nil {
@@ -408,6 +415,26 @@ func runUninstall(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	return printInstallOutcome(stdout, out, nil)
 }
 
+// uninstallOpenCodeVariant is what the opencode alias names for uninstall:
+// the variant the manifest records, else the one the installed version
+// selects, else opencode-v1.
+func uninstallOpenCodeVariant(env harness.Env) (string, error) {
+	recorded, err := env.Recorded()
+	if err != nil {
+		return "", err
+	}
+	switch {
+	case slices.Contains(recorded, "opencode-v1"):
+		return "opencode-v1", nil
+	case slices.Contains(recorded, "opencode-v2"):
+		return "opencode-v2", nil
+	case env.OpenCodeMajor() == 2:
+		return "opencode-v2", nil
+	}
+
+	return "opencode-v1", nil
+}
+
 func dedupe(names []string) []string {
 	var out []string
 	for _, n := range names {
@@ -425,6 +452,48 @@ func checkInstallSupported(command string) error {
 	}
 
 	return nil
+}
+
+// openCodeVariant is the OpenCode variant the installed version selects:
+// opencode-v1 for 1.x or no binary, opencode-v2 for 2.x, and "" for a
+// binary whose version is unknown or of another major, which none of the
+// variants is verified against.
+func openCodeVariant(env harness.Env) string {
+	switch env.OpenCodeMajor() {
+	case 1:
+		return "opencode-v1"
+	case 2:
+		return "opencode-v2"
+	}
+	if _, err := env.LookPath("opencode"); err != nil {
+		return "opencode-v1"
+	}
+
+	return ""
+}
+
+// resolveOpenCodeAlias returns names with an explicitly named opencode
+// replaced by openCodeVariant, or dropped (skipped) when that is "".
+// Stored data keeps mapping opencode to opencode-v1
+// (harness.CanonicalName); uninstall resolves by the record first. The
+// caller's slice is not changed.
+func resolveOpenCodeAlias(env harness.Env, names []string) (out []string, skipped bool) {
+	if !slices.Contains(names, "opencode") {
+		return names, false
+	}
+	variant := openCodeVariant(env)
+	for _, name := range names {
+		switch {
+		case name != "opencode":
+			out = append(out, name)
+		case variant != "":
+			out = append(out, variant)
+		default:
+			skipped = true
+		}
+	}
+
+	return out, skipped
 }
 
 func canonicalHarnessNames(names []string) {

@@ -47,13 +47,18 @@ const ruleNote = "paste the output of the rule command into the harness's instru
 // server is resolved without a prompt; nothing is written. warnings are
 // those of the binary a stdio entry runs, when a step carries one.
 func manualSteps(command string, pos []string, serverFlag string, stderr io.Writer) (steps []manualStep, warnings []string) {
-	canonicalHarnessNames(pos)
 	env, err := harnessEnv()
 	if err != nil {
 		return nil, nil
 	}
+	named := len(pos) > 0
+	pos, skipped := resolveOpenCodeAlias(env, pos)
+	if skipped {
+		warnings = append(warnings, harness.OpenCodeUnknownVersion)
+	}
+	canonicalHarnessNames(pos)
 	names := pos
-	if len(pos) == 0 || slices.Contains(pos, "all") {
+	if (!named && len(pos) == 0) || slices.Contains(pos, "all") {
 		names = nil
 		for _, n := range harness.Names() {
 			if env.Detect(n) != "no" || slices.Contains(pos, n) {
@@ -116,7 +121,7 @@ func manualSteps(command string, pos []string, serverFlag string, stderr io.Writ
 	}
 	printManualSteps(stderr, command, out)
 	if stdio {
-		warnings = pathWarnings(bin)
+		warnings = append(warnings, pathWarnings(bin)...)
 	}
 	for _, w := range warnings {
 		fmt.Fprintf(stderr, "agentfeedback %s: warning: %s\n", command, w)

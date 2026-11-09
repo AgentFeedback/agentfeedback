@@ -187,7 +187,7 @@ func Render(harness, event, text string) ([]byte, int) {
 		return []byte(text + "\n"), 2
 	case "antigravity PreInvocation":
 		return enc(map[string]any{"injectSteps": []map[string]string{{"ephemeralMessage": text}}}), 0
-	case "opencode-v1 session.idle", "opencode session.idle", "omp tool_result", "pi tool_result", "amp tool.result", "cline afterTool":
+	case "opencode-v1 session.idle", "opencode session.idle", "opencode-v2 session.idle", "omp tool_result", "pi tool_result", "amp tool.result", "cline afterTool":
 		return enc(map[string]string{"additionalContext": text}), 0
 	}
 

@@ -108,6 +108,7 @@ status is how far each integration was checked, and when.
 | [Codex CLI](docs/operate.md) | adapter | `agentfeedback install codex` | documented 2026-10-07 |
 | [Cursor](docs/operate.md) | adapter | `agentfeedback install cursor` | documented 2026-10-07 |
 | [OpenCode V1](docs/operate.md) | adapter | `agentfeedback install opencode-v1` | live-checked 2026-10-07 |
+| [OpenCode 2](docs/operate.md) | adapter | `agentfeedback install opencode-v2` | live-checked 2026-11-09 |
 | [Oh My Pi (omp)](docs/operate.md) | adapter | `agentfeedback install omp` | documented 2026-10-07 |
 | [Pi](docs/operate.md) | adapter | `agentfeedback install pi` | documented 2026-10-07 |
 | [Copilot CLI](docs/operate.md) | adapter | `agentfeedback install copilot` | documented 2026-10-07 |

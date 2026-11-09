@@ -53,9 +53,15 @@ type captureStamp struct {
 	oc   ocStamp
 }
 
+// ocCapturer is an OpenCode reader: its capture is the virtual log it
+// renders from the database, not the bytes of a file.
+type ocCapturer interface {
+	loadCapture(env Env, c candidate, raw io.Writer) (*transcript, error)
+}
+
 func captureSupported(r reader) bool {
 	switch r.(type) {
-	case claudeReader, codexReader, opencodeReader:
+	case claudeReader, codexReader, opencodeReader, opencodeV2Reader:
 		return true
 	default:
 		return false
@@ -71,7 +77,7 @@ func captureStampOf(r reader, c candidate) (captureStamp, error) {
 		return captureStamp{}, errors.New("session source is not a regular file")
 	}
 	s := captureStamp{file: info}
-	if _, ok := r.(opencodeReader); ok {
+	if _, ok := r.(ocCapturer); ok {
 		s.oc, err = ocStampOf(c.path)
 	}
 	return s, err
@@ -218,12 +224,12 @@ func captureEvaluate(env Env, r reader, c candidate, known []string) CaptureCand
 	if err != nil {
 		return refuse(StateUnreadable, "session source could not be read")
 	}
-	if _, ok := r.(opencodeReader); !ok && !before.file.ModTime().Equal(c.mtime) {
+	if _, ok := r.(ocCapturer); !ok && !before.file.ModTime().Equal(c.mtime) {
 		return refuse(StateChanged, "capture_changed")
 	}
 	env.captureOnly = true
 	var tr *transcript
-	if oc, ok := r.(opencodeReader); ok {
+	if oc, ok := r.(ocCapturer); ok {
 		tr, err = oc.loadCapture(env, c, nil)
 	} else {
 		tr, err = r.load(env, c)
@@ -261,7 +267,7 @@ func captureEvaluate(env Env, r reader, c candidate, known []string) CaptureCand
 		out.End = c.mtime
 	}
 	format := r.name()
-	if _, ok := r.(opencodeReader); ok {
+	if _, ok := r.(ocCapturer); ok {
 		format = "opencode-virtual-log"
 	}
 	meta := CaptureMeta{
@@ -320,7 +326,7 @@ func OpenCapture(ctx context.Context, env Env, c CaptureCandidate) (io.ReadClose
 	}
 	var raw io.ReadCloser
 	var cancel context.CancelFunc
-	if oc, ok := c.source.r.(opencodeReader); ok {
+	if oc, ok := c.source.r.(ocCapturer); ok {
 		pr, pw := io.Pipe()
 		raw = pr
 		producerCtx, stopProducer := context.WithCancel(ctx)

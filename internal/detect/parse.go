@@ -396,7 +396,7 @@ func parse(harness, event string, payload []byte) (Event, bool) {
 		case "Stop":
 			return turnEnd(sid, cwd), true
 		}
-	case "opencode-v1", "opencode":
+	case "opencode-v1", "opencode", "opencode-v2":
 		sid := o.str("sessionID")
 		cwd := o.str("cwd")
 		switch event {
@@ -446,7 +446,7 @@ func CanDeliver(harness, event string) bool {
 	switch harness + " " + event {
 	case "claude-code PostToolUseFailure", "cursor postToolUseFailure", "copilot postToolUseFailure", "copilot PostToolUseFailure",
 		"devin PostToolUse", "amp tool.result", "cline afterTool",
-		"omp tool_result", "pi tool_result", "antigravity PreInvocation", "opencode-v1 session.idle", "opencode session.idle":
+		"omp tool_result", "pi tool_result", "antigravity PreInvocation", "opencode-v1 session.idle", "opencode session.idle", "opencode-v2 session.idle":
 		return true
 	}
 

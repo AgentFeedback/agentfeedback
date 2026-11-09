@@ -46,7 +46,7 @@ agentfeedback sessions push codex:<session-id> --since 2026-01-01T00:00:00Z --dr
 ```
 
 Push supports Claude Code (`claude-code-jsonl`), Codex (`codex-rollout`)
-and OpenCode V1 (`opencode-virtual-log`). It sends the whole complete-line
+and OpenCode V1 and 2 (`opencode-virtual-log`). It sends the whole complete-line
 revision, not the digest or only new entries. The revision is the decimal
 source byte count. An unfinished last line is excluded; changes during
 capture defer the upload.
@@ -133,14 +133,23 @@ text, credentials or session identifiers.
 | `copilot` | `copilot-events` | `<copilot home>/session-state/<session id>/events.jsonl` (`$COPILOT_HOME`, else `~/.copilot`) | `workspace.yaml` beside the log, before; `session.start` and `session.context_changed`, after |
 | `gemini-cli` | `gemini-cli-jsonl` | `<gemini dir>/tmp/<project>/chats/session-*.jsonl` (`$GEMINI_CLI_HOME/.gemini`, else `~/.gemini`) | `<project>/.project_root`, before; the metadata line's `directories`, which the log records only for sub-agents and `/dir add`, after |
 | `opencode-v1` | `opencode-sqlite` | `$OPENCODE_DB` (a relative one under `<data home>/opencode`), else `opencode.db` and `opencode-*.db` in `<data home>/opencode` (`$XDG_DATA_HOME`, else `~/.local/share`) | the session row's `directory`, before; each assistant message's `path.cwd`, after |
+| `opencode-v2` | `opencode-v2-sqlite` | the same databases, read only when they have a `session_v2` table | the session row's `directory`, before |
 
 OpenCode V1 session references use `opencode-v1:<id>`. The input alias
 `opencode:<id>` resolves and marks the same session. Existing local session
 state migrates to the canonical name without resetting processed progress;
 saved harness selections accept the alias too. The store paths, SQLite
 reader format, detector version and finding idempotency keys remain unchanged:
-retrying a previously filed span still uses its original key. This reader
-does not support OpenCode V2.
+retrying a previously filed span still uses its original key.
+
+OpenCode 2 (checked with 2.2.6) stores sessions in a different schema in the
+same database files, and migrates a V1 database in place: it adds its own
+rows with the same session ids and keeps V1's tables. A database with a
+`session_v2` table is therefore read only by `opencode-v2`; the V1 reader
+skips it, so a session is never listed under both names. Sessions migrated
+this way are listed once, as `opencode-v2`, and their V1 state does not
+carry over: they read as new, so a scan files their findings again under new
+keys and `sessions push` uploads them again under `opencode-v2`.
 
 A directory variable that is not an absolute path is ignored. A store
 directory that cannot be listed, or a session file whose directory entry
@@ -285,6 +294,27 @@ digest adds `#<span>`, the reader's id of the log entry that carries it
   only in OpenCode's write-ahead log are not seen until OpenCode checkpoints
   them into the database file, at the latest when it exits; the session
   then reads as `appended`.
+
+### OpenCode 2
+
+- Store: tables `session_v2`, `session_message` (one row per message, typed
+  `user`, `assistant`, `system`, `idle` and others, ordered by `seq`) and
+  `session_part` when present; opened, checked and retried as for V1.
+- Span: the message id of a prompt, `<message id>/<index>` of a tool call
+  embedded in an assistant message, `<message id>/<ordinal>` of a part row.
+- Prompt: a `user` message with non-empty text.
+- Results: a tool is `completed` (ok, unless `state.metadata.exit` is a
+  non-zero integer: an error with that exit code) or `error` (an error; the
+  2.2.6 samples show no abort or denial text to classify). An `idle` row with
+  outcome `interrupted` is an interrupt.
+- Layout: a virtual append-only log, one record per message then per part,
+  each holding only fields final once complete; an assistant message without
+  `time.completed`, or with a streaming or running tool, ends it.
+  A file a tool returned is recorded without its inline `data:` content (its
+  type, name and MIME type stay). A session moved to another directory
+  (`location-switched`) records both directories, and both are checked
+  against the `[collect]` rules.
+- Not read: child sessions (`parent_id` set).
 
 ### Cursor
 
@@ -475,7 +505,7 @@ with flags or with `--stdin`. It sets, over anything stdin gives:
   name and nothing is collected. The working directory and environment of the
   process that runs `submit` are never read.
 - `context.origin` `session-scan`, `context.detector` (`<reader>/1`: `claude-code-jsonl/1`, `codex-rollout/1`,
-  `copilot-events/1`, `gemini-cli-jsonl/1`, `opencode-sqlite/1`),
+  `copilot-events/1`, `gemini-cli-jsonl/1`, `opencode-sqlite/1`, `opencode-v2-sqlite/1`),
   `context.session_id` and `context.session_harness`, over the collected and
   stdin context; `--context key=value` still goes over all of them.
 

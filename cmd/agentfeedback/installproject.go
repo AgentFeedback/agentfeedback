@@ -78,16 +78,28 @@ type ruleCheckOutcome struct {
 	Status    string              `json:"status"`
 	Harnesses []harness.RuleCheck `json:"harnesses"`
 	Project   *projectCheck       `json:"project,omitempty"`
+	Warnings  []string            `json:"warnings,omitempty"`
 }
 
 // runInstallCheck reports the rule section of each harness (no names:
 // the detected and the recorded ones) and, with project, the repository's
 // pointer section. It writes nothing and takes no lock; any missing or
 // stale section exits 3.
-func runInstallCheck(env harness.Env, pos []string, project, asJSON bool, stdout io.Writer) error {
+func runInstallCheck(env harness.Env, pos []string, project, asJSON bool, stdout, stderr io.Writer) error {
+	var warnings []string
+	named := len(pos) > 0
+	pos, skipped := resolveOpenCodeAlias(env, pos)
+	if skipped {
+		warnings = append(warnings, harness.OpenCodeUnknownVersion)
+		fmt.Fprintf(stderr, "agentfeedback install: warning: %s\n", harness.OpenCodeUnknownVersion)
+	}
+	if named && len(pos) == 0 {
+		// Nothing left to check is never "current".
+		return printInstallOutcome(stdout, installOutcome{Warnings: warnings}, failErr(harness.OpenCodeUnknownVersion, "run agentfeedback install --check opencode-v1 or opencode-v2"))
+	}
 	canonicalHarnessNames(pos)
 	var names []string
-	if len(pos) == 0 || slices.Contains(pos, "all") {
+	if !named || slices.Contains(pos, "all") {
 		recorded, err := env.Recorded()
 		if err != nil {
 			return printInstallOutcome(stdout, installOutcome{}, installErr(err))
@@ -104,7 +116,7 @@ func runInstallCheck(env harness.Env, pos []string, project, asJSON bool, stdout
 	if err != nil {
 		return printInstallOutcome(stdout, installOutcome{}, installErr(err))
 	}
-	out := ruleCheckOutcome{Status: "current", Harnesses: checks}
+	out := ruleCheckOutcome{Status: "current", Harnesses: checks, Warnings: warnings}
 	if project {
 		t, err := findProject()
 		if err != nil {

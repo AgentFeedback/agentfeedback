@@ -21,7 +21,7 @@ import (
 // The wire goldens retain corpus metadata while replacing machine-dependent
 // sizes and hashes only after their relationships have been checked.
 func TestSessionsPushGolden(t *testing.T) {
-	for _, harness := range []string{"claude-code", "codex", "opencode-v1"} {
+	for _, harness := range []string{"claude-code", "codex", "opencode-v1", "opencode-v2"} {
 		t.Run(harness, func(t *testing.T) {
 			home := goldenWorld(t)
 			goldenStores[harness](t, home)
@@ -109,7 +109,7 @@ func TestSessionsPushGolden(t *testing.T) {
 				if gotRequests != "POST begin,PUT part,POST complete" {
 					t.Fatalf("upload/replay requests: %s", gotRequests)
 				}
-				if harness != "opencode-v1" {
+				if harness != "opencode-v1" && harness != "opencode-v2" {
 					raw, err := os.ReadFile(session.Path)
 					if err != nil {
 						t.Fatal(err)

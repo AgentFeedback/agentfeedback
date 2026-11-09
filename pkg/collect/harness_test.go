@@ -28,6 +28,7 @@ func TestHarnessAllowList(t *testing.T) {
 	}{
 		{"omp", []string{"PI_CODING_AGENT_DIR", "OMP_PROFILE"}, map[string]string{"OMP_PROFILE": "profile"}, ""},
 		{"pi", []string{"PI_CODING_AGENT"}, map[string]string{"PI_PROFILE": "profile"}, "PI_MODEL"},
+		{"opencode-v2", []string{"OPENCODE_SESSION_ID"}, map[string]string{"OPENCODE_SESSION_ID": "session_id"}, "OPENCODE_MODEL"},
 		{"opencode-v1", []string{"OPENCODE"}, nil, "OPENCODE_MODEL"},
 		{"codex", []string{"CODEX_SANDBOX"}, nil, ""},
 		{"claude-code", []string{"CLAUDECODE"}, map[string]string{"CLAUDE_CODE_SESSION_ID": "session_id", "CLAUDE_EFFORT": "effort"}, ""},
@@ -87,6 +88,7 @@ func TestHarnessNestedOrder(t *testing.T) {
 		{[]string{"CLAUDECODE", "PI_CODING_AGENT", "OMP_PROFILE"}, "omp"},
 		{[]string{"PI_CODING_AGENT", "PI_CODING_AGENT_DIR"}, "omp"},
 		{[]string{"OPENCODE", "CODEX_SANDBOX", "CLAUDECODE"}, "opencode-v1"},
+		{[]string{"OPENCODE", "OPENCODE_SESSION_ID", "CLAUDECODE"}, "opencode-v2"},
 		{[]string{"PI_CODING_AGENT", "OPENCODE"}, "pi"},
 		{[]string{"CODEX_SANDBOX", "CLAUDECODE"}, "codex"},
 		{[]string{"CLAUDECODE", "PI_MODEL", "OPENCODE_MODEL"}, "claude-code"},

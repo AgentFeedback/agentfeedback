@@ -148,7 +148,13 @@ var opencodeColumns = map[string][]string{
 // checkSchema reports errUnsupported when a needed table or column is
 // missing.
 func checkSchema(ctx context.Context, db *sql.DB) error {
-	for _, table := range []string{"session", "message", "part"} {
+	return checkColumns(ctx, db, []string{"session", "message", "part"}, opencodeColumns)
+}
+
+// checkColumns reports errUnsupported when one of tables lacks a column
+// cols names for it; a missing table has no columns.
+func checkColumns(ctx context.Context, db *sql.DB, tables []string, cols map[string][]string) error {
+	for _, table := range tables {
 		rows, err := db.QueryContext(ctx, "SELECT name FROM pragma_table_info(?)", table)
 		if err != nil {
 			return err
@@ -174,7 +180,7 @@ func checkSchema(ctx context.Context, db *sql.DB) error {
 		if err := rows.Close(); err != nil {
 			return err
 		}
-		for _, col := range opencodeColumns[table] {
+		for _, col := range cols[table] {
 			if !have[col] {
 				return fmt.Errorf("%w: no column %s.%s", errUnsupported, table, col)
 			}
@@ -183,6 +189,21 @@ func checkSchema(ctx context.Context, db *sql.DB) error {
 
 	return nil
 }
+
+// ocHasTable reports whether the database has a table of that name.
+func ocHasTable(ctx context.Context, db *sql.DB, table string) (bool, error) {
+	var n int
+	err := db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = ?", table).Scan(&n)
+
+	return n > 0, err
+}
+
+// errOtherVariant: the database belongs to the other OpenCode reader. A
+// database with a session_v2 table is OpenCode 2's: OpenCode 2 migrates a
+// V1 database in place, adding session_v2 rows with the same session ids
+// and keeping V1's session, message and part tables, so reading it with
+// both readers would list every migrated session twice.
+var errOtherVariant = errors.New("database of the other OpenCode variant")
 
 // opencodeDSN is the immutable DSN of the database at path, so no lock is
 // taken and no -wal or -shm file is opened or created. The path is
@@ -237,7 +258,8 @@ func readOpenCode(path string, fn func(db *sql.DB) error) error {
 			return err
 		}
 		err = withOpenCode(opencodeDSN(path), fn)
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		// The other variant's database is skipped whatever the stamp says.
+		if errors.Is(err, errOtherVariant) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return err
 		}
 		if after, serr := ocStampOf(path); serr == nil && after.equal(before) {
@@ -263,19 +285,63 @@ func withOpenCode(dsn string, fn func(db *sql.DB) error) error {
 // table alone; no message is read. A database that cannot be read, or a
 // session id already listed from an earlier database, is reported in
 // problems. When no database could be read the first error is returned.
+// A database with a session_v2 table is skipped silently (errOtherVariant).
 func (r opencodeReader) candidates(env Env) ([]candidate, []problem, error) {
+	return ocCandidates(env, r.databases, func(ctx context.Context, db *sql.DB, p string) ([]candidate, error) {
+		if v2, err := ocHasTable(ctx, db, "session_v2"); err != nil {
+			return nil, err
+		} else if v2 {
+			return nil, errOtherVariant
+		}
+		if err := checkSchema(ctx, db); err != nil {
+			return nil, err
+		}
+
+		return ocRootSessions(ctx, db, p, "SELECT id, directory, time_created, time_updated FROM session WHERE parent_id IS NULL")
+	})
+}
+
+// ocRootSessions runs query, which selects id, directory, time_created
+// and time_updated, into candidates of the database at p.
+func ocRootSessions(ctx context.Context, db *sql.DB, p, query string) ([]candidate, error) {
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var cands []candidate
+	for rows.Next() {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		var id, dir string
+		var created, updated int64
+		if err := rows.Scan(&id, &dir, &created, &updated); err != nil {
+			return nil, err
+		}
+		cands = append(cands, candidate{sessionID: id, path: p, cwd: dir, mtime: time.UnixMilli(updated)})
+	}
+
+	return cands, rows.Err()
+}
+
+// ocCandidates lists the candidates list returns for every database. A
+// database for which list returns errOtherVariant is skipped without a
+// problem; when every database was skipped the store is absent
+// (fs.ErrNotExist).
+func ocCandidates(env Env, databases func(Env) ([]string, error), list func(ctx context.Context, db *sql.DB, p string) ([]candidate, error)) ([]candidate, []problem, error) {
 	ctx := env.context()
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
-	dbs, err := r.databases(env)
+	dbs, err := databases(env)
 	if err != nil {
 		return nil, nil, err
 	}
 	var out []candidate
 	var problems []problem
 	var first error
-	read := 0
+	read, skipped := 0, 0
 	from := map[string]string{}
 	for _, p := range dbs {
 		if err := ctx.Err(); err != nil {
@@ -283,29 +349,16 @@ func (r opencodeReader) candidates(env Env) ([]candidate, []problem, error) {
 		}
 		var cands []candidate
 		err := readOpenCode(p, func(db *sql.DB) error {
-			cands = nil
-			if err := checkSchema(ctx, db); err != nil {
-				return err
-			}
-			rows, err := db.QueryContext(ctx, "SELECT id, directory, time_created, time_updated FROM session WHERE parent_id IS NULL")
-			if err != nil {
-				return err
-			}
-			defer func() { _ = rows.Close() }()
-			for rows.Next() {
-				if err := ctx.Err(); err != nil {
-					return err
-				}
-				var id, dir string
-				var created, updated int64
-				if err := rows.Scan(&id, &dir, &created, &updated); err != nil {
-					return err
-				}
-				cands = append(cands, candidate{sessionID: id, path: p, cwd: dir, mtime: time.UnixMilli(updated)})
-			}
+			var err error
+			cands, err = list(ctx, db, p)
 
-			return rows.Err()
+			return err
 		})
+		if errors.Is(err, errOtherVariant) {
+			skipped++
+
+			continue
+		}
 		if err != nil {
 			if ctx.Err() != nil {
 				return out, problems, ctx.Err()
@@ -329,6 +382,10 @@ func (r opencodeReader) candidates(env Env) ([]candidate, []problem, error) {
 		}
 	}
 	if read == 0 {
+		if first == nil && skipped > 0 {
+			return nil, problems, fs.ErrNotExist
+		}
+
 		return nil, problems, first
 	}
 
@@ -451,31 +508,34 @@ func (opencodeReader) loadCapture(env Env, c candidate, raw io.Writer) (*transcr
 
 		return tx.Commit()
 	}
-	var err error
-	if raw == nil {
-		err = readOpenCode(c.path, read)
-	} else {
-		// A stream cannot retract an earlier attempt. Reject a changed
-		// source instead of appending a retry to bytes already emitted.
-		var before, after ocStamp
-		before, err = ocStampOf(c.path)
-		if err == nil {
-			err = withOpenCode(opencodeDSN(c.path), read)
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return nil, err
-			}
-			var stampErr error
-			after, stampErr = ocStampOf(c.path)
-			if stampErr != nil || !after.equal(before) {
-				err = ErrCaptureChanged
-			}
-		}
-	}
-	if err != nil {
+	if err := readOpenCodeCapture(c.path, raw != nil, read); err != nil {
 		return nil, err
 	}
 
 	return t, nil
+}
+
+// readOpenCodeCapture is readOpenCode, except that a streamed read is
+// done once: a stream cannot retract an earlier attempt, so a source
+// changed during it is ErrCaptureChanged instead of a retry appended to
+// bytes already emitted.
+func readOpenCodeCapture(path string, stream bool, read func(db *sql.DB) error) error {
+	if !stream {
+		return readOpenCode(path, read)
+	}
+	before, err := ocStampOf(path)
+	if err != nil {
+		return err
+	}
+	err = withOpenCode(opencodeDSN(path), read)
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	if after, stampErr := ocStampOf(path); stampErr != nil || !after.equal(before) {
+		return ErrCaptureChanged
+	}
+
+	return err
 }
 
 // The fields of a message and of a part that the virtual log records:

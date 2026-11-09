@@ -44,6 +44,7 @@ func stdioMember(exe string, args ...string) map[string]struct {
 	return map[string]m{
 		"cursor":      {".cursor/mcp.json", []string{"mcpServers"}, typed},
 		"opencode-v1": {".config/opencode/opencode.jsonc", []string{"mcp"}, `{"type":"local","command":[` + bin + `,` + list[1:] + `,"enabled":true}`},
+		"opencode-v2": {".config/opencode/opencode.jsonc", []string{"mcp", "servers"}, `{"type":"local","command":[` + bin + `,` + list[1:] + `}`},
 		"omp":         {".omp/agent/mcp.json", []string{"mcpServers"}, typed},
 		"pi":          {".pi/agent/mcp.json", []string{"mcpServers"}, plain},
 		"copilot":     {".copilot/mcp-config.json", []string{"mcpServers"}, `{"type":"local","command":` + bin + `,"args":` + list + `,"tools":["*"]}`},

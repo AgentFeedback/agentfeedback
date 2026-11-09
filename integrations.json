@@ -38,6 +38,15 @@
       "docs": "docs/operate.md"
     },
     {
+      "id": "opencode-v2",
+      "name": "OpenCode 2",
+      "kind": "adapter",
+      "install": "`agentfeedback install opencode-v2`",
+      "status": "live-checked",
+      "date": "2026-11-09",
+      "docs": "docs/operate.md"
+    },
+    {
       "id": "omp",
       "name": "Oh My Pi (omp)",
       "kind": "adapter",

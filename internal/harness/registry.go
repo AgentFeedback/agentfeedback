@@ -125,6 +125,9 @@ var goos = runtime.GOOS
 
 const verifiedDate = "2026-10-07"
 
+// openCodeV2VerifiedDate is when the opencode-v2 adapter was checked live.
+const openCodeV2VerifiedDate = "2026-11-09"
+
 func documented() Verified { return Verified{Level: LevelDocumented, Date: verifiedDate} }
 
 func dirs(f func(Env) string) func(Env) []string {
@@ -489,6 +492,48 @@ var registry = []Adapter{
 			reminder: "not supported",
 			rule:     "`<opencode>/AGENTS.md`",
 			mcp:      "`mcp.agentfeedback` in the first of `opencode.jsonc`, `opencode.json` that has an `mcp` member, else an existing `opencode.jsonc`, else `opencode.json`",
+		},
+	},
+	{
+		Name:       "opencode-v2",
+		Binaries:   []string{"opencode"},
+		ConfigDirs: dirs(Env.opencodeDir),
+		SkillDirs:  func(e Env) []string { return []string{filepath.Join(e.opencodeDir(), "skills")} },
+		Instructions: Instructions{
+			Global:  func(e Env) []string { return []string{filepath.Join(e.opencodeDir(), "AGENTS.md")} },
+			Project: []string{"AGENTS.md"},
+		},
+		Hook: Hook{
+			File:    func(e Env) string { return filepath.Join(e.opencodeDir(), "plugins", "agentfeedback.js") },
+			Format:  "plugin",
+			Events:  events("tool.execute.after", "session.idle", "none"),
+			Deliver: "session.idle",
+		},
+		MCP:      MCP{File: func(e Env) string { return filepath.Join(e.opencodeDir(), "opencode.jsonc") }, Path: []string{"mcp", "servers"}, EnvRef: "{env:AGENT_FEEDBACK_API_KEY}"},
+		Sessions: Sessions{Locations: []string{"$OPENCODE_DB, else <data home>/opencode/opencode.db and opencode-*.db"}, Reader: "opencode-v2-sqlite", Verified: Verified{Level: LevelLiveChecked, Date: openCodeV2VerifiedDate, Note: "OpenCode 2.2.6: sessions list and digest on a real V2 database (session_v2/session_message schema), read-only; fixtures and golden tests"}},
+		Verified: Verified{Level: LevelLiveChecked, Date: openCodeV2VerifiedDate, Note: "OpenCode 2.2.6: the plugin ran in a session (shell failure counted on tool execute.after, note delivered on session.execution.succeeded through the experimental ctx.session.instructions.entry.put); the skill and the global AGENTS.md reach the model; the MCP entry connects in the V1 and the native mcp.servers shape (opencode mcp list does not show it)"},
+		hook: func(p *plan, o Options) ([]Item, []string) {
+			return []Item{fileItem(KindPluginFile, RoleHook, filepath.Join(p.env.opencodeDir(), "plugins", "agentfeedback.js"), opencodeV2Plugin(o.Binary, p.env.SpawnErrorPath("opencode-v2")))}, nil
+		},
+		mcpValue: func(u string) string {
+			return string(obj("type", str("remote"), "url", str(u), "oauth", "false",
+				"headers", bearer("{env:AGENT_FEEDBACK_API_KEY}")))
+		},
+		mcpStdio: func(bin string, args []string) string {
+			return string(obj("type", str("local"), "command", jsonArray(append([]string{bin}, args...))))
+		},
+		files: func(e Env) ([]string, []string) {
+			oc := e.opencodeDir()
+
+			return []string{filepath.Join(oc, "opencode.jsonc"), filepath.Join(oc, "opencode.json")}, []string{filepath.Join(oc, "plugins", "agentfeedback.js")}
+		},
+		row: docsRow{
+			detected: "`opencode` reporting 2.x",
+			skill:    "`<opencode>/skills/agentfeedback/SKILL.md`",
+			hook:     "plugin `<opencode>/plugins/agentfeedback.js` (on `ctx.tool.hook(\"execute.after\")` for `shell`, and `session.execution.succeeded`, which delivers the note as a session instructions entry)",
+			reminder: "not supported",
+			rule:     "`<opencode>/AGENTS.md`",
+			mcp:      "`mcp.servers.agentfeedback` in the first of `opencode.jsonc`, `opencode.json` that has an `mcp` member, else an existing `opencode.jsonc`, else `opencode.json`",
 		},
 	},
 	{
@@ -894,7 +939,7 @@ func init() {
 
 				return []Item{it}, nil, nil
 			}
-		case "opencode-v1":
+		case "opencode-v1", "opencode-v2":
 			a.mcp = jsonMCP(a, (*plan).opencodeConfig, nil, nil)
 		case "amp":
 			a.mcp = jsonMCP(a, (*plan).ampConfig, nil, nil)

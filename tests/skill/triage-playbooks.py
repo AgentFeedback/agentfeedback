@@ -476,11 +476,11 @@ def store_gemini(work):
     copy_store(STORES / "gemini-cli", work / "home/.gemini", {"{{SID}}": "c0ffee01", "{{CWD}}": golden_proj(work)})
 
 
-def store_opencode(work):
+def store_opencode(work, fixture="opencode"):
     cwd = golden_proj(work)
     data = work / "home/.local/share/opencode"
     data.mkdir(parents=True, exist_ok=True)
-    sql = (STORES / "opencode/opencode.sql").read_text().replace("{{SID}}", "ses_golden0001").replace("{{CWD}}", cwd)
+    sql = (STORES / fixture / "opencode.sql").read_text().replace("{{SID}}", "ses_golden0001").replace("{{CWD}}", cwd)
     db = sqlite3.connect(data / "opencode.db")
     try:
         db.execute("PRAGMA journal_mode=WAL")
@@ -491,7 +491,8 @@ def store_opencode(work):
 
 
 SESSION_STORES = {"claude-code": store_claude, "codex": store_codex, "copilot": store_copilot,
-                  "gemini-cli": store_gemini, "opencode-v1": store_opencode}
+                  "gemini-cli": store_gemini, "opencode-v1": store_opencode,
+                  "opencode-v2": lambda work: store_opencode(work, "opencode-v2")}
 
 
 def session_env(work, url=None):

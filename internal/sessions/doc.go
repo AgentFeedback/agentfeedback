@@ -25,7 +25,11 @@
 //     Gated on the path in <project>/.project_root.
 //   - opencode-sqlite (opencode.go): Env.OpenCodeDB, else opencode.db and
 //     opencode-*.db in <DataHome>/opencode, opened read-only. Gated on the
-//     session row's directory.
+//     session row's directory. A database with a session_v2 table is
+//     skipped: it is opencode-v2-sqlite's.
+//   - opencode-v2-sqlite (opencode2.go): the same databases, those with a
+//     session_v2 table only (OpenCode 2 migrates a V1 database in place).
+//     Gated on the session_v2 row's directory.
 //
 // Cursor and Antigravity stores were examined and are not read: their
 // registry records say why. A directory of a store that cannot be listed

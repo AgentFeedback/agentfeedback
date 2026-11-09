@@ -69,12 +69,15 @@ type harness struct {
 
 // harnesses is the allow-list, in detection order: the first harness with a
 // non-empty marker wins. Nested launches carry the outer harness's markers
-// too, so inner harnesses are listed before claude-code. PI_MODEL and
+// too, so inner harnesses are listed before claude-code. OpenCode 2 sets
+// OPENCODE_SESSION_ID beside the OPENCODE both versions set, so it comes
+// first. PI_MODEL and
 // OPENCODE_MODEL are legacy wrapper variables, checked last. No prefix is ever
 // sniffed: shell profiles export keys such as OPENCODE_API_KEY everywhere.
 var harnesses = []harness{
 	{name: "omp", markers: []string{"PI_CODING_AGENT_DIR", "OMP_PROFILE"}, vars: []envVar{{"OMP_PROFILE", "profile"}}},
 	{name: "pi", markers: []string{"PI_CODING_AGENT"}, vars: []envVar{{"PI_PROFILE", "profile"}}, model: "PI_MODEL"},
+	{name: "opencode-v2", markers: []string{"OPENCODE_SESSION_ID"}, vars: []envVar{{"OPENCODE_SESSION_ID", "session_id"}}, model: "OPENCODE_MODEL"},
 	{name: "opencode-v1", markers: []string{"OPENCODE"}, model: "OPENCODE_MODEL"},
 	{name: "codex", markers: []string{"CODEX_SANDBOX"}},
 	{name: "claude-code", markers: []string{"CLAUDECODE"}, vars: []envVar{{"CLAUDE_CODE_SESSION_ID", "session_id"}, {"CLAUDE_EFFORT", "effort"}}},

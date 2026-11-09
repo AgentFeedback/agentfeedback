@@ -44,6 +44,7 @@ tests/playbooks/                test_playbooks.py for scripts/playbooks.py (stub
 tests/docs/                     test_check_docs.py for scripts/check-docs.py (fixture trees, no git); test_api_examples.py for contract-check.py's api.md example check (inline OpenAPI document)
 tests/ci/                       Dockerfile of the gate toolchain image: the Go toolchain go.mod pins, Node, uv, just, shellcheck and the Claude Code CLI; base images pinned by digest, CLIs by version
 tests/live/                     claude-code.sh, the live harness check's assertions (run by scripts/live-harness.sh)
+tests/plugins/                  opencode-v2.test.mjs: the OpenCode 2 plugin against a fake ctx under node --test, run by internal/harness TestOpenCodeV2PluginNode (skipped without node)
 docs/                           api.md (narrative of the v1 contract, one example per operation, JSON bodies checked), openapi.yaml (the v1 contract; embed.go makes it a Go package for internal/api), operate.md, develop.md, security.md, sessions.md (the session logs: harness stores, states, digest format), releases.md; recipes/ holds http-curl.md and http-powershell.md, the prompt forms rendered by `just skills`; integrations/ holds the hub submission guides (clawhub.md, hermes.md, nanoclaw.md)
 schemas/                        JSON Schema 2020-12: the submission envelope and the kind schemas (friction, review); embed.go makes them a Go package for pkg/schema; integrations.v1.json, the schema of integrations.json (repository data, not embedded by pkg/schema)
 integrations.json               the list of integrations (harness adapters, platforms, hubs) with their status, validated by schemas/integrations.v1.json; the README Integrations table is generated from it
@@ -291,7 +292,9 @@ published by the release step ([releases.md](releases.md)).
    coverage checks (`cmd/agentfeedback/coverage.toml`,
    `internal/mcp/coverage.toml`): an API change that leaves either stale
    fails here; and the root integration tests (`integrations.json`, the
-   README table, the hub artifacts).
+   README table, the hub artifacts); and the generated OpenCode 2
+   plugin under `node --test` (`tests/plugins/`, skipped when `node` is not
+   on `PATH`).
 6. `shellcheck -x -P SCRIPTDIR skills/*/scripts/*.sh tests/skill/*.sh`.
 7. The skill tests: `bash tests/skill/run-tests.sh`,
    `python3 tests/skill/test_cluster.py`,

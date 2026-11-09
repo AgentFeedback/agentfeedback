@@ -301,7 +301,7 @@ func TestInstall_EveryAdapterRoundTrip(t *testing.T) {
 					}
 					// The seeded files each combination edits in place.
 					edits := map[string]bool{
-						"claude-code/cli": true, "codex/mcp": true, "cursor/cli": true, "cursor/mcp": true, "opencode-v1/mcp": true, "omp/mcp": true,
+						"claude-code/cli": true, "codex/mcp": true, "cursor/cli": true, "cursor/mcp": true, "opencode-v1/mcp": true, "opencode-v2/mcp": true, "omp/mcp": true,
 						"copilot/mcp": true, "antigravity/cli": true, "antigravity/mcp": true, "devin/cli": true, "devin/mcp": true,
 						"kiro/mcp": true, "cline/mcp": true, "amp/mcp": true, "vscode/mcp": true,
 					}

@@ -258,7 +258,7 @@ one `install-check` report, the check of step 3.2, and prints what each hook
 does and the next commands. Run it again after an upgrade: it replaces the
 `flush --hook` entries earlier releases wired. It backs up every file it
 touches, and `agentfeedback uninstall <harness>` reverts it. The harnesses
-it knows: `claude-code`, `codex`, `cursor`, `opencode-v1`, `omp`, `pi`,
+it knows: `claude-code`, `codex`, `cursor`, `opencode-v1`, `opencode-v2`, `omp`, `pi`,
 `copilot`, `antigravity`, `devin`, `kiro`, `cline`, `amp`, `vscode`,
 `gemini-cli`; `--harnesses all` wires every detected one, only when the
 human agrees. It does not run on Windows (it refuses and lists the steps to
@@ -283,8 +283,9 @@ CLI commands can launch a bounded, detached
 daemon, scheduler or new hook registration is installed. See
 [Session policy settings](docs/operate.md#session-policy-settings).
 
-OpenCode's `opencode` input alias selects V1; with a 2.x binary on `PATH`,
-`install opencode` writes nothing and warns that V2 is not available.
+OpenCode's `opencode` input alias selects the variant `opencode --version`
+reports: `opencode-v1` for 1.x, `opencode-v2` for 2.x. Installing one variant
+replaces the other's wiring.
 
 ```sh
 "<binary>" init --yes --harnesses <harness> --json

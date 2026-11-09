@@ -1,0 +1,66 @@
+{
+  "notice": "This digest is shown to the model that reads it and so reaches that model's provider; agentfeedback itself stores and sends none of it.",
+  "detector_version": "1",
+  "sessions": [
+    {
+      "ref": "opencode-v2:ses_golden0001",
+      "harness": "opencode-v2",
+      "session_id": "ses_golden0001",
+      "project": "<CWD>",
+      "cwd": "<CWD>",
+      "start": "2026-11-09T10:26:40.500Z",
+      "end": "2026-11-09T10:27:31.000Z",
+      "model": "test-model-2",
+      "from_offset": 0,
+      "truncated": false,
+      "counts": {
+        "entries": 13,
+        "prompts": 2,
+        "tool_calls": 1,
+        "tool_errors": 1,
+        "interrupts": 1,
+        "denials": 0,
+        "unparsed": 0
+      },
+      "events": [
+        {
+          "span": "msg_0001",
+          "ref": "opencode-v2:ses_golden0001#msg_0001",
+          "at": "2026-11-09T10:26:41.000Z",
+          "type": "prompt",
+          "summary": "Run the build and fix what fails."
+        },
+        {
+          "span": "msg_0002/1",
+          "ref": "opencode-v2:ses_golden0001#msg_0002/1",
+          "at": "2026-11-09T10:26:44.000Z",
+          "type": "tool_call",
+          "tool": "shell",
+          "args_digest": "d1121e35fa7a",
+          "status": "error",
+          "exit_code": 2,
+          "error_class": "exit",
+          "excerpt": "make: *** [build] Error 2\nExited with code 2"
+        },
+        {
+          "span": "msg_0006",
+          "ref": "opencode-v2:ses_golden0001#msg_0006",
+          "at": "2026-11-09T10:27:11.000Z",
+          "type": "prompt",
+          "summary": "Try again with verbose output."
+        }
+      ],
+      "retries": [],
+      "denials": [],
+      "flagged": [
+        {
+          "span": "msg_0006",
+          "phrase": "again"
+        }
+      ],
+      "final_excerpt": "Running the build verbosely."
+    }
+  ],
+  "errors": [],
+  "deferred": []
+}

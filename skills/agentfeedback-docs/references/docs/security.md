@@ -116,7 +116,7 @@ and failures never grant permission. See
 [Session policy settings](operate.md#session-policy-settings) for cache and
 backoff behavior.
 
-`sessions push` sends eligible Claude Code, Codex and OpenCode V1 transcripts
+`sessions push` sends eligible Claude Code, Codex and OpenCode (V1 and 2) transcripts
 to that configured server when its organisation enables processing. These
 contain prompts, responses, tool calls and tool output. Collection rules,
 repository upload vetoes and the policy's consent cutoff apply. Every scrub
@@ -155,7 +155,7 @@ them) are read only by `agentfeedback sessions`, the UI sessions page,
 `submit --context-from`, the stdio `sessions_*` tools and the stdio
 `submit_feedback`'s `context_from` (in remote mode too: the session is read
 here, and only the body built from it is sent), on demand and never written;
-the OpenCode V1 (`opencode-v1`)
+the OpenCode (`opencode-v1` and `opencode-v2`)
 database is opened read-only, without creating any file beside it. The `[collect]`
 rules are applied per session before a log is opened, and a digest is
 bounded and scrubbed before it is shown. Only watermark and push-outcome
@@ -213,7 +213,8 @@ What the client collects into `context` for a friction, all best-effort
   `machine`.
 - Harness and session: the harness, model, session id, agent, effort and
   profile, from a fixed allow-list of environment variables looked up by
-  name.
+  name (for OpenCode 2, `OPENCODE_SESSION_ID`, which also tells it from
+  OpenCode V1).
 - The event time, and any non-code keys you pass (`app`, `workspace`,
   `url`, `channel`, `task_id`, `workflow`).
 

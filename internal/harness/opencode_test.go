@@ -64,7 +64,7 @@ func TestOpenCodeVersionDetection(t *testing.T) {
 					t.Fatal(err)
 				}
 				for _, st := range statuses {
-					if st.Name == "opencode-v1" && (len(st.Problems) != 1 || !strings.Contains(st.Problems[0], "uninstall opencode-v1")) {
+					if st.Name == "opencode-v1" && (len(st.Problems) != 1 || !strings.Contains(st.Problems[0], "install opencode-v2")) {
 						t.Fatalf("diagnosis %+v", st)
 					}
 				}

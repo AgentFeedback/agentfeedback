@@ -163,7 +163,7 @@ var errUnsupported = errors.New("unsupported session store format")
 
 // readerOrder is the listing order of the readers, by harness; a harness
 // whose reader is not registered is skipped.
-var readerOrder = []string{"claude-code", "codex", "copilot", "gemini-cli", "opencode-v1"}
+var readerOrder = []string{"claude-code", "codex", "copilot", "gemini-cli", "opencode-v1", "opencode-v2"}
 
 // registered are the readers register added, by harness.
 var registered = map[string]reader{}

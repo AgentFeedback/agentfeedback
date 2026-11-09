@@ -1306,15 +1306,28 @@ func (e Env) Run(req Request) (Result, error) {
 		return Result{}, err
 	}
 	p := newPlan(e, man)
+	replaced := map[string]string{}
 	for name, n := range located {
 		if slices.Contains(req.Harnesses, name) {
 			p.notes[name] = append(p.notes[name], n)
 		}
 	}
+	if !req.Uninstall && slices.Contains(req.Harnesses, "opencode-v1") && slices.Contains(req.Harnesses, "opencode-v2") {
+		return Result{}, &Refusal{Problem: "opencode-v1 and opencode-v2 share one configuration directory", Next: "install one of them"}
+	}
 	for _, name := range req.Harnesses {
 		if req.Uninstall {
 			err = p.uninstall(name)
 		} else {
+			// OpenCode V1 and V2 share one directory and one plugin file:
+			// installing one variant replaces the other's recorded wiring.
+			if other := openCodeOther(name); other != "" && p.man.Harnesses[other] != nil {
+				if err := p.uninstall(other); err != nil {
+					return Result{}, err
+				}
+				p.notes[name] = append(p.notes[name], "replaced the "+other+" wiring (OpenCode V1 and V2 share "+e.opencodeDir()+")")
+				replaced[name] = other
+			}
 			err = p.install(name, req.Options)
 		}
 		if err != nil {
@@ -1326,6 +1339,12 @@ func (e Env) Run(req Request) (Result, error) {
 	}
 	if err := p.finalize(); err != nil {
 		return Result{}, err
+	}
+	// The replaced variant's notes (an entry left in place, a missing
+	// backup) show on the harness the run reports; finalize adds some, so
+	// they are moved after it.
+	for name, other := range replaced {
+		p.notes[name] = append(p.notes[name], p.notes[other]...)
 	}
 	e.recordLocations(p.man)
 	p.order()
@@ -1391,6 +1410,18 @@ func (e Env) Run(req Request) (Result, error) {
 	res.Harnesses = p.statuses(req.Harnesses)
 
 	return res, nil
+}
+
+// openCodeOther is the other OpenCode variant of name, or "".
+func openCodeOther(name string) string {
+	switch name {
+	case "opencode-v1":
+		return "opencode-v2"
+	case "opencode-v2":
+		return "opencode-v1"
+	}
+
+	return ""
 }
 
 // order moves the steps that run claude commands first, so their refusal
@@ -1977,11 +2008,15 @@ func (e Env) Status() ([]HarnessStatus, error) {
 	for i := range out {
 		out[i].Detected = e.Detect(out[i].Name)
 		if out[i].Name == "opencode-v1" && e.OpenCodeMajor() == 2 {
-			if info, err := os.Stat(filepath.Join(e.opencodeDir(), "plugins", "agentfeedback.js")); err == nil && info.Mode().IsRegular() {
-				out[i].Problems = append(out[i].Problems, "OpenCode 2 does not run the installed opencode-v1 plugin; run agentfeedback uninstall opencode-v1 and wait for OpenCode V2 support")
+			// Keyed on the record: opencode-v2 writes the same plugin file.
+			if man.Harnesses["opencode-v1"] != nil {
+				out[i].Problems = append(out[i].Problems, "OpenCode 2 does not run the installed opencode-v1 plugin; run agentfeedback install opencode-v2, which replaces it")
 			}
 		}
-		if out[i].Name == "opencode-v1" && e.OpenCodeMajor() == 0 {
+		if out[i].Name == "opencode-v2" && e.OpenCodeMajor() == 1 && man.Harnesses["opencode-v2"] != nil {
+			out[i].Problems = append(out[i].Problems, "OpenCode 1.x does not run the installed opencode-v2 plugin; run agentfeedback install opencode-v1, which replaces it")
+		}
+		if major := e.OpenCodeMajor(); major != 1 && major != 2 && (out[i].Name == "opencode-v1" || out[i].Name == "opencode-v2" && man.Harnesses["opencode-v2"] != nil) {
 			if _, err := e.LookPath("opencode"); err == nil {
 				out[i].Problems = append(out[i].Problems, OpenCodeUnknownVersion)
 			}

@@ -595,7 +595,7 @@ agentfeedback install all --dry-run              # print every file that would c
 agentfeedback uninstall all                      # remove exactly what install added
 ```
 
-Harnesses: `claude-code`, `codex`, `cursor`, `opencode-v1`, `omp`, `pi`, `copilot`, `antigravity`, `devin`, `kiro`, `cline`, `amp`, `vscode`, `gemini-cli`. A
+Harnesses: `claude-code`, `codex`, `cursor`, `opencode-v1`, `opencode-v2`, `omp`, `pi`, `copilot`, `antigravity`, `devin`, `kiro`, `cline`, `amp`, `vscode`, `gemini-cli`. A
 harness counts as detected when its binary is on `PATH` or its directory
 exists, with the OpenCode version check below; a named harness that is not
 detected is wired anyway, with a note.
@@ -606,21 +606,34 @@ Unknown names exit 2. The last stdout line is a JSON outcome (`status`
 changes nothing the second time (`unchanged`); a changed mode, binary path,
 server, `--with-reminder`, `--with-triage`, `--no-hooks` or `--docs` replaces what the previous run added.
 
-OpenCode V1 is `opencode-v1`; `opencode` is an input alias. Detection requires
-`opencode --version` to report major 1, or no binary and an existing OpenCode
-directory. A 2.x binary is not detected as V1. With 2.x on `PATH`,
-`install opencode` writes nothing and warns that `opencode-v2` is not
-available in this release yet; other harnesses named in the same command
-are still installed. Explicitly naming `opencode-v1` still wires V1 with a
-not-detected note. An unreadable or unrecognized version is not detected as
-V1; verify the installed version before explicitly selecting V1. `doctor`
-flags a V1 plugin beside a 2.x binary and recommends uninstalling it.
-Existing manifest entries are read as `opencode-v1`, retaining uninstall
-ownership, backups and shared-file state. The physical OpenCode directories,
-config files, plugin filename and hook-counter directory do not change.
-OpenCode V2 is not supported.
+OpenCode V1 is `opencode-v1` and OpenCode 2 is `opencode-v2`; both read
+`opencode --version`. V1 is detected on major 1, or with no binary and an
+existing OpenCode directory; V2 only on major 2 (the directory alone never
+detects it). `opencode` is an input alias: `install`, `init`, `install
+--check` and the manual steps resolve it by the detected major (V1 when the
+version is 1.x, V2 when 2.x); `uninstall opencode` removes the variant the
+manifest records. An unreadable or unrecognized version, or a major other
+than 1 or 2, detects neither:
+`install opencode` then writes nothing and warns, and naming a variant
+wires it with a not-detected note. The two variants share the OpenCode
+directory (skill, `AGENTS.md` section, `opencode.json(c)`, plugin file), so
+they are never installed together: installing one first removes the other's
+wiring in the same run, with a note, and naming both in one command is
+refused. The replacement is one run: a refusal in either half writes
+nothing. `doctor` flags V1 wiring beside a 2.x binary (and V2 wiring beside a
+1.x binary) and recommends installing the matching variant. Manifest entries written under
+`opencode` are read as `opencode-v1`.
 
-New feedback uses `harness: opencode-v1`. Stored feedback is write-once:
+On OpenCode 2 the plugin counts failed `shell` commands on
+`ctx.tool.hook("execute.after")` and delivers the note when a turn ends
+(`session.execution.succeeded`, failed or interrupted; OpenCode 2 does not
+emit `session.idle`) as the session instructions entry `agentfeedback`,
+which the model reads once at its next step without an extra model turn.
+That instructions API is experimental in OpenCode 2.2.6. `opencode mcp
+list` in 2.2.6 does not show configured servers; the entry still connects
+(its tools are offered inside OpenCode's `execute` tool).
+
+New feedback from OpenCode V1 uses `harness: opencode-v1`, from OpenCode 2 `harness: opencode-v2`. Stored feedback is write-once:
 older `harness: opencode` submissions keep that value. Feedback filters and
 groupings use the stored value, so query both names when reviewing history
 across the rename.
@@ -646,7 +659,9 @@ across the rename.
   with no names, the detected and recorded
   harnesses. It writes nothing and takes no lock. `--json` prints
   `{"status":"current"|"not_current","harnesses":[{"name","file","rule"}]}`,
-  plus `project` with `--project`. Exit 0 when every section is current, 3
+  plus `project` with `--project`, and `warnings` when a named `opencode`
+  could not be resolved to a variant (exit 1 when it was the only name).
+  Exit 0 when every section is current, 3
   when one is missing or stale (`-` does not count), 1 on an error, 2 on
   usage.
 - **`--project`.** `install --project [--yes] [--uninstall] [--dry-run]`
@@ -690,6 +705,7 @@ are not wired on Windows; undo the steps by hand.
 | `codex` | `codex`, `$CODEX_HOME` (default `~/.codex`) | `~/.agents/skills/agentfeedback/SKILL.md` | `<codex home>/hooks.json` `hooks.Stop` (flush only) | `hooks.SessionStart` runs `agentfeedback prime` | `<codex home>/AGENTS.md` | marked `[mcp_servers.agentfeedback]` block in `<codex home>/config.toml` | documented 2026-10-07 |
 | `cursor` | `cursor-agent`, or an `agent` that resolves into a Cursor install; `~/.cursor` | `~/.cursor/skills/agentfeedback/SKILL.md` | `~/.cursor/hooks.json` `hooks.postToolUseFailure` (note) and `hooks.stop` | `hooks.sessionStart` runs `agentfeedback prime --format cursor` | none: Cursor's User Rules live in its settings UI, not in a file | `~/.cursor/mcp.json` `mcpServers.agentfeedback` | documented 2026-10-07 |
 | `opencode-v1` | `opencode` reporting 1.x, or `${XDG_CONFIG_HOME:-~/.config}/opencode` with no binary | `<opencode>/skills/agentfeedback/SKILL.md` | plugin `<opencode>/plugins/agentfeedback.js` (on `tool.execute.after` for `bash`, and `session.idle`, which delivers the note) | not supported | `<opencode>/AGENTS.md` | `mcp.agentfeedback` in the first of `opencode.jsonc`, `opencode.json` that has an `mcp` member, else an existing `opencode.jsonc`, else `opencode.json` | live-checked 2026-10-07 |
+| `opencode-v2` | `opencode` reporting 2.x | `<opencode>/skills/agentfeedback/SKILL.md` | plugin `<opencode>/plugins/agentfeedback.js` (on `ctx.tool.hook("execute.after")` for `shell`, and `session.execution.succeeded`, which delivers the note as a session instructions entry) | not supported | `<opencode>/AGENTS.md` | `mcp.servers.agentfeedback` in the first of `opencode.jsonc`, `opencode.json` that has an `mcp` member, else an existing `opencode.jsonc`, else `opencode.json` | live-checked 2026-11-09 |
 | `omp` | `omp`, `~/.omp` | `~/.omp/agent/skills/agentfeedback/SKILL.md` | extension `~/.omp/agent/extensions/agentfeedback.ts` (on `tool_result` errors, with the note, and `agent_end`, not for subagents) | not supported | `~/.omp/agent/AGENTS.md` | `~/.omp/agent/mcp.json` `mcpServers.agentfeedback` | documented 2026-10-07 |
 | `pi` | `pi`, `~/.pi` | `~/.pi/agent/skills/agentfeedback/SKILL.md` | extension `~/.pi/agent/extensions/agentfeedback.ts` (on `tool_result` errors, with the note as a next-turn message, and `agent_settled`) | not supported | `~/.pi/agent/AGENTS.md` | `~/.pi/agent/mcp.json` `mcpServers.agentfeedback`; needs pi 0.99.0 or later | documented 2026-10-07 |
 | `copilot` | `copilot`, `$COPILOT_HOME` (default `~/.copilot`) | `$COPILOT_HOME/skills/agentfeedback/SKILL.md` | file `$COPILOT_HOME/hooks/agentfeedback.json` (`postToolUseFailure`, with the note on exit 2, and `agentStop`) | not supported | `$COPILOT_HOME/copilot-instructions.md` | `$COPILOT_HOME/mcp-config.json` `mcpServers.agentfeedback` | documented 2026-10-07 |
@@ -966,9 +982,10 @@ are not wired on Windows; undo the steps by hand.
 - **Cursor** also runs Claude Code's hooks and skills.
 - **Verification status.** The table's Verified column and `install --list`
   show how far each harness was checked: Claude Code by the live harness
-  gate; OpenCode loads the skill and connects the MCP entry; the hook
-  commands, the OpenCode plugin and the omp extension ran outside a live
-  session; every other harness is written from its documentation, dated in
+  gate; OpenCode V1 loads the skill and connects the MCP entry; OpenCode 2
+  ran its plugin in a session (a failure counted, the note delivered) and
+  reads the skill, the rule and the MCP entry; the hook commands, the
+  OpenCode V1 plugin and the omp extension ran outside a live session; every other harness is written from its documentation, dated in
   the table.
 
 ## Build from source

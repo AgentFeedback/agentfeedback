@@ -8,7 +8,8 @@ import (
 
 // Install's whole-file skill items (the skill, the docs and the triage
 // skills) assume no two harnesses share a skills directory: two records
-// would then claim the same file.
+// would then claim the same file. The two OpenCode variants share one
+// directory by design: installing either removes the other's record first.
 func TestSkillDirsDisjoint(t *testing.T) {
 	e := testEnv(t)
 	type dir struct{ harness, path string }
@@ -21,7 +22,7 @@ func TestSkillDirsDisjoint(t *testing.T) {
 	sep := string(filepath.Separator)
 	for i, a := range dirs {
 		for j, b := range dirs {
-			if i == j {
+			if i == j || (openCodeOther(a.harness) == b.harness) {
 				continue
 			}
 			if a.path == b.path || strings.HasPrefix(b.path, a.path+sep) {
