@@ -1,3 +1,32 @@
-{{define "content"}}
-<p>Session status is not available in this version. It arrives with the <code>sessions</code> command.</p>
+{{define "content"}}{{with .Data}}
+<p>Local session status. Counts and saved selection only; no transcript or digest content.</p>
+{{range .Harnesses}}
+<section class="session-store">
+<h2>{{.Harness}}</h2>
+<dl>
+<dt>Location</dt><dd><code>{{.Location}}</code></dd>
+<dt>Store state</dt><dd>{{.Store}}</dd>
+</dl>
+<h3>Problems</h3>
+<ul>{{range .Problems}}<li>{{.}}</li>{{else}}<li>None.</li>{{end}}</ul>
+<table class="session-states">
+<caption>Session state counts</caption>
+<thead><tr><th>state</th><th>count</th></tr></thead>
+<tbody>
+{{range $state, $count := .States}}<tr><td>{{$state}}</td><td>{{$count}}</td></tr>
+{{else}}<tr><td colspan="2">No sessions.</td></tr>
+{{end}}</tbody>
+</table>
+</section>
+{{else}}<p>No harness stores reported.</p>
 {{end}}
+<h2>Saved selection</h2>
+{{with .Selection}}
+<dl>
+<dt>Harnesses</dt><dd>{{range .Harnesses}}<code>{{.}}</code> {{else}}All harnesses.{{end}}</dd>
+<dt>Since</dt><dd>{{if .Since}}{{.Since}}{{else}}All time.{{end}}</dd>
+<dt>Limit</dt><dd>{{if .Limit}}{{.Limit}}{{else}}Unlimited.{{end}}</dd>
+</dl>
+{{else}}<p>No saved selection.</p>
+{{end}}
+{{end}}{{end}}

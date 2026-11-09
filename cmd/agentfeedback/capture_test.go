@@ -17,6 +17,11 @@ import (
 
 func TestCaptureCommandsSharePolicyCache(t *testing.T) {
 	newInstallEnv(t)
+	// This exercises foreground policy caching. Automatic sweeps refresh
+	// consent independently and are covered by the sweep tests.
+	oldSweep := captureSweep
+	captureSweep = func(string, string, capture.SweepOptions) error { return nil }
+	t.Cleanup(func() { captureSweep = oldSweep })
 	live := newLive(t, testKey)
 	var requests atomic.Int32
 	srv := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

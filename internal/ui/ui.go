@@ -1,9 +1,9 @@
-// Package ui is the read-only web page over the queue that agentfeedback ui
-// serves on loopback: the queue, one record with its recomputed warnings,
-// the stats and a sessions placeholder. It reads through the v1 API client
-// only (GET), never mounts the API or /mcp, and answers nothing unless the
-// request names the bound loopback host, carries no foreign Origin and
-// starts its path with the launch token.
+// Package ui is the read-only web page that agentfeedback ui serves on
+// loopback: the queue, one record with its recomputed warnings, stats and
+// local session status. Queue data reads through the v1 API client (GET);
+// session status reads through the configured local provider. It never
+// mounts the API or /mcp, and answers only requests naming the loopback
+// host, carrying no foreign Origin and starting with the launch token.
 package ui
 
 import (
@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agentfeedback/agentfeedback/v4/internal/sessions"
 	"github.com/agentfeedback/agentfeedback/v4/pkg/client"
 )
 
@@ -37,6 +38,9 @@ type Source interface {
 type Config struct {
 	// Source answers the API requests.
 	Source Source
+	// SessionsStatus reads local session status, independently of Source.
+	// Nil reports that session status is unavailable.
+	SessionsStatus func(context.Context) (sessions.StatusOutput, error)
 	// Token is the first path segment every request must carry.
 	Token string
 	// Addr is the bound loopback address, host:port; requests must name it
@@ -66,13 +70,14 @@ func NewToken() (string, error) {
 }
 
 type handler struct {
-	src     Source
-	token   string
-	hosts   []string
-	origins []string
-	mode    string
-	now     func() time.Time
-	pages   map[string]*template.Template
+	src            Source
+	sessionsStatus func(context.Context) (sessions.StatusOutput, error)
+	token          string
+	hosts          []string
+	origins        []string
+	mode           string
+	now            func() time.Time
+	pages          map[string]*template.Template
 }
 
 // New returns the handler for cfg.
@@ -95,7 +100,7 @@ func New(cfg Config) (http.Handler, error) {
 		return nil, fmt.Errorf("ui: address %q has no bound port", cfg.Addr)
 	}
 	hosts := []string{net.JoinHostPort(ip.String(), port), net.JoinHostPort("localhost", port)}
-	h := &handler{src: cfg.Source, token: cfg.Token, hosts: hosts, mode: cfg.Mode, now: cfg.Now}
+	h := &handler{src: cfg.Source, sessionsStatus: cfg.SessionsStatus, token: cfg.Token, hosts: hosts, mode: cfg.Mode, now: cfg.Now}
 	for _, a := range hosts {
 		h.origins = append(h.origins, "http://"+a)
 	}
@@ -164,7 +169,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case rest == "stats":
 		h.stats(w, r)
 	case rest == "sessions":
-		h.render(w, r, http.StatusOK, "sessions", page{Title: "Sessions"})
+		h.sessions(w, r)
 	case rest == "static/app.css":
 		h.static(w, r, "app.css", "text/css; charset=utf-8")
 	case rest == "static/app.js":

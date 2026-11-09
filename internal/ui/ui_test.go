@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/agentfeedback/agentfeedback/v4/internal/localmode"
+	"github.com/agentfeedback/agentfeedback/v4/internal/sessions"
 	"github.com/agentfeedback/agentfeedback/v4/pkg/client"
 )
 
@@ -59,13 +60,17 @@ func fixture(t *testing.T) *client.Client {
 	return c
 }
 
-func newHandler(t *testing.T, src Source) (http.Handler, string) {
+func newHandler(t *testing.T, src Source, status ...func(context.Context) (sessions.StatusOutput, error)) (http.Handler, string) {
 	t.Helper()
 	token, err := NewToken()
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := New(Config{Source: src, Token: token, Addr: testAddr, Mode: "local", Now: func() time.Time { return testNow }})
+	provider := func(context.Context) (sessions.StatusOutput, error) { return sessions.StatusOutput{}, nil }
+	if len(status) > 0 {
+		provider = status[0]
+	}
+	h, err := New(Config{Source: src, SessionsStatus: provider, Token: token, Addr: testAddr, Mode: "local", Now: func() time.Time { return testNow }})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -178,11 +183,20 @@ func TestRequestChecks(t *testing.T) {
 		path string
 		ok   bool // 200 on a valid GET
 	}{
-		{p, true}, {p + "submissions/1", true}, {p + "stats", true}, {p + "sessions", true},
-		{p + "static/app.css", true}, {p + "static/app.js", true},
-		{p + "nowhere", false}, {p + "submissions/x", false}, {p + "submissions/99", false},
-		{p + "api/v1/submissions", false}, {p + "mcp", false},
-		{"/api/v1/submissions", false}, {"/mcp", false}, {"/", false},
+		{p, true},
+		{p + "submissions/1", true},
+		{p + "stats", true},
+		{p + "sessions", true},
+		{p + "static/app.css", true},
+		{p + "static/app.js", true},
+		{p + "nowhere", false},
+		{p + "submissions/x", false},
+		{p + "submissions/99", false},
+		{p + "api/v1/submissions", false},
+		{p + "mcp", false},
+		{"/api/v1/submissions", false},
+		{"/mcp", false},
+		{"/", false},
 	}
 	str := func(s string) *string { return &s }
 	for _, rt := range routes {
@@ -384,8 +398,10 @@ func TestRecord_InferredKind(t *testing.T) {
 func TestStats(t *testing.T) {
 	h, token := newHandler(t, fixture(t))
 	body := get(t, h, "/"+token+"/stats")
-	for _, want := range []string{"<th>total</th><td>3</td>", "<th>open</th><td>2</td>", "<th>processed</th><td>1</td>", "<th>redacted</th><td>0</td>",
-		"By kind", "By project", "By harness", "By category", "By origin", "<td>inbox</td>", "<td>alpha</td><td>2</td>", "<td>documentation</td>", "Recurring", "service 0.0.0-test"} {
+	for _, want := range []string{
+		"<th>total</th><td>3</td>", "<th>open</th><td>2</td>", "<th>processed</th><td>1</td>", "<th>redacted</th><td>0</td>",
+		"By kind", "By project", "By harness", "By category", "By origin", "<td>inbox</td>", "<td>alpha</td><td>2</td>", "<td>documentation</td>", "Recurring", "service 0.0.0-test",
+	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("stats lacks %q", want)
 		}
@@ -393,13 +409,6 @@ func TestStats(t *testing.T) {
 	body = get(t, h, "/"+token+"/stats?project=beta")
 	if !strings.Contains(body, "<th>total</th><td>1</td>") || !strings.Contains(body, `action="/`+token+`/stats"`) {
 		t.Errorf("filtered stats:\n%s", body)
-	}
-}
-
-func TestSessions(t *testing.T) {
-	h, token := newHandler(t, &fakeSource{})
-	if body := get(t, h, "/"+token+"/sessions"); !strings.Contains(body, "not available in this version") {
-		t.Fatal(body)
 	}
 }
 

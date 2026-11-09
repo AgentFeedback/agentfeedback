@@ -38,8 +38,8 @@ internet.
   there is filed by the next command, so only that user may write it; the
   client never follows a symlink out of it and never reads a file over the
   create limit.
-- `agentfeedback ui` serves a read-only page over the queue on a loopback
-  address only (`--addr` refuses any other). It is its own handler, never the
+- `agentfeedback ui` serves read-only queue and local session-status pages on a
+  loopback address only (`--addr` refuses any other). It is its own handler, never the
   API or the MCP handler: no `/api/v1` or `/mcp` route is reachable through
   it, and every method but `GET` and `HEAD` is refused. A request whose `Host`
   is not the bound address (or `localhost` on the same port) is refused, so a
@@ -48,11 +48,13 @@ internet.
   path carries a random token made at each launch, so another local process
   or page that guesses the port still gets `404`, and no refused request's
   response carries the token; the URL is printed once,
-  and anyone who has it can read the queue until the process exits. Every
+  and anyone who has it can read the queue and local session store paths,
+  problems, counts and saved selection until the process exits. Every
   response is `Cache-Control: no-store` with a Content Security Policy that
   allows no remote source, stored text is HTML-escaped, and the page loads
-  no external asset. With `--server` it reads that server with the
-  configured key, which stays in the process.
+  no external asset. With `--server` the queue pages read that server with
+  the configured key, which stays in the process. The sessions page reads
+  local status only, without server requests or digest content.
 
 ## The client on a machine
 
@@ -139,7 +141,7 @@ under the home directory, on every operating system):
 | `${XDG_CACHE_HOME:-~/.cache}/agentfeedback/` | owned, `0700`, files `0600` | `log/client.jsonl`, the hooks' per-session counters (`sessions/`, deleted after 7 days) and last-run records (`hooks/`), `filed/` markers, `digest/` output; `push.lock`, `push.last-started` and `push.last-run.json` coordinate and summarize automatic session sweeps without transcript content |
 | `${XDG_CONFIG_HOME:-~/.config}/agentfeedback/` | owned, `0700`, files `0600` | `config.toml`, the install manifest `install.json`, and `server/` (`api-key`, `serve.env`) from `serve --init` |
 | the working tree's `.git` metadata and `.agentfeedback.toml` | read | the project context and the repository's narrowing rules |
-| harness session stores | read, by `sessions` only | below |
+| harness session stores | read, never written | below |
 | harness skill, hook, MCP and global instruction files | written by `install` and `uninstall` only | below |
 | a repository's `AGENTS.md` or `CLAUDE.md` | written by `install --project` only | below |
 | paths named on the command line | as the command says | `backup <dest.db>`, `import <file>`, `digest --out`, `submit review <run_dir>` (reads it, writes its `.submitted` marker), `server install` (one service file) |
@@ -149,10 +151,11 @@ reports a data-directory path other users can reach, with the `chmod` to
 run.
 
 **Session stores.** The harness session stores ([sessions.md](sessions.md#harnesses) lists
-them) are read only by `agentfeedback sessions`, `submit --context-from`, the
-stdio `sessions_*` tools and the stdio `submit_feedback`'s `context_from`
-(in remote mode too: the session is read here, and only the body built
-from it is sent), on demand and never written; the OpenCode V1 (`opencode-v1`)
+them) are read only by `agentfeedback sessions`, the UI sessions page,
+`submit --context-from`, the stdio `sessions_*` tools and the stdio
+`submit_feedback`'s `context_from` (in remote mode too: the session is read
+here, and only the body built from it is sent), on demand and never written;
+the OpenCode V1 (`opencode-v1`)
 database is opened read-only, without creating any file beside it. The `[collect]`
 rules are applied per session before a log is opened, and a digest is
 bounded and scrubbed before it is shown. Only watermark and push-outcome

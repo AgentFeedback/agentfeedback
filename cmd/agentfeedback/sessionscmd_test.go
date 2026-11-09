@@ -344,7 +344,7 @@ func TestSubmit_ContextFromRefused(t *testing.T) {
 // that is not a submission uid with a validation problem on uids.
 func TestSessions_MarkToolRejectsUID(t *testing.T) {
 	sessionsWorld(t)
-	svc, err := newSessionsService(os.Getenv, &strings.Builder{})
+	svc, err := newSessionsService(context.Background(), os.Getenv, &strings.Builder{})
 	if err != nil {
 		t.Fatal(err)
 	}

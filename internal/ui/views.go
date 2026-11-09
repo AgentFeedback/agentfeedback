@@ -420,3 +420,19 @@ func (h *handler) stats(w http.ResponseWriter, r *http.Request) {
 	}
 	h.render(w, r, http.StatusOK, "stats", page{Title: "Stats", Data: v})
 }
+
+// sessions shows local store metadata, counts and the saved selection only.
+func (h *handler) sessions(w http.ResponseWriter, r *http.Request) {
+	if h.sessionsStatus == nil {
+		h.fail(w, r, http.StatusServiceUnavailable, "local session status is unavailable")
+
+		return
+	}
+	status, err := h.sessionsStatus(r.Context())
+	if err != nil {
+		h.fail(w, r, http.StatusInternalServerError, err.Error())
+
+		return
+	}
+	h.render(w, r, http.StatusOK, "sessions", page{Title: "Sessions", Data: status})
+}

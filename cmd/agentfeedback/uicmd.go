@@ -10,9 +10,11 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
+	"github.com/agentfeedback/agentfeedback/v4/internal/sessions"
 	"github.com/agentfeedback/agentfeedback/v4/internal/ui"
 )
 
@@ -33,7 +35,7 @@ func serveUI(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	mf := addModeFlags(fs)
 	addr := fs.String("addr", "127.0.0.1:0", "loopback address to listen on: a loopback IP or localhost, with a port (0 picks one)")
 	fs.Usage = func() {
-		fmt.Fprintf(fs.Output(), "usage: agentfeedback %s: serve a read-only web page over the queue on loopback until Ctrl-C\n", uiSynopsis)
+		fmt.Fprintf(fs.Output(), "usage: agentfeedback %s: serve read-only queue and local session status pages on loopback until Ctrl-C\n", uiSynopsis)
 		fs.PrintDefaults()
 	}
 	if err := parseFlags(fs, args, stderr); err != nil {
@@ -63,7 +65,46 @@ func serveUI(ctx context.Context, args []string, stdout, stderr io.Writer) error
 		return failErr(fmt.Sprintf("agentfeedback ui cannot listen on %s: %s", listen, oneLine(err.Error())), "pick another --addr port")
 	}
 	bound := ln.Addr().String()
-	h, err := ui.New(ui.Config{Source: c, Token: token, Addr: bound, Mode: mode, Now: nowFunc})
+	// Cancel initialization on shutdown, then drain session readers before
+	// invocation cleanup closes their shared local database.
+	ctx, cancelSessions := context.WithCancel(ctx)
+	var sessionsActive sync.RWMutex
+	var sessionsStopped bool
+	defer func() {
+		cancelSessions()
+		sessionsActive.Lock()
+		sessionsStopped = true
+		sessionsActive.Unlock()
+	}()
+	var sessionsMu sync.Mutex
+	var sessionsSvc *sessionsService
+	h, err := ui.New(ui.Config{
+		Source: c, Token: token, Addr: bound, Mode: mode, Now: nowFunc,
+		SessionsStatus: func(requestCtx context.Context) (sessions.StatusOutput, error) {
+			sessionsActive.RLock()
+			defer sessionsActive.RUnlock()
+			if sessionsStopped {
+				return sessions.StatusOutput{}, context.Canceled
+			}
+			if err := ctx.Err(); err != nil {
+				return sessions.StatusOutput{}, err
+			}
+			// Cache only successful initialization; a corrected config or
+			// transient open failure must not require restarting the UI.
+			sessionsMu.Lock()
+			var initErr error
+			if sessionsSvc == nil {
+				sessionsSvc, initErr = newSessionsService(ctx, os.Getenv, stderr)
+			}
+			svc := sessionsSvc
+			sessionsMu.Unlock()
+			if initErr != nil {
+				return sessions.StatusOutput{}, initErr
+			}
+
+			return sessions.Status(requestCtx, svc.db, svc.env)
+		},
+	})
 	if err != nil {
 		_ = ln.Close()
 
@@ -71,6 +112,7 @@ func serveUI(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	}
 	srv := &http.Server{
 		Handler:           h,
+		BaseContext:       func(net.Listener) context.Context { return ctx },
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      2 * time.Minute,

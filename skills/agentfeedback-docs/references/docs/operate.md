@@ -229,14 +229,16 @@ watches the directory.
 ```bash
 agentfeedback ui                                 # prints http://127.0.0.1:<port>/<token>/; Ctrl-C stops it
 agentfeedback ui --addr 127.0.0.1:8095           # a fixed port
-agentfeedback ui --server https://feedback.example.com   # the same pages over a server, with the configured key
+agentfeedback ui --server https://feedback.example.com   # remote queue and stats with the configured key; sessions stay local
 ```
 
-`ui` serves a read-only page over the queue until Ctrl-C, from the local
-database or, with `--server` or a configured `url`, from that server. In
-local mode it opens the database as every client command does, which
-migrates it and delivers the due spool and inbox entries at start; the page
-itself writes nothing. The pages:
+`ui` serves read-only queue, record, stats and session-status pages until
+Ctrl-C. The queue, records and stats come from the local database or, with
+`--server` or a configured `url`, from that server; sessions always come
+from this machine's harness stores and data-directory database. In local
+mode it opens the database as every client command does, which migrates it
+and delivers the due spool and inbox entries at start; the pages themselves
+write nothing. The pages:
 
 - **Queue:** 50 rows a page, newest first, with filters for project,
   category, harness, model, origin (`context.origin`, matched exactly as
@@ -248,7 +250,12 @@ itself writes nothing. The pages:
   warnings returned when it was created are not stored).
 - **Stats:** totals, groups by kind, project, harness, category and
   origin, and the recurring content hashes, under the same filters.
-- **Sessions:** not available in this version.
+- **Sessions:** every implemented harness reader's store state, location,
+  problems and session counts by state, plus the saved selection. This page
+  reads local harness stores and the data-directory database in both modes,
+  without contacting a server. Normal database initialization and migrations
+  may run; viewing status does not change session state or selection, and
+  shows no digest content.
 
 `--addr` takes a loopback IP or `localhost` with a port (`0`, the default,
 picks one) and refuses anything else. The token in the URL is new at every

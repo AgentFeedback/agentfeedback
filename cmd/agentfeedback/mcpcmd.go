@@ -185,7 +185,7 @@ func buildRelay(ctx context.Context, m clientMode, mf modeFlags, from mcp.Contex
 	var current atomic.Pointer[sdk.ClientSession]
 	current.Store(remote)
 	closeRemote = func() { _ = current.Load().Close() }
-	sessions, err := newSessionsService(os.Getenv, stderr)
+	sessions, err := newSessionsService(ctx, os.Getenv, stderr)
 	if err != nil {
 		closeRemote()
 

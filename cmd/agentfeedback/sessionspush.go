@@ -118,7 +118,7 @@ func runSessionsPush(args []string, stdout, stderr io.Writer) (retErr error) {
 	if err != nil {
 		return errClientSetup(err)
 	}
-	svc, err := newSessionsService(os.Getenv, stderr)
+	svc, err := newSessionsService(context.Background(), os.Getenv, stderr)
 	if err != nil {
 		return err
 	}

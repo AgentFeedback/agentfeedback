@@ -85,13 +85,13 @@ func sessionsEnv(getenv func(string) string) (sessions.Env, error) {
 
 // openSessionsDB opens the data-directory database, whatever the mode:
 // session state is local and never sent to a server. No start-up pass runs.
-func openSessionsDB(getenv func(string) string, stderr io.Writer) (*store.DB, error) {
+func openSessionsDB(ctx context.Context, getenv func(string) string, stderr io.Writer) (*store.DB, error) {
 	if localTarget == nil {
 		path, err := localDBPath(getenv)
 		if err != nil {
 			return nil, err
 		}
-		t, err := localmode.Open(context.Background(), path, clientVersion().Version, stderr)
+		t, err := localmode.Open(ctx, path, clientVersion().Version, stderr)
 		if err != nil {
 			return nil, errLocalOpen(path, err)
 		}
@@ -108,12 +108,12 @@ type sessionsService struct {
 	env sessions.Env
 }
 
-func newSessionsService(getenv func(string) string, stderr io.Writer) (*sessionsService, error) {
+func newSessionsService(ctx context.Context, getenv func(string) string, stderr io.Writer) (*sessionsService, error) {
 	env, err := sessionsEnv(getenv)
 	if err != nil {
 		return nil, err
 	}
-	db, err := openSessionsDB(getenv, stderr)
+	db, err := openSessionsDB(ctx, getenv, stderr)
 	if err != nil {
 		return nil, err
 	}
@@ -287,7 +287,7 @@ func runSessionsList(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	svc, err := newSessionsService(os.Getenv, stderr)
+	svc, err := newSessionsService(context.Background(), os.Getenv, stderr)
 	if err != nil {
 		return err
 	}
@@ -407,7 +407,7 @@ func runSessionsDigest(args []string, stdout, stderr io.Writer) error {
 	if err := checkRefs(refs); err != nil {
 		return usageErr(err.Error(), "name a session as <harness>:<session id>, as sessions list prints it")
 	}
-	svc, err := newSessionsService(os.Getenv, stderr)
+	svc, err := newSessionsService(context.Background(), os.Getenv, stderr)
 	if err != nil {
 		return err
 	}
@@ -524,7 +524,7 @@ func runSessionsMark(args []string, stdout, stderr io.Writer) error {
 	if err := sessions.CheckUIDs(uids); err != nil {
 		return usageErr(oneLine(err.Error()), "pass --ref with the uid of a filed submission")
 	}
-	svc, err := newSessionsService(os.Getenv, stderr)
+	svc, err := newSessionsService(context.Background(), os.Getenv, stderr)
 	if err != nil {
 		return err
 	}
@@ -583,7 +583,7 @@ func runSessionsStatus(args []string, stdout, stderr io.Writer) error {
 			return usageErr(fmt.Sprintf("--limit %d is negative", *limit), "pass 0 for no limit or a positive number")
 		}
 	}
-	svc, err := newSessionsService(os.Getenv, stderr)
+	svc, err := newSessionsService(context.Background(), os.Getenv, stderr)
 	if err != nil {
 		return err
 	}
