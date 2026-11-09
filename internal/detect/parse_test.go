@@ -122,6 +122,10 @@ func TestParse_IgnoreAndSuccess(t *testing.T) {
 		{"antigravity success", "antigravity", "PostToolUse", `{"conversationId":"c","toolCall":{"name":"run_command","args":{"CommandLine":"ls"}},"error":""}`, "", ""},
 		{"opencode success", "opencode", "tool.execute.after", `{"sessionID":"s","tool":"bash","args":{"command":"ls"},"exit":0}`, "", ""},
 		{"omp success", "omp", "tool_result", `{"session_id":"s","tool":"bash","input":{"command":"ls"},"is_error":false}`, "", ""},
+		{"omp interrupt", "omp", "tool_result", `{"session_id":"s","tool":"bash","input":{"command":"sleep 9"},"is_error":true,"is_interrupt":true}`, ClassToolFailed, IgnoreInterrupt},
+		{"pi interrupt", "pi", "tool_result", `{"session_id":"s","tool":"bash","input":{"command":"sleep 9"},"is_error":true,"is_interrupt":true}`, ClassToolFailed, IgnoreInterrupt},
+		{"omp ordinary failure", "omp", "tool_result", `{"session_id":"s","tool":"bash","input":{"command":"false"},"is_error":true,"is_interrupt":false}`, ClassToolFailed, ""},
+		{"pi ordinary failure", "pi", "tool_result", `{"session_id":"s","tool":"bash","input":{"command":"false"},"is_error":true,"is_interrupt":false}`, ClassToolFailed, ""},
 		{"copilot snake keys", "copilot", "PostToolUseFailure", `{"session_id":"s","tool_name":"bash","tool_input":{"command":"x"},"error":"boom"}`, ClassToolFailed, ""},
 	} {
 		got, ok := Parse(tt.harness, tt.event, []byte(tt.payload))

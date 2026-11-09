@@ -427,7 +427,11 @@ func parse(harness, event string, payload []byte) (Event, bool) {
 				return Event{SessionID: sid, Cwd: cwd, ExitCode: -1}, true
 			}
 
-			return failure(sid, cwd, o.str("tool"), o.raw("input"), commandOf(o.sub("input"), "command")), true
+			ev := failure(sid, cwd, o.str("tool"), o.raw("input"), commandOf(o.sub("input"), "command"))
+			if o.boolean("is_interrupt") {
+				ev.Ignore = IgnoreInterrupt
+			}
+			return ev, true
 		case end:
 			return turnEnd(sid, cwd), true
 		}

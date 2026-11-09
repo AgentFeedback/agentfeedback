@@ -1032,6 +1032,9 @@ export default function (pi: any) {
         input: event.input,
         cwd: ctx?.cwd ?? process.cwd(),
         is_error: true,
+        // omp drops exception types; only its canonical abort result is recognizable.
+        is_interrupt: event.details === undefined && event.content?.length === 1 &&
+          event.content[0]?.type === "text" && event.content[0].text === "Operation aborted",
       }),
     );
     if (text) return { additionalContext: text };
@@ -1056,6 +1059,7 @@ export default function (pi: any) {
         input: event.input,
         cwd: ctx?.cwd ?? process.cwd(),
         is_error: true,
+        is_interrupt: ctx?.signal?.aborted === true,
       }),
     );
     if (!text) return;

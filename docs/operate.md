@@ -756,9 +756,19 @@ are not wired on Windows; undo the steps by hand.
   submitted, duplicate, spooled or flushed). Successful `submit_feedback`
   calls through `agentfeedback mcp` also leave that marker, both locally
   and when relaying to a server, using the submitted or locally resolved session.
-  The server's HTTP `/mcp` never writes a client's marker. Interrupted calls,
+  The server's HTTP `/mcp` never writes a client's marker. Recognized aborts,
   permission denials and the agentfeedback commands and MCP tools themselves
-  are not counted. Harnesses that show a note only at another event (the
+  are not counted. Pi skips aborted and blocked calls before `tool_result`;
+  the extension also checks `ctx.signal.aborted`, so a genuine failure arriving
+  while that signal is aborted is ignored too. omp permission denials occur
+  before `tool_result`. Its exception type is lost in that event, so the
+  extension recognizes only a single text block exactly `Operation aborted`
+  with undefined details. This includes internal cancellations or timeouts
+  that use that shape, not just user interrupts. A genuine failure with the
+  identical shape is also ignored; other cancellation messages cannot be
+  classified reliably. These are API/source and isolated callback checks,
+  not authenticated model delivery verification.
+  Harnesses that show a note only at another event (the
   `PreInvocation` of Antigravity, the `session.idle` of OpenCode) get it there,
   within the same turn. Copilot shows a note only when the hook exits 2;
   that is the one case the hook exits non-zero. Stdin that does not end
