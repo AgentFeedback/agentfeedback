@@ -1273,6 +1273,24 @@ func (e Env) Run(req Request) (Result, error) {
 	wanted := make([]string, 0, len(req.Harnesses))
 	for _, name := range req.Harnesses {
 		name = CanonicalName(name)
+		// Check before recorded homes can mask a relative environment override.
+		if !req.Uninstall {
+			var key string
+			switch name {
+			case "claude-code":
+				key = "CLAUDE_CONFIG_DIR"
+			case "codex":
+				key = "CODEX_HOME"
+			}
+			if key != "" {
+				if value := e.Getenv(key); value != "" && !filepath.IsAbs(value) {
+					return Result{}, &Refusal{
+						Problem: key + " is relative",
+						Next:    "set " + key + " to an absolute path or unset it, then run install again",
+					}
+				}
+			}
+		}
 		if !slices.Contains(wanted, name) {
 			wanted = append(wanted, name)
 		}

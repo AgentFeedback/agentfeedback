@@ -1410,6 +1410,40 @@ func TestInstall_DivergedFile(t *testing.T) {
 	}
 }
 
+func TestInstall_RelativeHomesPreserveRecordedUninstall(t *testing.T) {
+	for _, tc := range []struct{ name, key, config string }{
+		{"claude-code", "CLAUDE_CONFIG_DIR", "settings.json"},
+		{"codex", "CODEX_HOME", "hooks.json"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newInstallEnv(t)
+			root := filepath.Join(e.home, "custom-home")
+			t.Setenv(tc.key, root)
+			original := snapshot(t, e.home)
+			if r, _ := installRun(t, "install", tc.name); r.code != 0 {
+				t.Fatalf("initial install: %+v", r)
+			}
+			if _, err := os.Stat(filepath.Join(root, tc.config)); err != nil {
+				t.Fatalf("custom-root configuration: %v", err)
+			}
+			before := snapshot(t, e.home)
+			t.Setenv(tc.key, "relative-home")
+			r, out := installRun(t, "install", tc.name)
+			if r.code != 1 || !strings.Contains(fmt.Sprint(out["message"]), tc.key) {
+				t.Fatalf("relative-home install: %+v", r)
+			}
+			sameTree(t, "refused relative-home reinstall", snapshot(t, e.home), before)
+			if r, _ := installRun(t, "uninstall", tc.name); r.code != 0 {
+				t.Fatalf("recorded uninstall: %+v", r)
+			}
+			sameTree(t, "after recorded uninstall", snapshot(t, e.home), original)
+			if r, _ := installRun(t, "install", "pi"); r.code != 0 {
+				t.Fatalf("unrelated harness: %+v", r)
+			}
+		})
+	}
+}
+
 func TestInstall_ServerSafety(t *testing.T) {
 	t.Run("flag", func(t *testing.T) {
 		e := newInstallEnv(t)

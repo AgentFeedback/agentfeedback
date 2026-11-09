@@ -911,6 +911,14 @@ are not wired on Windows; undo the steps by hand.
   `.claude.json` (to `$CLAUDE_CONFIG_DIR/.claude.json`), and install follows
   it. Set to `~/.claude` counts as set: Claude Code then reads
   `~/.claude/.claude.json`, not `~/.claude.json`.
+- **Relative Claude/Codex homes.** Install refuses a nonempty relative
+  `CLAUDE_CONFIG_DIR` or `CODEX_HOME` when installing that harness, including
+  dry runs and multi-harness requests (`all` or `init` when that harness is
+  detected). The whole request is refused before installation writes.
+  Set an absolute path or unset the variable: resolving it against the
+  installer's working directory could wire a different location from the
+  harness's working directory. Requests for only unrelated harnesses and
+  uninstall of recorded locations are unaffected.
 - **`GEMINI_CLI_HOME`** replaces the home directory for Gemini CLI, which
   then keeps its skills and `GEMINI.md` in `$GEMINI_CLI_HOME/.gemini`;
   `install gemini-cli` follows an absolute value and ignores a relative one.

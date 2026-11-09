@@ -43,6 +43,43 @@ func cliRequest(names ...string) Request {
 	return Request{Harnesses: names, Options: Options{Mode: ModeCLI, Server: "https://feedback.example.test", Binary: "/usr/local/bin/agentfeedback"}}
 }
 
+func TestInstall_RelativeHomesRefuseBeforeWrites(t *testing.T) {
+	for _, tc := range []struct{ name, key string }{
+		{"claude-code", "CLAUDE_CONFIG_DIR"},
+		{"codex", "CODEX_HOME"},
+	} {
+		for _, dry := range []bool{false, true} {
+			name := tc.name
+			if dry {
+				name += "/dry-run"
+			}
+			t.Run(name, func(t *testing.T) {
+				e := testEnv(t)
+				e.Getenv = func(key string) string {
+					if key == tc.key {
+						return "relative-home"
+					}
+					return ""
+				}
+				req := cliRequest("pi", tc.name)
+				req.DryRun = dry
+				_, err := e.Run(req)
+				var refusal *Refusal
+				if !errors.As(err, &refusal) || !strings.Contains(refusal.Problem, tc.key) {
+					t.Fatalf("expected named relative-home refusal, got %v", err)
+				}
+				files, err := os.ReadDir(e.Home)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(files) != 0 {
+					t.Fatalf("refused multi-harness install wrote files: %v", files)
+				}
+			})
+		}
+	}
+}
+
 func TestDuplicateKey_Parse(t *testing.T) {
 	for _, doc := range []string{`{"a": 1, "a": 2}`, `{"x": {"b": 1, /* c */ "b": 2}}`, `{"x": [{"k": 1, "k": 1}]}`} {
 		_, err := parse([]byte(doc))
