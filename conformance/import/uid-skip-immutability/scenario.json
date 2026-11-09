@@ -1,0 +1,17 @@
+{
+  "rule": "UID skips ignore changed content and never propagate processing or redaction.",
+  "steps": [
+    {
+      "operation": "import",
+      "input": "initial.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "changed.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "redacted.ndjson"
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "exported_at": "2026-01-03T00:00:00.654321Z",
+  "seed": [
+    {
+      "at": "2026-01-02T03:04:05.123456Z",
+      "uid": "019b7ba8-0000-7000-8000-000000000003",
+      "body": "{\"kind\":\"event\",\"schema_version\":1,\"key\":\"zeta\",\"summary\":\"<alpha> & café\",\"machine\":\"desktop\",\"model\":\"model-1\",\"harness\":\"omp\",\"project\":\"export-suite\",\"occurred_at\":\"2030-01-01T00:00:00.000001Z\",\"context\":{\"z\":\"last\",\"a\":\"first\"},\"payload\":{\"z\":1.0,\"a\":[true,null,\"line\\nnext\"],\"text\":\"<>&/ café\",\"😀\":1e2,\"ﬁ\":-0}}"
+    },
+    {
+      "at": "2026-01-02T03:04:05.123457Z",
+      "uid": "019b7ba8-0000-7000-8000-000000000001",
+      "body": "{\"kind\":\"note\",\"schema_version\":1,\"key\":\"alpha\",\"summary\":\"Original private note\",\"machine\":\"laptop\",\"model\":\"model-2\",\"harness\":\"omp\",\"project\":\"export-suite\",\"occurred_at\":\"2020-01-01T00:00:00.000002Z\",\"context\":{\"ticket\":\"EX-2\"},\"payload\":{\"secret\":\"removed\",\"value\":2}}"
+    },
+    {
+      "at": "2026-01-02T03:04:05.123458Z",
+      "uid": "019b7ba8-0000-7000-8000-000000000002",
+      "body": "{\"kind\":\"event\",\"schema_version\":1,\"payload\":{\"last\":true}}"
+    }
+  ],
+  "mutations": [
+    {
+      "op": "mark",
+      "id": 2,
+      "at": "2026-01-02T04:00:00.111111Z",
+      "body": "{\"processed\":true,\"verdict\":\"accepted\",\"resolution\":\"Retained decision\",\"ref\":\"https://example.test/EX-2\",\"processed_by\":\"fixture-reviewer\"}"
+    },
+    {
+      "op": "redact",
+      "id": 2,
+      "at": "2026-01-02T05:00:00.222222Z"
+    }
+  ],
+  "params": {
+    "kind": " EVENT "
+  }
+}

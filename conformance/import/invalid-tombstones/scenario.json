@@ -1,0 +1,21 @@
+{
+  "rule": "Tombstones still validate their hash spelling, exact payload and absence of summary/context.",
+  "steps": [
+    {
+      "operation": "import",
+      "input": "payload.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "summary.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "context.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "hash-format.ndjson"
+    }
+  ]
+}

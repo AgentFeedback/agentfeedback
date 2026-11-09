@@ -1,0 +1,1 @@
+{"context":{"attempt":"first"},"harness":"test-runner","key":"retry-key","kind":"friction","machine":"fixture-host","model":"fixture-model","occurred_at":"2026-10-01T08:00:00.000000Z","payload":{"category":"tooling","details":"Different"},"project":"fixture-project","schema_version":1,"summary":"Retry once"}

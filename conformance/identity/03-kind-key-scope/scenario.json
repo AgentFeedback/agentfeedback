@@ -1,0 +1,30 @@
+{
+  "rule": "The key namespace is (kind,key), not key alone; a new key does not trigger keyless hash dedupe.",
+  "uids": [
+    "019ef6a0-0000-7000-8000-000000000001",
+    "019ef6a0-0000-7000-8000-000000000002",
+    "019ef6a0-0000-7000-8000-000000000003"
+  ],
+  "actions": [
+    {
+      "op": "create",
+      "at": "2026-10-01T10:00:00.000000Z",
+      "body": "01.body.json"
+    },
+    {
+      "op": "create",
+      "at": "2026-10-01T10:00:00.000000Z",
+      "body": "02.body.json"
+    },
+    {
+      "op": "create",
+      "at": "2026-10-01T10:00:00.000000Z",
+      "body": "03.body.json"
+    },
+    {
+      "op": "create",
+      "at": "2026-10-01T11:00:00.000000Z",
+      "body": "04.body.json"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "rule": "New (kind,key) inserts; normalized same-key same-hash retries return the original record, even after 24 hours.",
+  "uids": [
+    "019ef6a0-0000-7000-8000-000000000001"
+  ],
+  "actions": [
+    {
+      "op": "create",
+      "at": "2026-10-01T10:00:00.000000Z",
+      "body": "01.body.json"
+    },
+    {
+      "op": "create",
+      "at": "2026-10-03T10:00:00.000000Z",
+      "body": "02.body.json"
+    }
+  ]
+}

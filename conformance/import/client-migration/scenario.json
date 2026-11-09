@@ -1,0 +1,21 @@
+{
+  "mode": "client-migration",
+  "rule": "Migration negotiates import support, bounds chunks, stops on the first 4xx, excludes install-check by default, counts exclusions only before the selected-record limit is reached, and makes dry-run read-only.",
+  "seed": [
+    {"kind":"friction","summary":"first migration record"},
+    {"kind":"friction","summary":"second migration record"},
+    {"kind":"install-check","summary":"migration installation probe"}
+  ],
+  "cases": [
+    {"name":"default-exclusion","args":[],"code":0,"outcome":{"outcome":"migrated","sent":2,"imported":2,"skipped":0,"conflicts":0,"excluded":1},"target_summaries":["first migration record","second migration record"]},
+    {"name":"paging-skips-excluded-record","args":["--limit","1"],"seed_order":[2,0,1],"code":0,"outcome":{"outcome":"migrated","sent":1,"imported":1,"skipped":0,"conflicts":0,"excluded":1},"target_summaries":["first migration record"],"export_requests":2},
+    {"name":"paging-stops-before-later-excluded-record","args":["--limit","1"],"seed_order":[1,0,2],"code":0,"outcome":{"outcome":"migrated","sent":1,"imported":1,"skipped":0,"conflicts":0,"excluded":0},"target_summaries":["second migration record"],"export_requests":1},
+    {"name":"explicit-inclusion","args":["--include-kind","install-check"],"code":0,"outcome":{"outcome":"migrated","sent":3,"imported":3,"skipped":0,"conflicts":0,"excluded":0},"target_summaries":["first migration record","second migration record","migration installation probe"]},
+    {"name":"dry-run","args":["--dry-run"],"code":0,"outcome":{"outcome":"dry_run","sent":0,"would_send":2,"excluded":1,"unredacted_tombstones":0},"target_summaries":[],"import_requests":0},
+    {"name":"dry-run-lists-unredacted-tombstones","args":["--dry-run"],"seed_order":[2,0,1],"redact_after_migration":[2],"code":0,"outcome":{"outcome":"dry_run","sent":0,"would_send":2,"excluded":1,"unredacted_tombstones":1},"target_summaries":["first migration record","second migration record"],"import_requests":0},
+    {"name":"client-chunk-cap","args":[],"one_record_cap":"client","code":0,"outcome":{"outcome":"migrated","sent":2,"imported":2,"skipped":0,"conflicts":0,"excluded":1},"target_summaries":["first migration record","second migration record"],"import_requests":2},
+    {"name":"target-chunk-cap","args":[],"one_record_cap":"target","code":0,"outcome":{"outcome":"migrated","sent":2,"imported":2,"skipped":0,"conflicts":0,"excluded":1},"target_summaries":["first migration record","second migration record"],"import_requests":2},
+    {"name":"first-4xx-stops","args":["--include-kind","install-check"],"one_record_cap":"client","fail_import":2,"code":1,"outcome":{"outcome":"error","sent":1,"imported":1,"skipped":0,"conflicts":0},"target_summaries":["first migration record"],"import_requests":2},
+    {"name":"import-feature-required","args":[],"without_import":true,"code":1,"error_contains":"has no POST /api/v1/import","target_summaries":[],"import_requests":0}
+  ]
+}

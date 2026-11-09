@@ -1,0 +1,65 @@
+{
+  "rule": "Format, object framing, final trailer, count and exact record-line LF digest are mandatory.",
+  "steps": [
+    {
+      "operation": "import",
+      "input": "wrong-format.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "fractional-format.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "string-format.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "header-array.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "missing-trailer.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "trailer-array.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "count.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "digest.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "header-in-digest.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "missing-record-lf-in-digest.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "blank-line.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "extra-final-lf.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "crlf.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "only-header.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "extra-after-trailer.ndjson"
+    }
+  ]
+}

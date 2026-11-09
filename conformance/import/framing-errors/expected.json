@@ -1,0 +1,154 @@
+{
+  "steps": [
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_format",
+        "pointer": "/export_format",
+        "line": 1
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_format",
+        "pointer": "/export_format",
+        "line": 1
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_format",
+        "pointer": "/export_format",
+        "line": 1
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_format",
+        "pointer": "",
+        "line": 1
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_format",
+        "pointer": "/export_complete",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_format",
+        "pointer": "",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_value",
+        "pointer": "/count",
+        "line": 3
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_value",
+        "pointer": "/sha256",
+        "line": 3
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_value",
+        "pointer": "/sha256",
+        "line": 3
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_value",
+        "pointer": "/sha256",
+        "line": 3
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_format",
+        "pointer": "",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_format",
+        "pointer": "",
+        "line": 3
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_format",
+        "pointer": "",
+        "line": 1
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_format",
+        "pointer": "",
+        "line": null
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_format",
+        "pointer": "/export_complete",
+        "line": 3
+      },
+      "records": []
+    }
+  ]
+}

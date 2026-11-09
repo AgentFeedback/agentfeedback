@@ -1,0 +1,9 @@
+{
+  "rule": "UID case and RFC3339 timestamps canonicalize without losing processing metadata.",
+  "steps": [
+    {
+      "operation": "import",
+      "input": "body.ndjson"
+    }
+  ]
+}

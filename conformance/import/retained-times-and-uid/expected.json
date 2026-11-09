@@ -1,0 +1,70 @@
+{
+  "steps": [
+    {
+      "result": {
+        "imported": 1,
+        "skipped": 0,
+        "conflicts": [],
+        "warnings": [],
+        "first_id": 1,
+        "last_id": 1
+      },
+      "records": [
+        {
+          "id": 1,
+          "uid": "01925f0a-0000-7000-8000-000000000009",
+          "kind": "friction",
+          "schema_version": 1,
+          "summary": "Times",
+          "machine": "host",
+          "model": "model",
+          "harness": "agent",
+          "project": "project",
+          "payload": {
+            "category": "tooling",
+            "details": "Observed behavior"
+          },
+          "occurred_at": "2026-01-02T03:04:05.123456Z",
+          "content_hash": "3a02785dd10964512ec1752f5d386aa4341f2a6e8c47408f325071734380ffed",
+          "created_at": "2026-01-02T03:04:05.123456Z",
+          "processed_at": "2026-02-03T04:05:06.654321Z",
+          "verdict": "fixed"
+        }
+      ],
+      "verified": [
+        {
+          "identity": {
+            "kind": "friction",
+            "schema_version": 1,
+            "machine": "host",
+            "model": "model",
+            "harness": "agent",
+            "project": "project",
+            "summary": "Times",
+            "payload": {
+              "category": "tooling",
+              "details": "Observed behavior"
+            }
+          },
+          "envelope": {
+            "kind": "friction",
+            "schema_version": 1,
+            "summary": "Times",
+            "machine": "host",
+            "model": "model",
+            "harness": "agent",
+            "project": "project",
+            "payload": {
+              "category": "tooling",
+              "details": "Observed behavior"
+            },
+            "occurred_at": "2026-01-02T03:04:05.123456Z"
+          },
+          "warnings": [],
+          "retained_hash": false,
+          "line": 2
+        }
+      ]
+    }
+  ]
+}

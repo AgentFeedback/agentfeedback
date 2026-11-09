@@ -1,0 +1,384 @@
+{
+  "steps": [
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_format",
+        "pointer": "",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_format",
+        "pointer": "",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_format",
+        "pointer": "",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_format",
+        "pointer": "",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "duplicate_key",
+        "pointer": "/id",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "unknown_field",
+        "pointer": "/a~1b~0",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "required",
+        "pointer": "/uid",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "type_mismatch",
+        "pointer": "/id",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "type_mismatch",
+        "pointer": "/id",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "type_mismatch",
+        "pointer": "/id",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "type_mismatch",
+        "pointer": "/id",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "type_mismatch",
+        "pointer": "/id",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_format",
+        "pointer": "/uid",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_format",
+        "pointer": "/uid",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_format",
+        "pointer": "/uid",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_format",
+        "pointer": "/uid",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "type_mismatch",
+        "pointer": "/uid",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_format",
+        "pointer": "/content_hash",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_format",
+        "pointer": "/content_hash",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "type_mismatch",
+        "pointer": "/content_hash",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_value",
+        "pointer": "/content_hash",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "type_mismatch",
+        "pointer": "/kind",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_format",
+        "pointer": "/created_at",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "type_mismatch",
+        "pointer": "/created_at",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_format",
+        "pointer": "/occurred_at",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "type_mismatch",
+        "pointer": "/occurred_at",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_format",
+        "pointer": "/processed_at",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "type_mismatch",
+        "pointer": "/processed_at",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_format",
+        "pointer": "/redacted_at",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "type_mismatch",
+        "pointer": "/redacted_at",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_value",
+        "pointer": "/verdict",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "type_mismatch",
+        "pointer": "/verdict",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_value",
+        "pointer": "/resolution",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "type_mismatch",
+        "pointer": "/resolution",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_value",
+        "pointer": "/ref",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "type_mismatch",
+        "pointer": "/ref",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_value",
+        "pointer": "/processed_by",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "type_mismatch",
+        "pointer": "/processed_by",
+        "line": 2
+      },
+      "records": []
+    }
+  ]
+}

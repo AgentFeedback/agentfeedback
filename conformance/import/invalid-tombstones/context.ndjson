@@ -1,0 +1,3 @@
+{"export_format":2,"kind":null,"since":null,"after_id":null,"exported_at":"2026-04-05T06:07:08.000000Z"}
+{"id":90,"uid":"01925f0a-0000-7000-8000-000000000003","kind":"friction","schema_version":1,"machine":"host","model":"model","harness":"agent","project":"project","payload":{"redacted":true},"key":"erased-3","content_hash":"91712f8b30ee7d57cf6835aceed51c130d2aa23e87023f5948deedb4ab9e15ad","created_at":"2026-01-02T03:04:05.123456Z","redacted_at":"2026-03-04T05:06:07.000000Z","processed_at":"2026-02-03T04:05:06.654321Z","verdict":"fixed","resolution":"Retained resolution","ref":"repo@def","processed_by":"reviewer","context":{}}
+{"export_complete":true,"count":1,"first_id":90,"last_id":90,"sha256":"69d7bc4ea8b350cd53230db14cd89bde52138c1c2b3ecff004300e9d680b36e6"}

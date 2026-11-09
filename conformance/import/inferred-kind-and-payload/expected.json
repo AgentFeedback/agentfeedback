@@ -1,0 +1,101 @@
+{
+  "steps": [
+    {
+      "result": {
+        "imported": 1,
+        "skipped": 0,
+        "conflicts": [],
+        "warnings": [
+          {
+            "code": "missing_kind",
+            "pointer": "/kind",
+            "line": 2
+          },
+          {
+            "code": "payload_wrapped",
+            "pointer": "/payload",
+            "line": 2
+          },
+          {
+            "code": "missing_recommended",
+            "pointer": "/summary",
+            "line": 2
+          },
+          {
+            "code": "missing_recommended",
+            "pointer": "/machine",
+            "line": 2
+          },
+          {
+            "code": "missing_recommended",
+            "pointer": "/model",
+            "line": 2
+          }
+        ],
+        "first_id": 1,
+        "last_id": 1
+      },
+      "records": [
+        {
+          "id": 1,
+          "uid": "01925f0a-0000-7000-8000-000000000014",
+          "kind": "unknown",
+          "schema_version": 1,
+          "payload": {
+            "value": [
+              "data"
+            ]
+          },
+          "content_hash": "c88e04c0f4f94bb23520c9bd5d5f843ffd5a5d50a257dc44796587276f9c8668",
+          "created_at": "2026-01-02T03:04:05.123456Z"
+        }
+      ],
+      "verified": [
+        {
+          "identity": {
+            "kind": "unknown",
+            "schema_version": 1,
+            "payload": {
+              "value": [
+                "data"
+              ]
+            }
+          },
+          "envelope": {
+            "kind": "unknown",
+            "schema_version": 1,
+            "payload": {
+              "value": [
+                "data"
+              ]
+            }
+          },
+          "warnings": [
+            {
+              "code": "missing_kind",
+              "pointer": "/kind"
+            },
+            {
+              "code": "payload_wrapped",
+              "pointer": "/payload"
+            },
+            {
+              "code": "missing_recommended",
+              "pointer": "/summary"
+            },
+            {
+              "code": "missing_recommended",
+              "pointer": "/machine"
+            },
+            {
+              "code": "missing_recommended",
+              "pointer": "/model"
+            }
+          ],
+          "retained_hash": false,
+          "line": 2
+        }
+      ]
+    }
+  ]
+}

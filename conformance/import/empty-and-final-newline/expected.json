@@ -1,0 +1,86 @@
+{
+  "steps": [
+    {
+      "result": {
+        "imported": 0,
+        "skipped": 0,
+        "conflicts": [],
+        "warnings": []
+      },
+      "records": [],
+      "verified": []
+    },
+    {
+      "result": {
+        "imported": 0,
+        "skipped": 0,
+        "conflicts": [],
+        "warnings": []
+      },
+      "records": [],
+      "verified": []
+    },
+    {
+      "result": {
+        "imported": 1,
+        "skipped": 0,
+        "conflicts": [],
+        "warnings": [],
+        "first_id": 1,
+        "last_id": 1
+      },
+      "records": [
+        {
+          "id": 1,
+          "uid": "01925f0a-0000-7000-8000-000000000002",
+          "kind": "friction",
+          "schema_version": 1,
+          "summary": "Second",
+          "machine": "host",
+          "model": "model",
+          "harness": "agent",
+          "project": "project",
+          "payload": {
+            "category": "tooling",
+            "details": "Observed behavior"
+          },
+          "content_hash": "93125aee24b1d45eb2dc4c8429debc50a917c8e3fe2bd9ca67cf8e25826d2667",
+          "created_at": "2026-01-02T03:04:05.123456Z"
+        }
+      ],
+      "verified": [
+        {
+          "identity": {
+            "kind": "friction",
+            "schema_version": 1,
+            "machine": "host",
+            "model": "model",
+            "harness": "agent",
+            "project": "project",
+            "summary": "Second",
+            "payload": {
+              "category": "tooling",
+              "details": "Observed behavior"
+            }
+          },
+          "envelope": {
+            "kind": "friction",
+            "schema_version": 1,
+            "summary": "Second",
+            "machine": "host",
+            "model": "model",
+            "harness": "agent",
+            "project": "project",
+            "payload": {
+              "category": "tooling",
+              "details": "Observed behavior"
+            }
+          },
+          "warnings": [],
+          "retained_hash": false,
+          "line": 2
+        }
+      ]
+    }
+  ]
+}

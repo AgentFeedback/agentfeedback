@@ -1,0 +1,4 @@
+{"export_format":2,"kind":"event","since":null,"after_id":null,"exported_at":"2026-01-03T00:00:00.654321Z"}
+{"id":1,"uid":"019b7ba8-0000-7000-8000-000000000003","kind":"event","schema_version":1,"key":"zeta","summary":"<alpha> & café","machine":"desktop","model":"model-1","harness":"omp","project":"export-suite","occurred_at":"2030-01-01T00:00:00.000001Z","context":{"a":"first","z":"last"},"payload":{"a":[true,null,"line\nnext"],"text":"<>&/ café","z":1.0,"ﬁ":-0,"😀":1e2},"content_hash":"60d4d559efb03c970733f21bd7dde0180d1ebe3bef8df94476e9a80699b5e815","created_at":"2026-01-02T03:04:05.123456Z"}
+{"id":3,"uid":"019b7ba8-0000-7000-8000-000000000002","kind":"event","schema_version":1,"payload":{"last":true},"content_hash":"245b512426b5e3233050a7a425a8920f8fc4b626c00c7ee46e6e790ce7c9304a","created_at":"2026-01-02T03:04:05.123458Z"}
+{"export_complete":true,"count":2,"first_id":1,"last_id":3,"sha256":"691e2cb8c8ee1e89ce54845b9f310b20dc42bbce62ddde4eddd03c4a6f35fbba"}

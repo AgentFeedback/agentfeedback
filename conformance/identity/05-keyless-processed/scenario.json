@@ -1,0 +1,55 @@
+{
+  "rule": "Keyless lookup skips processed rows but keyed replay still returns its processed original; an older unprocessed match remains eligible.",
+  "uids": [
+    "019ef6a0-0000-7000-8000-000000000001",
+    "019ef6a0-0000-7000-8000-000000000002",
+    "019ef6a0-0000-7000-8000-000000000003"
+  ],
+  "actions": [
+    {
+      "op": "create",
+      "at": "2026-10-01T10:00:00.000000Z",
+      "body": "01.body.json"
+    },
+    {
+      "op": "create",
+      "at": "2026-10-01T10:00:00.000000Z",
+      "body": "02.body.json"
+    },
+    {
+      "op": "mark",
+      "at": "2026-10-01T11:00:00.000000Z",
+      "id": 2,
+      "body": {
+        "processed": true
+      }
+    },
+    {
+      "op": "create",
+      "at": "2026-10-01T11:00:00.000000Z",
+      "body": "03.body.json"
+    },
+    {
+      "op": "mark",
+      "at": "2026-10-01T11:00:00.000000Z",
+      "id": 1,
+      "body": {
+        "processed": true,
+        "verdict": "fixed",
+        "resolution": "Adjusted docs",
+        "ref": "fixture@abc",
+        "processed_by": "fixture-agent"
+      }
+    },
+    {
+      "op": "create",
+      "at": "2026-10-01T12:00:00.000000Z",
+      "body": "04.body.json"
+    },
+    {
+      "op": "create",
+      "at": "2026-10-01T12:00:00.000000Z",
+      "body": "05.body.json"
+    }
+  ]
+}

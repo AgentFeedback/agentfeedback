@@ -1,0 +1,124 @@
+{
+  "steps": [
+    {
+      "result": {
+        "imported": 1,
+        "skipped": 0,
+        "conflicts": [],
+        "warnings": [
+          {
+            "code": "schema_version_defaulted",
+            "pointer": "/schema_version",
+            "line": 2
+          },
+          {
+            "code": "coerced",
+            "pointer": "/summary",
+            "line": 2
+          },
+          {
+            "code": "coerced",
+            "pointer": "/context/count",
+            "line": 2
+          },
+          {
+            "code": "type_mismatch",
+            "pointer": "/payload/details",
+            "line": 2
+          },
+          {
+            "code": "unknown_field",
+            "pointer": "/payload/a~1b~0",
+            "line": 2
+          }
+        ],
+        "first_id": 1,
+        "last_id": 1
+      },
+      "records": [
+        {
+          "id": 1,
+          "uid": "01925f0a-0000-7000-8000-000000000008",
+          "kind": "friction",
+          "schema_version": 1,
+          "summary": "7",
+          "machine": "host",
+          "model": "model",
+          "harness": "my-agent",
+          "project": "project",
+          "payload": {
+            "category": "tooling",
+            "details": 7,
+            "a/b~": true
+          },
+          "key": "normalised",
+          "context": {
+            "count": "2"
+          },
+          "content_hash": "fa38722e9915990906c7b8c4010afb75b0aa79c3121bdc81f14f79e669624c63",
+          "created_at": "2026-01-02T03:04:05.123456Z"
+        }
+      ],
+      "verified": [
+        {
+          "identity": {
+            "kind": "friction",
+            "schema_version": 1,
+            "machine": "host",
+            "model": "model",
+            "harness": "my-agent",
+            "project": "project",
+            "summary": "7",
+            "payload": {
+              "category": "tooling",
+              "details": 7,
+              "a/b~": true
+            }
+          },
+          "envelope": {
+            "kind": "friction",
+            "schema_version": 1,
+            "summary": "7",
+            "machine": "host",
+            "model": "model",
+            "harness": "my-agent",
+            "project": "project",
+            "payload": {
+              "category": "tooling",
+              "details": 7,
+              "a/b~": true
+            },
+            "key": "normalised",
+            "context": {
+              "count": "2"
+            }
+          },
+          "warnings": [
+            {
+              "code": "schema_version_defaulted",
+              "pointer": "/schema_version"
+            },
+            {
+              "code": "coerced",
+              "pointer": "/summary"
+            },
+            {
+              "code": "coerced",
+              "pointer": "/context/count"
+            },
+            {
+              "code": "type_mismatch",
+              "pointer": "/payload/details"
+            },
+            {
+              "code": "unknown_field",
+              "pointer": "/payload/a~1b~0"
+            }
+          ],
+          "retained_hash": false,
+          "line": 2
+        }
+      ]
+    }
+  ]
+}

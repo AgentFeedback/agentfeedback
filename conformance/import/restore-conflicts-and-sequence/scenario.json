@@ -1,0 +1,17 @@
+{
+  "rule": "Restore reports ID/key conflicts and advances the sequence past skipped exported IDs.",
+  "steps": [
+    {
+      "operation": "import",
+      "input": "seed.ndjson"
+    },
+    {
+      "operation": "restore",
+      "input": "backup.ndjson"
+    },
+    {
+      "operation": "create",
+      "input": "probe.json"
+    }
+  ]
+}

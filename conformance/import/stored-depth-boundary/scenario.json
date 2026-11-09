@@ -1,0 +1,26 @@
+{
+  "rule": "Import and restore accept stored envelope depth 514 (create depth 512 plus two collision-inference levels), reject depth 515 before UID deduplication, and a create probe independently pins the normalized envelope and lexical-number hash.",
+  "steps": [
+    {
+      "operation": "import",
+      "input": "depth-514.ndjson"
+    },
+    {
+      "operation": "restore",
+      "input": "depth-514.ndjson",
+      "dry_run": true
+    },
+    {
+      "operation": "import",
+      "input": "depth-515.ndjson"
+    },
+    {
+      "operation": "restore",
+      "input": "depth-515.ndjson"
+    },
+    {
+      "operation": "create",
+      "input": "create-depth-512.json"
+    }
+  ]
+}

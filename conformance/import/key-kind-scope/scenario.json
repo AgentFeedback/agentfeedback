@@ -1,0 +1,9 @@
+{
+  "rule": "An identical key in another kind is independent during import.",
+  "steps": [
+    {
+      "operation": "import",
+      "input": "body.ndjson"
+    }
+  ]
+}

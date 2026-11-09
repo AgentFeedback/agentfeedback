@@ -18,7 +18,7 @@ from pathlib import Path
 
 from . import guide
 from .canon import canonical, canonical_bytes
-from .rawjson import NotJSON, RawNumber, Warning_, escape_token, parse
+from .rawjson import MAX_DEPTH, NotJSON, RawNumber, Warning_, escape_token, parse
 from .text import newlines_to_spaces, token, trim, truncate_bytes
 
 BODY_LIMIT = 10 * 1024 * 1024
@@ -96,11 +96,12 @@ def _remap(warnings: list[Warning_], old: str, new: str) -> None:
             w.pointer = new + w.pointer[len(old):]
 
 
-def decode(body: bytes, schemas: dict[tuple[str, int], dict] | None = None) -> Result:
-    if len(body) > BODY_LIMIT:
+def decode(body: bytes, schemas: dict[tuple[str, int], dict] | None = None, *,
+           max_bytes: int = BODY_LIMIT, max_depth: int = MAX_DEPTH) -> Result:
+    if len(body) > max_bytes:
         return Result(413, "request_too_large")
     try:
-        value, warnings = parse(body)
+        value, warnings = parse(body, max_depth=max_depth)
     except NotJSON:
         return Result(400, "bad_request")
     if not isinstance(value, dict):

@@ -1,0 +1,48 @@
+{
+  "rule": "Every identity member other than scoped kind participates in replay mismatch; failures retain the original record.",
+  "uids": [
+    "019ef6a0-0000-7000-8000-000000000001"
+  ],
+  "actions": [
+    {
+      "op": "create",
+      "at": "2026-10-01T10:00:00.000000Z",
+      "body": "01.body.json"
+    },
+    {
+      "op": "create",
+      "at": "2026-10-01T11:00:00.000000Z",
+      "body": "02.body.json"
+    },
+    {
+      "op": "create",
+      "at": "2026-10-01T11:00:00.000000Z",
+      "body": "03.body.json"
+    },
+    {
+      "op": "create",
+      "at": "2026-10-01T11:00:00.000000Z",
+      "body": "04.body.json"
+    },
+    {
+      "op": "create",
+      "at": "2026-10-01T11:00:00.000000Z",
+      "body": "05.body.json"
+    },
+    {
+      "op": "create",
+      "at": "2026-10-01T11:00:00.000000Z",
+      "body": "06.body.json"
+    },
+    {
+      "op": "create",
+      "at": "2026-10-01T11:00:00.000000Z",
+      "body": "07.body.json"
+    },
+    {
+      "op": "create",
+      "at": "2026-10-01T11:00:00.000000Z",
+      "body": "08.body.json"
+    }
+  ]
+}

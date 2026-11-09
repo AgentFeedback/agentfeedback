@@ -1,0 +1,3 @@
+{"export_format":2,"kind":null,"since":null,"after_id":null,"exported_at":"2026-04-05T06:07:08.000000Z"}
+{"id":40,"uid":"01925f0a-0000-7000-8000-000000000002","kind":"friction","schema_version":1,"summary":"Second","machine":"host","model":"model","harness":"agent","project":"project","payload":{"category":"tooling","details":"Observed behavior"},"content_hash":"93125AEE24B1D45EB2DC4C8429DEBC50A917C8E3FE2BD9CA67CF8E25826D2667","created_at":"2026-01-02T03:04:05.123456Z"}
+{"export_complete":true,"count":1,"first_id":40,"last_id":40,"sha256":"1eaab8ab6957281739908e33f76dcbd0f6d64299da47a65b17d0b63980ca1e9d"}

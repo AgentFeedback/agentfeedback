@@ -1,0 +1,1 @@
+{"harness":"test-runner","kind":"friction","machine":"fixture-host","model":"fixture-model","payload":{"category":"tooling","details":"A reproducible delay"},"project":"fixture-project","schema_version":1,"summary":"Retry once"}

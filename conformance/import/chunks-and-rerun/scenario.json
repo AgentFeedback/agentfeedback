@@ -1,0 +1,17 @@
+{
+  "rule": "Each independently framed chunk assigns fresh IDs and repeated chunks are no-ops.",
+  "steps": [
+    {
+      "operation": "import",
+      "input": "chunk-1.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "chunk-2.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "replay.ndjson"
+    }
+  ]
+}

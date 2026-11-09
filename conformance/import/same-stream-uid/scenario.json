@@ -1,0 +1,9 @@
+{
+  "rule": "UID lookup sees records inserted earlier in the same transaction.",
+  "steps": [
+    {
+      "operation": "import",
+      "input": "body.ndjson"
+    }
+  ]
+}

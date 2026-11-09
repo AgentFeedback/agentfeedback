@@ -1,0 +1,17 @@
+{
+  "rule": "A later invalid record leaves prior state and the ID sequence untouched.",
+  "steps": [
+    {
+      "operation": "import",
+      "input": "seed.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "invalid.ndjson"
+    },
+    {
+      "operation": "create",
+      "input": "probe.json"
+    }
+  ]
+}

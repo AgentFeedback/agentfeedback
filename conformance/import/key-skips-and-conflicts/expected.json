@@ -1,0 +1,217 @@
+{
+  "steps": [
+    {
+      "result": {
+        "imported": 2,
+        "skipped": 2,
+        "conflicts": [
+          {
+            "line": 4,
+            "uid": "01925f0a-0000-7000-8000-000000000005",
+            "existing_id": 1,
+            "reason": "key_mismatch"
+          }
+        ],
+        "warnings": [],
+        "first_id": 1,
+        "last_id": 2
+      },
+      "records": [
+        {
+          "id": 1,
+          "uid": "01925f0a-0000-7000-8000-000000000001",
+          "kind": "friction",
+          "schema_version": 1,
+          "summary": "First",
+          "machine": "host",
+          "model": "model",
+          "harness": "agent",
+          "project": "project",
+          "payload": {
+            "category": "tooling",
+            "details": "Observed behavior"
+          },
+          "key": "ticket-1",
+          "occurred_at": "2025-12-01T02:03:04.000005Z",
+          "context": {
+            "source": "fixture"
+          },
+          "content_hash": "cb73dfa5c85d49e7b5edddb5ca801e5b2bcaa9dd185708d62d9d8c89d68ecd88",
+          "created_at": "2026-01-02T03:04:05.123456Z",
+          "processed_at": "2026-02-03T04:05:06.654321Z",
+          "verdict": "fixed",
+          "resolution": "Resolved",
+          "ref": "repo@abc",
+          "processed_by": "reviewer"
+        },
+        {
+          "id": 2,
+          "uid": "01925f0a-0000-7000-8000-000000000006",
+          "kind": "friction",
+          "schema_version": 1,
+          "summary": "First",
+          "machine": "host",
+          "model": "model",
+          "harness": "agent",
+          "project": "project",
+          "payload": {
+            "category": "tooling",
+            "details": "Observed behavior"
+          },
+          "occurred_at": "2025-12-01T02:03:04.000005Z",
+          "context": {
+            "source": "fixture"
+          },
+          "content_hash": "cb73dfa5c85d49e7b5edddb5ca801e5b2bcaa9dd185708d62d9d8c89d68ecd88",
+          "created_at": "2026-01-02T03:04:05.123456Z",
+          "processed_at": "2026-02-03T04:05:06.654321Z",
+          "verdict": "fixed",
+          "resolution": "Resolved",
+          "ref": "repo@abc",
+          "processed_by": "reviewer"
+        }
+      ],
+      "verified": [
+        {
+          "identity": {
+            "kind": "friction",
+            "schema_version": 1,
+            "machine": "host",
+            "model": "model",
+            "harness": "agent",
+            "project": "project",
+            "summary": "First",
+            "payload": {
+              "category": "tooling",
+              "details": "Observed behavior"
+            }
+          },
+          "envelope": {
+            "kind": "friction",
+            "schema_version": 1,
+            "summary": "First",
+            "machine": "host",
+            "model": "model",
+            "harness": "agent",
+            "project": "project",
+            "payload": {
+              "category": "tooling",
+              "details": "Observed behavior"
+            },
+            "key": "ticket-1",
+            "occurred_at": "2025-12-01T02:03:04.000005Z",
+            "context": {
+              "source": "fixture"
+            }
+          },
+          "warnings": [],
+          "retained_hash": false,
+          "line": 2
+        },
+        {
+          "identity": {
+            "kind": "friction",
+            "schema_version": 1,
+            "machine": "host",
+            "model": "model",
+            "harness": "agent",
+            "project": "project",
+            "summary": "First",
+            "payload": {
+              "category": "tooling",
+              "details": "Observed behavior"
+            }
+          },
+          "envelope": {
+            "kind": "friction",
+            "schema_version": 1,
+            "summary": "First",
+            "machine": "host",
+            "model": "model",
+            "harness": "agent",
+            "project": "project",
+            "payload": {
+              "category": "tooling",
+              "details": "Observed behavior"
+            },
+            "key": "ticket-1",
+            "occurred_at": "2025-12-01T02:03:04.000005Z",
+            "context": {
+              "source": "elsewhere"
+            }
+          },
+          "warnings": [],
+          "retained_hash": false,
+          "line": 3
+        },
+        {
+          "identity": {
+            "kind": "friction",
+            "schema_version": 1,
+            "machine": "host",
+            "model": "model",
+            "harness": "agent",
+            "project": "project",
+            "summary": "Different",
+            "payload": {
+              "category": "tooling",
+              "details": "Observed behavior"
+            }
+          },
+          "envelope": {
+            "kind": "friction",
+            "schema_version": 1,
+            "summary": "Different",
+            "machine": "host",
+            "model": "model",
+            "harness": "agent",
+            "project": "project",
+            "payload": {
+              "category": "tooling",
+              "details": "Observed behavior"
+            },
+            "key": "ticket-1"
+          },
+          "warnings": [],
+          "retained_hash": false,
+          "line": 4
+        },
+        {
+          "identity": {
+            "kind": "friction",
+            "schema_version": 1,
+            "machine": "host",
+            "model": "model",
+            "harness": "agent",
+            "project": "project",
+            "summary": "First",
+            "payload": {
+              "category": "tooling",
+              "details": "Observed behavior"
+            }
+          },
+          "envelope": {
+            "kind": "friction",
+            "schema_version": 1,
+            "summary": "First",
+            "machine": "host",
+            "model": "model",
+            "harness": "agent",
+            "project": "project",
+            "payload": {
+              "category": "tooling",
+              "details": "Observed behavior"
+            },
+            "occurred_at": "2025-12-01T02:03:04.000005Z",
+            "context": {
+              "source": "fixture"
+            }
+          },
+          "warnings": [],
+          "retained_hash": false,
+          "line": 5
+        }
+      ]
+    }
+  ]
+}

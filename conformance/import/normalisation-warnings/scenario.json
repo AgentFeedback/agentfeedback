@@ -1,0 +1,9 @@
+{
+  "rule": "Normalisation precedes hash validation; warnings identify the input line and stored JSON pointer.",
+  "steps": [
+    {
+      "operation": "import",
+      "input": "body.ndjson"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "rule": "Validate every record before any UID/key skip decision.",
+  "steps": [
+    {
+      "operation": "import",
+      "input": "seed.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "uid-hash.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "uid-time.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "uid-processing.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "key-hash.ndjson"
+    }
+  ]
+}

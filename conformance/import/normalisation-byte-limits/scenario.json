@@ -1,0 +1,9 @@
+{
+  "rule": "Import applies create byte limits before hashing and reports truncation pointers.",
+  "steps": [
+    {
+      "operation": "import",
+      "input": "body.ndjson"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "rule": "Same-key same-hash skips across UIDs; mismatches report line/UID/existing ID; keyless imports do not hash-dedupe.",
+  "steps": [
+    {
+      "operation": "import",
+      "input": "body.ndjson"
+    }
+  ]
+}

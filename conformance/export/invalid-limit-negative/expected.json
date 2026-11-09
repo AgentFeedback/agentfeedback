@@ -1,0 +1,10 @@
+{
+  "status": 400,
+  "error": "validation_error",
+  "details": [
+    {
+      "code": "out_of_range",
+      "pointer": "?limit"
+    }
+  ]
+}

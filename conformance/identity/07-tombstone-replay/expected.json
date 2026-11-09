@@ -1,0 +1,57 @@
+{
+  "results": [
+    {
+      "status": 201,
+      "id": 1,
+      "stored": "01.stored.json",
+      "canonical": "01.canonical.json",
+      "sha256": "267a6f3f2431a580b8935995cd158e6aa5c2f9ecb27e7bdeabcfbf23257742c3",
+      "warnings": [],
+      "record": "original.record.json"
+    },
+    {
+      "status": 200,
+      "id": 1,
+      "record": "processed.record.json"
+    },
+    {
+      "status": 200,
+      "id": 1,
+      "record": "tombstone.record.json"
+    },
+    {
+      "status": 200,
+      "id": 1,
+      "record": "tombstone.record.json"
+    },
+    {
+      "status": 200,
+      "id": 1,
+      "stored": "02.stored.json",
+      "canonical": "02.canonical.json",
+      "sha256": "267a6f3f2431a580b8935995cd158e6aa5c2f9ecb27e7bdeabcfbf23257742c3",
+      "warnings": [],
+      "record": "tombstone.record.json"
+    },
+    {
+      "status": 409,
+      "id": 1,
+      "stored": "03.stored.json",
+      "canonical": "03.canonical.json",
+      "sha256": "11cd3b98a81e0efbd4b0b185908cac883ad714896f28106e6b158d1186d3cbab",
+      "warnings": [],
+      "error": "replay_mismatch",
+      "details": [
+        {
+          "code": "key_reused",
+          "pointer": "/key",
+          "existing_id": 1
+        }
+      ]
+    }
+  ],
+  "records": [
+    "tombstone.record.json"
+  ],
+  "rows": 1
+}

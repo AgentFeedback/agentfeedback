@@ -1,0 +1,56 @@
+{
+  "results": [
+    {
+      "status": 201,
+      "id": 1,
+      "stored": "01.stored.json",
+      "canonical": "01.canonical.json",
+      "sha256": "267a6f3f2431a580b8935995cd158e6aa5c2f9ecb27e7bdeabcfbf23257742c3",
+      "warnings": [],
+      "record": "friction.record.json"
+    },
+    {
+      "status": 201,
+      "id": 2,
+      "stored": "02.stored.json",
+      "canonical": "02.canonical.json",
+      "sha256": "5d56c8ab58127a04adb476ab4e34049db4d64ecaaebaf53a3724e984331a5296",
+      "warnings": [
+        {
+          "code": "no_schema",
+          "pointer": "/kind"
+        }
+      ],
+      "record": "other-kind.record.json"
+    },
+    {
+      "status": 201,
+      "id": 3,
+      "stored": "03.stored.json",
+      "canonical": "03.canonical.json",
+      "sha256": "267a6f3f2431a580b8935995cd158e6aa5c2f9ecb27e7bdeabcfbf23257742c3",
+      "warnings": [],
+      "record": "other-key.record.json"
+    },
+    {
+      "status": 200,
+      "id": 2,
+      "stored": "04.stored.json",
+      "canonical": "04.canonical.json",
+      "sha256": "5d56c8ab58127a04adb476ab4e34049db4d64ecaaebaf53a3724e984331a5296",
+      "warnings": [
+        {
+          "code": "no_schema",
+          "pointer": "/kind"
+        }
+      ],
+      "record": "other-kind.record.json"
+    }
+  ],
+  "records": [
+    "friction.record.json",
+    "other-kind.record.json",
+    "other-key.record.json"
+  ],
+  "rows": 3
+}

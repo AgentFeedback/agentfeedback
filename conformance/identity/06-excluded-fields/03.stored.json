@@ -1,0 +1,1 @@
+{"context":{"attempt":"retry","trace":"different"},"harness":"test-runner","kind":"friction","machine":"fixture-host","model":"fixture-model","occurred_at":"2026-10-02T01:02:03.123456Z","payload":{"category":"tooling","details":"A reproducible delay"},"project":"fixture-project","schema_version":1,"summary":"Retry once"}

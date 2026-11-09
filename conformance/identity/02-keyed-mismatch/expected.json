@@ -1,0 +1,134 @@
+{
+  "results": [
+    {
+      "status": 201,
+      "id": 1,
+      "stored": "01.stored.json",
+      "canonical": "01.canonical.json",
+      "sha256": "267a6f3f2431a580b8935995cd158e6aa5c2f9ecb27e7bdeabcfbf23257742c3",
+      "warnings": [],
+      "record": "original.record.json"
+    },
+    {
+      "status": 409,
+      "id": 1,
+      "stored": "02.stored.json",
+      "canonical": "02.canonical.json",
+      "sha256": "11cd3b98a81e0efbd4b0b185908cac883ad714896f28106e6b158d1186d3cbab",
+      "warnings": [],
+      "error": "replay_mismatch",
+      "details": [
+        {
+          "code": "key_reused",
+          "pointer": "/key",
+          "existing_id": 1
+        }
+      ]
+    },
+    {
+      "status": 409,
+      "id": 1,
+      "stored": "03.stored.json",
+      "canonical": "03.canonical.json",
+      "sha256": "3f0da0e63c21705370a59125dca2848dfc520da0fad7cc2318e787ac51bba8d1",
+      "warnings": [],
+      "error": "replay_mismatch",
+      "details": [
+        {
+          "code": "key_reused",
+          "pointer": "/key",
+          "existing_id": 1
+        }
+      ]
+    },
+    {
+      "status": 409,
+      "id": 1,
+      "stored": "04.stored.json",
+      "canonical": "04.canonical.json",
+      "sha256": "f53d01d9467c05a5030d90994ba5c7f5293cc37b2463bf83c58097281e66541b",
+      "warnings": [],
+      "error": "replay_mismatch",
+      "details": [
+        {
+          "code": "key_reused",
+          "pointer": "/key",
+          "existing_id": 1
+        }
+      ]
+    },
+    {
+      "status": 409,
+      "id": 1,
+      "stored": "05.stored.json",
+      "canonical": "05.canonical.json",
+      "sha256": "9f8b82b8f8bbaaa682bb557dcfd8198f6103e8d6d61aa997b05431e4979424bf",
+      "warnings": [],
+      "error": "replay_mismatch",
+      "details": [
+        {
+          "code": "key_reused",
+          "pointer": "/key",
+          "existing_id": 1
+        }
+      ]
+    },
+    {
+      "status": 409,
+      "id": 1,
+      "stored": "06.stored.json",
+      "canonical": "06.canonical.json",
+      "sha256": "4e4a08ccf8e046ea9b422dfe3f69f9d3bc8dcc7a151ec702c4141cc6242c3025",
+      "warnings": [],
+      "error": "replay_mismatch",
+      "details": [
+        {
+          "code": "key_reused",
+          "pointer": "/key",
+          "existing_id": 1
+        }
+      ]
+    },
+    {
+      "status": 409,
+      "id": 1,
+      "stored": "07.stored.json",
+      "canonical": "07.canonical.json",
+      "sha256": "eea5b355bd05931e87deb666570d67a13bb62425659dde45911c39d53a9b8320",
+      "warnings": [
+        {
+          "code": "unknown_schema_version",
+          "pointer": "/schema_version"
+        }
+      ],
+      "error": "replay_mismatch",
+      "details": [
+        {
+          "code": "key_reused",
+          "pointer": "/key",
+          "existing_id": 1
+        }
+      ]
+    },
+    {
+      "status": 409,
+      "id": 1,
+      "stored": "08.stored.json",
+      "canonical": "08.canonical.json",
+      "sha256": "4895cf2f9ed14c574a805b711962f431a4065ee1bc59945d9602ca51f24327e5",
+      "warnings": [],
+      "error": "replay_mismatch",
+      "details": [
+        {
+          "code": "key_reused",
+          "pointer": "/key",
+          "existing_id": 1
+        }
+      ]
+    }
+  ],
+  "records": [
+    "original.record.json"
+  ],
+  "rows": 1
+}

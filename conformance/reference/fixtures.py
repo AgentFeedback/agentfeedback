@@ -20,9 +20,15 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from reference.canon import canonical_bytes  # type: ignore
     from reference.decode import decode, gen_body, load_kind_schemas, summarise  # type: ignore
+    from reference.identity_fixtures import check as check_identity  # type: ignore
+    from reference.export_fixtures import check as check_export  # type: ignore
+    from reference.import_fixtures import check as check_import  # type: ignore
 else:
     from .canon import canonical_bytes
     from .decode import decode, gen_body, load_kind_schemas, summarise
+    from .identity_fixtures import check as check_identity
+    from .export_fixtures import check as check_export
+    from .import_fixtures import check as check_import
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -79,7 +85,10 @@ def run(root: Path = ROOT) -> int:
     schemas = load_kind_schemas()
     failures = 0
     count = 0
-    for group, checker in (("decode/rows", check_decode), ("decode/interactions", check_decode), ("hash", check_hash)):
+    for group, checker in (
+        ("decode/rows", check_decode), ("decode/interactions", check_decode), ("hash", check_hash),
+        ("identity", check_identity), ("export", check_export), ("import", check_import),
+    ):
         dirs = sorted(p for p in (root / group).iterdir() if p.is_dir())
         if not dirs:
             print(f"conformance/{group}: no fixtures", file=sys.stderr)

@@ -48,7 +48,7 @@ docs/                           api.md (narrative of the v1 contract, one exampl
 schemas/                        JSON Schema 2020-12: the submission envelope and the kind schemas (friction, review); embed.go makes them a Go package for pkg/schema; integrations.v1.json, the schema of integrations.json (repository data, not embedded by pkg/schema)
 integrations.json               the list of integrations (harness adapters, platforms, hubs) with their status, validated by schemas/integrations.v1.json; the README Integrations table is generated from it
 integrations/                   the files submitted to hub catalogs: the Hermes plugin-catalog entry and optional-mcps manifest, the NanoClaw template
-conformance/                    the executable contract: decode fixtures, hash vectors, the warning list, a Python reference implementation (README inside)
+conformance/                    the executable contract: decode fixtures, hash vectors, identity/export/import scenarios, the warning list, independent Python checks and Go consumers (README inside)
 ```
 
 Go toolchain and module versions are pinned in `go.mod`. Tools: `just`, `git`,

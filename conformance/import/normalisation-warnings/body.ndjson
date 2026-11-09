@@ -1,0 +1,3 @@
+{"export_format":2,"kind":null,"since":null,"after_id":null,"exported_at":"2026-04-05T06:07:08.000000Z"}
+{"id":160,"uid":"01925f0a-0000-7000-8000-000000000008","kind":" FRICTION ","schema_version":"bad","summary":7,"machine":" host ","model":" model ","harness":" My Agent ","project":"project","payload":{"category":" Tooling ","details":7,"a/b~":true},"key":"normalised","context":{"count":2},"content_hash":"fa38722e9915990906c7b8c4010afb75b0aa79c3121bdc81f14f79e669624c63","created_at":"2026-01-02T03:04:05.123456Z"}
+{"export_complete":true,"count":1,"first_id":160,"last_id":160,"sha256":"73cf3f87a42cac0d16495d448b5f33b837b627aa7c750779531cea73d491e86e"}

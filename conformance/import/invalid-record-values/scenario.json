@@ -1,0 +1,157 @@
+{
+  "rule": "Strict record shape, UUID version/variant, positive integer IDs, lower-case hashes and metadata validation.",
+  "steps": [
+    {
+      "operation": "import",
+      "input": "array.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "null.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "two-objects.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "malformed.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "duplicate-id.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "unknown-member.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "missing-uid.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "zero-id.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "negative-id.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "fractional-id.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "string-id.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "overflow-id.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "bad-uid.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "uid-version-zero.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "uid-version-nine.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "uid-variant.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "uid-type.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "uppercase-hash.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "short-hash.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "hash-type.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "hash-mismatch.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "kind-type.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "invalid-created_at.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "null-created_at.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "invalid-occurred_at.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "null-occurred_at.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "invalid-processed_at.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "null-processed_at.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "invalid-redacted_at.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "null-redacted_at.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "unprocessed-verdict.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "type-verdict.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "unprocessed-resolution.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "type-resolution.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "unprocessed-ref.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "type-ref.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "unprocessed-processed_by.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "type-processed_by.ndjson"
+    }
+  ]
+}

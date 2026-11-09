@@ -1,0 +1,44 @@
+{
+  "steps": [
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_value",
+        "pointer": "/payload",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_value",
+        "pointer": "/summary",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_value",
+        "pointer": "/context",
+        "line": 2
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "code": "invalid_format",
+        "pointer": "/content_hash",
+        "line": 2
+      },
+      "records": []
+    }
+  ]
+}

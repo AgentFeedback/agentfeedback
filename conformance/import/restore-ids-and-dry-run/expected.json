@@ -1,0 +1,471 @@
+{
+  "steps": [
+    {
+      "result": {
+        "imported": 2,
+        "skipped": 0,
+        "conflicts": [],
+        "warnings": [],
+        "first_id": 10,
+        "last_id": 40
+      },
+      "records": [],
+      "verified": [
+        {
+          "identity": {
+            "kind": "friction",
+            "schema_version": 1,
+            "machine": "host",
+            "model": "model",
+            "harness": "agent",
+            "project": "project",
+            "summary": "First",
+            "payload": {
+              "category": "tooling",
+              "details": "Observed behavior"
+            }
+          },
+          "envelope": {
+            "kind": "friction",
+            "schema_version": 1,
+            "summary": "First",
+            "machine": "host",
+            "model": "model",
+            "harness": "agent",
+            "project": "project",
+            "payload": {
+              "category": "tooling",
+              "details": "Observed behavior"
+            },
+            "key": "ticket-1",
+            "occurred_at": "2025-12-01T02:03:04.000005Z",
+            "context": {
+              "source": "fixture"
+            }
+          },
+          "warnings": [],
+          "retained_hash": false,
+          "line": 2
+        },
+        {
+          "identity": {
+            "kind": "friction",
+            "schema_version": 1,
+            "machine": "host",
+            "model": "model",
+            "harness": "agent",
+            "project": "project",
+            "summary": "Second",
+            "payload": {
+              "category": "tooling",
+              "details": "Observed behavior"
+            }
+          },
+          "envelope": {
+            "kind": "friction",
+            "schema_version": 1,
+            "summary": "Second",
+            "machine": "host",
+            "model": "model",
+            "harness": "agent",
+            "project": "project",
+            "payload": {
+              "category": "tooling",
+              "details": "Observed behavior"
+            }
+          },
+          "warnings": [],
+          "retained_hash": false,
+          "line": 3
+        }
+      ]
+    },
+    {
+      "created_id": 1,
+      "records": [
+        {
+          "id": 1,
+          "uid": "01925f00-0000-7000-8000-000000000099",
+          "kind": "friction",
+          "schema_version": 1,
+          "summary": "Sequence probe",
+          "machine": "host",
+          "model": "model",
+          "harness": "agent",
+          "project": "project",
+          "payload": {
+            "category": "tooling",
+            "details": "Observed behavior"
+          },
+          "content_hash": "0a84591ff56222d81e786c6f990013a7660d60c16fd991a1893ed576c9a91080",
+          "created_at": "2026-09-27T10:00:01.123456Z"
+        }
+      ]
+    },
+    {
+      "result": {
+        "imported": 2,
+        "skipped": 0,
+        "conflicts": [],
+        "warnings": [],
+        "first_id": 10,
+        "last_id": 40
+      },
+      "records": [
+        {
+          "id": 1,
+          "uid": "01925f00-0000-7000-8000-000000000099",
+          "kind": "friction",
+          "schema_version": 1,
+          "summary": "Sequence probe",
+          "machine": "host",
+          "model": "model",
+          "harness": "agent",
+          "project": "project",
+          "payload": {
+            "category": "tooling",
+            "details": "Observed behavior"
+          },
+          "content_hash": "0a84591ff56222d81e786c6f990013a7660d60c16fd991a1893ed576c9a91080",
+          "created_at": "2026-09-27T10:00:01.123456Z"
+        },
+        {
+          "id": 10,
+          "uid": "01925f0a-0000-7000-8000-000000000001",
+          "kind": "friction",
+          "schema_version": 1,
+          "summary": "First",
+          "machine": "host",
+          "model": "model",
+          "harness": "agent",
+          "project": "project",
+          "payload": {
+            "category": "tooling",
+            "details": "Observed behavior"
+          },
+          "key": "ticket-1",
+          "occurred_at": "2025-12-01T02:03:04.000005Z",
+          "context": {
+            "source": "fixture"
+          },
+          "content_hash": "cb73dfa5c85d49e7b5edddb5ca801e5b2bcaa9dd185708d62d9d8c89d68ecd88",
+          "created_at": "2026-01-02T03:04:05.123456Z",
+          "processed_at": "2026-02-03T04:05:06.654321Z",
+          "verdict": "fixed",
+          "resolution": "Resolved",
+          "ref": "repo@abc",
+          "processed_by": "reviewer"
+        },
+        {
+          "id": 40,
+          "uid": "01925f0a-0000-7000-8000-000000000002",
+          "kind": "friction",
+          "schema_version": 1,
+          "summary": "Second",
+          "machine": "host",
+          "model": "model",
+          "harness": "agent",
+          "project": "project",
+          "payload": {
+            "category": "tooling",
+            "details": "Observed behavior"
+          },
+          "content_hash": "93125aee24b1d45eb2dc4c8429debc50a917c8e3fe2bd9ca67cf8e25826d2667",
+          "created_at": "2026-01-02T03:04:05.123456Z"
+        }
+      ],
+      "verified": [
+        {
+          "identity": {
+            "kind": "friction",
+            "schema_version": 1,
+            "machine": "host",
+            "model": "model",
+            "harness": "agent",
+            "project": "project",
+            "summary": "First",
+            "payload": {
+              "category": "tooling",
+              "details": "Observed behavior"
+            }
+          },
+          "envelope": {
+            "kind": "friction",
+            "schema_version": 1,
+            "summary": "First",
+            "machine": "host",
+            "model": "model",
+            "harness": "agent",
+            "project": "project",
+            "payload": {
+              "category": "tooling",
+              "details": "Observed behavior"
+            },
+            "key": "ticket-1",
+            "occurred_at": "2025-12-01T02:03:04.000005Z",
+            "context": {
+              "source": "fixture"
+            }
+          },
+          "warnings": [],
+          "retained_hash": false,
+          "line": 2
+        },
+        {
+          "identity": {
+            "kind": "friction",
+            "schema_version": 1,
+            "machine": "host",
+            "model": "model",
+            "harness": "agent",
+            "project": "project",
+            "summary": "Second",
+            "payload": {
+              "category": "tooling",
+              "details": "Observed behavior"
+            }
+          },
+          "envelope": {
+            "kind": "friction",
+            "schema_version": 1,
+            "summary": "Second",
+            "machine": "host",
+            "model": "model",
+            "harness": "agent",
+            "project": "project",
+            "payload": {
+              "category": "tooling",
+              "details": "Observed behavior"
+            }
+          },
+          "warnings": [],
+          "retained_hash": false,
+          "line": 3
+        }
+      ]
+    },
+    {
+      "result": {
+        "imported": 0,
+        "skipped": 2,
+        "conflicts": [],
+        "warnings": []
+      },
+      "records": [
+        {
+          "id": 1,
+          "uid": "01925f00-0000-7000-8000-000000000099",
+          "kind": "friction",
+          "schema_version": 1,
+          "summary": "Sequence probe",
+          "machine": "host",
+          "model": "model",
+          "harness": "agent",
+          "project": "project",
+          "payload": {
+            "category": "tooling",
+            "details": "Observed behavior"
+          },
+          "content_hash": "0a84591ff56222d81e786c6f990013a7660d60c16fd991a1893ed576c9a91080",
+          "created_at": "2026-09-27T10:00:01.123456Z"
+        },
+        {
+          "id": 10,
+          "uid": "01925f0a-0000-7000-8000-000000000001",
+          "kind": "friction",
+          "schema_version": 1,
+          "summary": "First",
+          "machine": "host",
+          "model": "model",
+          "harness": "agent",
+          "project": "project",
+          "payload": {
+            "category": "tooling",
+            "details": "Observed behavior"
+          },
+          "key": "ticket-1",
+          "occurred_at": "2025-12-01T02:03:04.000005Z",
+          "context": {
+            "source": "fixture"
+          },
+          "content_hash": "cb73dfa5c85d49e7b5edddb5ca801e5b2bcaa9dd185708d62d9d8c89d68ecd88",
+          "created_at": "2026-01-02T03:04:05.123456Z",
+          "processed_at": "2026-02-03T04:05:06.654321Z",
+          "verdict": "fixed",
+          "resolution": "Resolved",
+          "ref": "repo@abc",
+          "processed_by": "reviewer"
+        },
+        {
+          "id": 40,
+          "uid": "01925f0a-0000-7000-8000-000000000002",
+          "kind": "friction",
+          "schema_version": 1,
+          "summary": "Second",
+          "machine": "host",
+          "model": "model",
+          "harness": "agent",
+          "project": "project",
+          "payload": {
+            "category": "tooling",
+            "details": "Observed behavior"
+          },
+          "content_hash": "93125aee24b1d45eb2dc4c8429debc50a917c8e3fe2bd9ca67cf8e25826d2667",
+          "created_at": "2026-01-02T03:04:05.123456Z"
+        }
+      ],
+      "verified": [
+        {
+          "identity": {
+            "kind": "friction",
+            "schema_version": 1,
+            "machine": "host",
+            "model": "model",
+            "harness": "agent",
+            "project": "project",
+            "summary": "First",
+            "payload": {
+              "category": "tooling",
+              "details": "Observed behavior"
+            }
+          },
+          "envelope": {
+            "kind": "friction",
+            "schema_version": 1,
+            "summary": "First",
+            "machine": "host",
+            "model": "model",
+            "harness": "agent",
+            "project": "project",
+            "payload": {
+              "category": "tooling",
+              "details": "Observed behavior"
+            },
+            "key": "ticket-1",
+            "occurred_at": "2025-12-01T02:03:04.000005Z",
+            "context": {
+              "source": "fixture"
+            }
+          },
+          "warnings": [],
+          "retained_hash": false,
+          "line": 2
+        },
+        {
+          "identity": {
+            "kind": "friction",
+            "schema_version": 1,
+            "machine": "host",
+            "model": "model",
+            "harness": "agent",
+            "project": "project",
+            "summary": "Second",
+            "payload": {
+              "category": "tooling",
+              "details": "Observed behavior"
+            }
+          },
+          "envelope": {
+            "kind": "friction",
+            "schema_version": 1,
+            "summary": "Second",
+            "machine": "host",
+            "model": "model",
+            "harness": "agent",
+            "project": "project",
+            "payload": {
+              "category": "tooling",
+              "details": "Observed behavior"
+            }
+          },
+          "warnings": [],
+          "retained_hash": false,
+          "line": 3
+        }
+      ]
+    },
+    {
+      "created_id": 41,
+      "records": [
+        {
+          "id": 1,
+          "uid": "01925f00-0000-7000-8000-000000000099",
+          "kind": "friction",
+          "schema_version": 1,
+          "summary": "Sequence probe",
+          "machine": "host",
+          "model": "model",
+          "harness": "agent",
+          "project": "project",
+          "payload": {
+            "category": "tooling",
+            "details": "Observed behavior"
+          },
+          "content_hash": "0a84591ff56222d81e786c6f990013a7660d60c16fd991a1893ed576c9a91080",
+          "created_at": "2026-09-27T10:00:01.123456Z"
+        },
+        {
+          "id": 10,
+          "uid": "01925f0a-0000-7000-8000-000000000001",
+          "kind": "friction",
+          "schema_version": 1,
+          "summary": "First",
+          "machine": "host",
+          "model": "model",
+          "harness": "agent",
+          "project": "project",
+          "payload": {
+            "category": "tooling",
+            "details": "Observed behavior"
+          },
+          "key": "ticket-1",
+          "occurred_at": "2025-12-01T02:03:04.000005Z",
+          "context": {
+            "source": "fixture"
+          },
+          "content_hash": "cb73dfa5c85d49e7b5edddb5ca801e5b2bcaa9dd185708d62d9d8c89d68ecd88",
+          "created_at": "2026-01-02T03:04:05.123456Z",
+          "processed_at": "2026-02-03T04:05:06.654321Z",
+          "verdict": "fixed",
+          "resolution": "Resolved",
+          "ref": "repo@abc",
+          "processed_by": "reviewer"
+        },
+        {
+          "id": 40,
+          "uid": "01925f0a-0000-7000-8000-000000000002",
+          "kind": "friction",
+          "schema_version": 1,
+          "summary": "Second",
+          "machine": "host",
+          "model": "model",
+          "harness": "agent",
+          "project": "project",
+          "payload": {
+            "category": "tooling",
+            "details": "Observed behavior"
+          },
+          "content_hash": "93125aee24b1d45eb2dc4c8429debc50a917c8e3fe2bd9ca67cf8e25826d2667",
+          "created_at": "2026-01-02T03:04:05.123456Z"
+        },
+        {
+          "id": 41,
+          "uid": "01925f00-0000-7000-8000-000000000100",
+          "kind": "friction",
+          "schema_version": 1,
+          "summary": "After restore",
+          "machine": "host",
+          "model": "model",
+          "harness": "agent",
+          "project": "project",
+          "payload": {
+            "category": "tooling",
+            "details": "Observed behavior"
+          },
+          "content_hash": "95b86dec50a5ee1950d9a6d72b32f54aab21686c0ff8bc31602298f592a97ed2",
+          "created_at": "2026-09-27T10:00:01.123456Z"
+        }
+      ]
+    }
+  ]
+}

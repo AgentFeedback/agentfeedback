@@ -488,7 +488,7 @@ def main() -> int:
                 fail(f"{rel}: {e}")
 
     manifest = load_json(ROOT / "conformance" / "manifest.json")
-    for group in ("decode/rows", "decode/interactions", "hash"):
+    for group in ("decode/rows", "decode/interactions", "hash", "identity", "export", "import"):
         on_disk = sorted(p.name for p in (ROOT / "conformance" / group).iterdir() if p.is_dir())
         listed = sorted(manifest.get(group, []))
         if on_disk != listed:

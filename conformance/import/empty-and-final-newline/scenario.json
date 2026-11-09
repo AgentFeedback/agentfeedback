@@ -1,0 +1,17 @@
+{
+  "rule": "Empty format-2 streams and omission of the final LF are accepted.",
+  "steps": [
+    {
+      "operation": "import",
+      "input": "empty.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "no-final-lf.ndjson"
+    },
+    {
+      "operation": "import",
+      "input": "ordinary-no-final-lf.ndjson"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "rule": "Key, occurred_at, context and create time do not enter identity; replay keeps original key, UID, created time, occurrence and context.",
+  "uids": [
+    "019ef6a0-0000-7000-8000-000000000001"
+  ],
+  "actions": [
+    {
+      "op": "create",
+      "at": "2026-10-01T10:00:00.000000Z",
+      "body": "01.body.json"
+    },
+    {
+      "op": "create",
+      "at": "2026-10-01T11:00:00.000000Z",
+      "body": "02.body.json"
+    },
+    {
+      "op": "create",
+      "at": "2026-10-01T11:00:00.000000Z",
+      "body": "03.body.json"
+    },
+    {
+      "op": "create",
+      "at": "2026-10-01T11:00:00.000000Z",
+      "body": "04.body.json"
+    }
+  ]
+}

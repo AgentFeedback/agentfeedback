@@ -1,0 +1,54 @@
+{
+  "results": [
+    {
+      "status": 201,
+      "id": 1,
+      "stored": "01.stored.json",
+      "canonical": "01.canonical.json",
+      "sha256": "267a6f3f2431a580b8935995cd158e6aa5c2f9ecb27e7bdeabcfbf23257742c3",
+      "warnings": [],
+      "record": "original.record.json"
+    },
+    {
+      "status": 200,
+      "id": 1,
+      "stored": "02.stored.json",
+      "canonical": "02.canonical.json",
+      "sha256": "267a6f3f2431a580b8935995cd158e6aa5c2f9ecb27e7bdeabcfbf23257742c3",
+      "warnings": [],
+      "record": "original.record.json"
+    },
+    {
+      "status": 200,
+      "id": 1,
+      "stored": "03.stored.json",
+      "canonical": "03.canonical.json",
+      "sha256": "267a6f3f2431a580b8935995cd158e6aa5c2f9ecb27e7bdeabcfbf23257742c3",
+      "warnings": [],
+      "record": "original.record.json"
+    },
+    {
+      "status": 201,
+      "id": 2,
+      "stored": "04.stored.json",
+      "canonical": "04.canonical.json",
+      "sha256": "267a6f3f2431a580b8935995cd158e6aa5c2f9ecb27e7bdeabcfbf23257742c3",
+      "warnings": [],
+      "record": "outside.record.json"
+    },
+    {
+      "status": 200,
+      "id": 2,
+      "stored": "05.stored.json",
+      "canonical": "05.canonical.json",
+      "sha256": "267a6f3f2431a580b8935995cd158e6aa5c2f9ecb27e7bdeabcfbf23257742c3",
+      "warnings": [],
+      "record": "outside.record.json"
+    }
+  ],
+  "records": [
+    "original.record.json",
+    "outside.record.json"
+  ],
+  "rows": 2
+}

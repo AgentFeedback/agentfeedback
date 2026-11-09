@@ -2,8 +2,8 @@
 
 The executable part of the v1 contract. `docs/openapi.yaml` and the schemas
 under `schemas/` say what the API looks like; this directory says what a
-server must do with a body, byte for byte. Any implementation of the write
-path, in any language, must pass every fixture unchanged. The rules the
+server must do with bodies, identity, exports and imports. Any implementation
+of these paths, in any language, must pass every applicable fixture unchanged. The rules the
 fixtures pin are written out below; the fixtures are the test of them.
 
 ```bash
@@ -19,13 +19,17 @@ just contract                                             # the full contract ga
 | `decode/rows/<nn>-<slug>/` | one fixture per row of the inference table below, numbered in the table's order |
 | `decode/interactions/<slug>/` | rows combined, and the cases the rules name one by one (null members, empty members, reserved-name collisions, the UTF-8 matrix, pointer escaping, `occurred_at` forms, nesting depth, kind-schema guides) |
 | `hash/<slug>/` | canonical-JSON and `content_hash` vectors, one per rule of the identity section below |
+| `identity/<slug>/` | stateful create/replay/conflict scenarios, fixed clocks and independent canonical identity vectors |
+| `export/<slug>/` | fixed datasets, export filters and exact format-2 NDJSON streams |
+| `import/<slug>/` | API migration and server restore scenarios, validation, deduplication and transaction boundaries |
 | `warnings.json` | the closed list of warning codes, one example each, and the keyword-to-code mapping for kind schemas |
 | `manifest.json` | every fixture directory by name, and the nesting limit; the contract check refuses a tree that differs from it |
-| `reference/` | a standard-library Python implementation of the write path (decode, normalise, guide, canonical JSON, hash) that every fixture is checked against by `just contract` |
+| `reference/` | independent Python checks of decoding, normalisation, canonical identity and stream framing/digests; stateful behavior is checked by fixture-consuming Go tests |
 
 ## Fixture files
 
-Every fixture is a directory.
+Every fixture is a directory. The decode and hash groups use these files;
+the scenario formats for the other groups are described below.
 
 | File | Content |
 |---|---|
@@ -42,9 +46,8 @@ every platform. Files carry no trailing newline where the bytes matter
 ## How an implementation is compared
 
 - **Status and error.** `status` is the HTTP status; `error` is the `error`
-  member of the error body for 400 and 413. Identity (200 on replay, 409 on
-  mismatch) needs stored state and is outside this kit; every accepted body
-  here is a 201.
+  member of the error body. Decode fixtures accept with 201; stateful
+  identity fixtures also cover replay (200) and key mismatch (409).
 - **Stored envelope.** Serialise the stored envelope as canonical JSON and
   compare bytes with `stored.json`. Canonical form sorts members, so the
   comparison is order-independent, and it keeps number spellings, so
@@ -196,11 +199,117 @@ Canonical JSON:
 - Numbers keep their source spelling, so an implementation needs a
   token-level parser; `JSON.parse` and `json.loads` cannot.
 
+## Identity fixtures
+
+`identity/<nn>-<slug>/` describes a stateful sequence against an empty store.
+
+- `scenario.json`: `rule`, deterministic insertion-order `uids`, and ordered
+  `actions`. Each action supplies `op` and a fixed canonical UTC `at`.
+  `create` supplies `body`, a raw request filename; `mark` supplies `id`
+  and an inline processing-mark `body`; `redact` supplies `id`.
+- `expected.json`: ordered `results`, final `rows`, and `records`, the
+  filenames of complete final record snapshots.
+- Each result specifies `status` and `id`. Successful results name a
+  `record` snapshot. Conflicts specify `error` and `details`, compared by
+  code, pointer and existing_id; message wording is advisory.
+- Each create result also names `stored` and `canonical` files, supplies
+  `sha256`, and lists warning code/pointer pairs. These describe the incoming
+  normalized request even when replay returns an older record or tombstone.
+- `<nn>.stored.json` is the incoming normalized envelope;
+  `<nn>.canonical.json` is its canonical identity projection.
+  `*.record.json` contains the complete returned or final stored record.
+  Canonical expectation files have no trailing newline.
+
+Python checks normalization, identity bytes, hashes, warning multisets and
+fixed-clock state transitions. Go consumes each sequence through the real
+service and compares returned and persisted records. Replays retain original
+identity, provenance and processing fields; tombstones retain the original hash.
+
+## Export fixtures
+
+Each `export/<scenario>/` contains:
+
+- `scenario.json`: `exported_at` fixes the export clock; `seed` contains
+  `{at, uid, body}` entries, where `body` is raw create-request JSON text.
+  Creates run in order against an empty store, assigning IDs from 1.
+  `mutations` contains `{op, id, at, body?}` operations: `mark` supplies a
+  processing-mark JSON string; `redact` creates a tombstone. `params`
+  supplies optional `kind`, `since`, `after_id`, and `limit`.
+- `expected.json`: success declares `{status:200, ids, sha256}`; rejection
+  declares `{status:400, error, details:[{code,pointer}]}`. Messages are advisory.
+- `expected.ndjson`: exact output bytes, including each terminating LF.
+  Rejected exports have an empty file.
+
+Format-2 streams contain a header, full records in ascending ID order and a
+completion trailer. SHA-256 covers only record lines, including their LFs.
+Empty exports have null first/last IDs and the digest of zero bytes. Absent
+record optionals are omitted. Payload/context retain canonical JSON,
+including number spellings, Unicode and minimal string escaping.
+
+The fixed dataset includes a full ordinary envelope, a processed tombstone
+retaining its original hash and processing fields, and a minimal record.
+Creation times differ by one microsecond; occurrence times deliberately
+differ from creation times. UID order differs from ID order.
+
+Python reconstructs records and checks normalization, hashes, filtering,
+bytes and digests. Go runs the real service and compares exact stream bytes.
+HTTP conformance tests additionally cover NDJSON content type and bodyless HEAD.
+
+## Import fixtures
+
+`import/<scenario>/` exercises independently framed format-2 streams against
+an empty store. `scenario.json` contains a `rule` and ordered `steps`:
+
+- `operation` is `import` (API semantics), `restore` (preserve IDs), or
+  `create` (a subsequent sequence probe).
+- `input` names the raw NDJSON stream or create-request JSON.
+- `generator: "body.gen.json"` substitutes a compact size-boundary input.
+  Its `prefix`, ASCII-space `pad`, `suffix`, and `total_bytes` describe the
+  exact expanded body. Go submits all bytes; Python checks the construction
+  and verifies its equivalent unpadded stream.
+- `dry_run` applies to restore and must leave records and sequence unchanged.
+
+`expected.json` has one entry in `steps` per operation. Successful imports
+and restores declare `result` counts, conflicts, warning code/pointer/line
+tuples and ID bounds. Rejections declare `error` status, error code and,
+where applicable, line, detail code and pointer. Creates declare `created_id`.
+Every step supplies complete post-operation `records` snapshots.
+Successful stream steps also supply `verified` records for the independent
+Python checks: normalized envelope, canonical identity, retained-hash flag,
+line and warnings. Tombstones may supply `original_identity` to check the
+retained hash against the original envelope.
+
+Imported record nesting may reach 514 levels, allowing the two levels that
+create inference can add to a 512-level request. UUID hex is normalized to
+lowercase; timestamps are normalized to canonical UTC.
+
+Python verifies framing, digests, record validation, normalization,
+pre-deduplication warnings and sequence-probe envelope hashes.
+Go checks UID/key conflict precedence, replay
+immutability, transactions, fresh versus preserved IDs, chunks, reruns and
+restore dry-run against the actual service.
+
+`import/client-migration/scenario.json` instead uses `mode: "client-migration"`,
+source `seed` requests and named `cases`. Cases specify CLI `args`, exit `code`,
+expected `outcome` fields and ordered `target_summaries`. Optional `seed_order`
+reorders source inserts by zero-based index; `export_requests` checks paging.
+`one_record_cap` selects the client or target byte cap; `fail_import` injects
+a numbered HTTP import rejection; `without_import` removes target support.
+`redact_after_migration` names source IDs to redact after an initial migration,
+so dry-run must list unredacted target records without writing.
+`import_requests` counts attempts, including failures. Python checks the
+fixture's computable selection expectations; the CLI consumer proves network
+behavior, chunking, paging, feature negotiation and dry-run safety.
+
 ## The reference implementation
 
 `reference/` shares no code with the Go service. It exists so that the
 fixtures are verified by two independent implementations: the reference in
-this directory and the Go decoder in its own tests. A fixture is authored by
-hand from the rules above, then checked against the reference; a
-disagreement means one of the two is wrong and is settled by reading the
-rules, never by regenerating the fixture from either implementation.
+this directory and the Go consumers in their own tests. The reference checks
+the computable normalization, canonical forms, hashes and stream framing;
+the Go consumers exercise stored state, clocks, conflicts and transactions.
+Run both `just contract` (independent Python checks) and `just test` (Go
+consumers); the contract-file gate alone does not exercise stored state.
+A fixture is authored by hand from the contract, then checked against the
+reference; a disagreement means one of the two is wrong and is settled by
+reading the rules, never by regenerating expectations from either implementation.

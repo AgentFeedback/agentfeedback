@@ -1,0 +1,155 @@
+{
+  "steps": [
+    {
+      "result": {
+        "imported": 2,
+        "skipped": 0,
+        "conflicts": [],
+        "warnings": [
+          {
+            "code": "missing_recommended",
+            "pointer": "/payload/category",
+            "line": 3
+          },
+          {
+            "code": "missing_recommended",
+            "pointer": "/payload/details",
+            "line": 3
+          },
+          {
+            "code": "unknown_field",
+            "pointer": "/payload/redacted",
+            "line": 3
+          }
+        ],
+        "first_id": 1,
+        "last_id": 2
+      },
+      "records": [
+        {
+          "id": 1,
+          "uid": "01925f0a-0000-7000-8000-000000000003",
+          "kind": "friction",
+          "schema_version": 1,
+          "machine": "host",
+          "model": "model",
+          "harness": "agent",
+          "project": "project",
+          "payload": {
+            "redacted": true
+          },
+          "key": "erased-3",
+          "content_hash": "91712f8b30ee7d57cf6835aceed51c130d2aa23e87023f5948deedb4ab9e15ad",
+          "created_at": "2026-01-02T03:04:05.123456Z",
+          "redacted_at": "2026-03-04T05:06:07.000000Z",
+          "processed_at": "2026-02-03T04:05:06.654321Z",
+          "verdict": "fixed",
+          "resolution": "Retained resolution",
+          "ref": "repo@def",
+          "processed_by": "reviewer"
+        },
+        {
+          "id": 2,
+          "uid": "01925f0a-0000-7000-8000-000000000007",
+          "kind": "friction",
+          "schema_version": 1,
+          "summary": "Not redacted",
+          "machine": "host",
+          "model": "model",
+          "harness": "agent",
+          "project": "project",
+          "payload": {
+            "redacted": true
+          },
+          "content_hash": "95055d13cf34729646e093227ae00753bebd24a3515640da252b30e2aa66e809",
+          "created_at": "2026-01-02T03:04:05.123456Z"
+        }
+      ],
+      "verified": [
+        {
+          "identity": {
+            "kind": "friction",
+            "schema_version": 1,
+            "machine": "host",
+            "model": "model",
+            "harness": "agent",
+            "project": "project",
+            "payload": {
+              "redacted": true
+            }
+          },
+          "envelope": {
+            "kind": "friction",
+            "schema_version": 1,
+            "machine": "host",
+            "model": "model",
+            "harness": "agent",
+            "project": "project",
+            "payload": {
+              "redacted": true
+            },
+            "key": "erased-3"
+          },
+          "warnings": [],
+          "retained_hash": true,
+          "original_identity": {
+            "kind": "friction",
+            "schema_version": 1,
+            "summary": "Removed text",
+            "machine": "host",
+            "model": "model",
+            "harness": "agent",
+            "project": "project",
+            "payload": {
+              "category": "tooling",
+              "details": "Observed behavior"
+            }
+          },
+          "line": 2
+        },
+        {
+          "identity": {
+            "kind": "friction",
+            "schema_version": 1,
+            "machine": "host",
+            "model": "model",
+            "harness": "agent",
+            "project": "project",
+            "summary": "Not redacted",
+            "payload": {
+              "redacted": true
+            }
+          },
+          "envelope": {
+            "kind": "friction",
+            "schema_version": 1,
+            "summary": "Not redacted",
+            "machine": "host",
+            "model": "model",
+            "harness": "agent",
+            "project": "project",
+            "payload": {
+              "redacted": true
+            }
+          },
+          "warnings": [
+            {
+              "code": "missing_recommended",
+              "pointer": "/payload/category"
+            },
+            {
+              "code": "missing_recommended",
+              "pointer": "/payload/details"
+            },
+            {
+              "code": "unknown_field",
+              "pointer": "/payload/redacted"
+            }
+          ],
+          "retained_hash": false,
+          "line": 3
+        }
+      ]
+    }
+  ]
+}

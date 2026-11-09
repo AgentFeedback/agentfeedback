@@ -51,11 +51,12 @@ class Reader:
     pos: int = 0
     warnings: list[Warning_] = field(default_factory=list)
     depth: int = 0
+    max_depth: int = field(default=MAX_DEPTH, kw_only=True)
 
     def _enter(self) -> None:
         self.depth += 1
-        if self.depth > MAX_DEPTH:
-            raise NotJSON(f"nested deeper than {MAX_DEPTH} levels")
+        if self.depth > self.max_depth:
+            raise NotJSON(f"nested deeper than {self.max_depth} levels")
 
     def parse(self):
         self._skip_ws()
@@ -258,9 +259,10 @@ def _hex4(text: str, at: int) -> int:
     return int(h, 16)
 
 
-def parse(data: bytes) -> tuple[object, list[Warning_]]:
-    """Parse ``data``. Raises NotJSON. Returns the value and the decode warnings
-    (invalid_utf8, duplicate_key) with pointers into the parsed value."""
-    reader = Reader(data)
+def parse(data: bytes, *, max_depth: int = MAX_DEPTH) -> tuple[object, list[Warning_]]:
+    """Parse ``data`` up to ``max_depth`` container levels. Raises NotJSON.
+    Returns the value and decode warnings (invalid_utf8, duplicate_key) with
+    pointers into the parsed value."""
+    reader = Reader(data, max_depth=max_depth)
     value = reader.parse()
     return value, reader.warnings

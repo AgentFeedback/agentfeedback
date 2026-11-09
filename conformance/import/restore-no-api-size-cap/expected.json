@@ -1,0 +1,14 @@
+{
+  "steps": [
+    {
+      "result": {
+        "imported": 0,
+        "skipped": 0,
+        "conflicts": [],
+        "warnings": []
+      },
+      "records": [],
+      "verified": []
+    }
+  ]
+}

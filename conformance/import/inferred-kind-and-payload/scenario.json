@@ -1,0 +1,9 @@
+{
+  "rule": "An exported unknown kind is inferred again; a non-object payload normalizes before hashing.",
+  "steps": [
+    {
+      "operation": "import",
+      "input": "body.ndjson"
+    }
+  ]
+}

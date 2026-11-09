@@ -1,0 +1,9 @@
+{
+  "rule": "Compact header-whitespace generator exercises the API byte cap separately from unbounded server restore.",
+  "steps": [
+    {
+      "operation": "restore",
+      "generator": "body.gen.json"
+    }
+  ]
+}

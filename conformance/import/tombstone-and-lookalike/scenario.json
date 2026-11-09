@@ -1,0 +1,9 @@
+{
+  "rule": "Only redacted_at marks a tombstone: retain original hash and suppress warnings, unlike an ordinary redacted-looking payload.",
+  "steps": [
+    {
+      "operation": "import",
+      "input": "body.ndjson"
+    }
+  ]
+}

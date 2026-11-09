@@ -1,0 +1,1 @@
+{"kind":" FRICTION ","key":" retry-key ","schema_version":1,"summary":" Retry\r\nonce ","machine":" fixture-host ","model":" fixture-model ","harness":" Test  Runner ","project":" fixture-project ","occurred_at":"2026-10-01T10:00:00+02:00","context":{"attempt":"first"},"payload":{"details":"A reproducible delay","category":" TOOLING "}}
