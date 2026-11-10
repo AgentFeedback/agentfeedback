@@ -55,7 +55,12 @@ The structure check of fix-it-session.md also requires the session start's
 commands in order (list, status, selection, list, digest, submit, get,
 mark), the rules a digest is evidence, never widening the selection, the
 resume rules and marking last, and the disclosure line before the batch
-loop.
+loop. The instruction bar is stated once: fix-it-session.md carries each of
+its sentences exactly once, under What to do with it (the instruction-gap
+class with category `instructions`, the bar, the competent-agent test, the
+four cases not filed, the edit rule), and its Phase 3 routes a cluster
+through it; model-struggles.md links to it and no longer says "clearer
+guidance", and no other playbook carries any of those sentences.
 
 Placeholders of the session start and the MCP-only route:
 
@@ -119,6 +124,21 @@ FENCE = re.compile(r"^```bash\n(.*?)^```$", re.M | re.S)
 JSON_FENCE = re.compile(r"^```json\n(.*?)^```$", re.M | re.S)
 PHASE0 = "**Phase 0: pull.**"
 STORES = ROOT / "internal/sessions/testdata/stores"
+BAR_PAGE = "playbooks/fix-it-session.md"
+BAR_LINK = "[the instruction bar](fix-it-session.md#what-to-do-with-it)"
+BAR_PHRASES = ("**The instruction bar.**", "with `category` `instructions`",
+               "missing, wrong or underspecified on a surface you can name",
+               "would a competent agent, given the instructions as they are, still fail this way?",
+               "the instruction stated it clearly where the agent read it, and the model did not follow it",
+               "a one-off choice the same prompt would not make again",
+               "a change that only restates the instruction, hedges it or adds this run's example",
+               "a fix that belongs to a tool, a product or code",
+               "One occurrence is enough only when it is severe",
+               "List every candidate you did not file in the batch report",
+               "replace the guidance it corrects before appending to it",
+               "Nothing to change is a valid outcome")
+BAR_ROUTE = ("[the instruction bar](#what-to-do-with-it) before Phase 4 offers that change",
+             "Phase 4 does not offer the instruction change: Won't fix is its recommended option")
 SINCE = "2026-10-08T00:00:00Z"
 START_ORDER = (("list --open", re.compile(r"^agentfeedback list --open\b")),
                ("sessions status --json", re.compile(r"^agentfeedback sessions status(?!.*--set-selection)")),
@@ -213,6 +233,34 @@ def session_problems(name, text):
         problems.append(f"{name}: What to do with it has no label '**S3: one batch per loop.**'")
     if disclosure >= 0 and batch >= 0 and disclosure > batch:
         problems.append(f"{name}: the disclosure line comes after '**S3: one batch per loop.**'; it must precede it")
+    return problems
+
+
+def bar_problems(texts):
+    """The instruction bar is stated in one page and linked from model-struggles.md, never copied."""
+    problems = []
+    page = " ".join(texts[BAR_PAGE].split())
+    stated = " ".join(section(texts[BAR_PAGE], "What to do with it").split())
+    for phrase in BAR_PHRASES:
+        if page.count(phrase) != 1 or phrase not in stated:
+            problems.append(f"{BAR_PAGE}: the instruction bar's sentence {phrase!r} must appear once, "
+                            f"under What to do with it (found {page.count(phrase)})")
+    for phrase in BAR_ROUTE:
+        if phrase not in page:
+            problems.append(f"{BAR_PAGE}: Phase 3 lacks the instruction bar's routing {phrase!r}")
+    name = "playbooks/model-struggles.md"
+    linking = " ".join(texts[name].split())
+    if BAR_LINK not in linking:
+        problems.append(f"{name}: no link {BAR_LINK}")
+    if "clearer guidance" in linking:
+        problems.append(f"{name}: says 'clearer guidance' instead of linking to the instruction bar")
+    for other, text in texts.items():
+        if other == BAR_PAGE:
+            continue
+        flat = " ".join(text.split())
+        for phrase in BAR_PHRASES:
+            if phrase in flat:
+                problems.append(f"{other}: copies the instruction bar's sentence {phrase!r}; link to {BAR_PAGE} instead")
     return problems
 
 
@@ -790,6 +838,7 @@ def main():
     problems = [problem for name, text in texts.items() for problem in structure_problems(name, text)]
     problems += structure_problems("SKILL.md", skill, playbook=False)
     problems += structure_problems("reference/clustering.md", clustering, playbook=False)
+    problems += bar_problems(texts)
     if problems:
         print("\n".join(f"FAIL  {problem}" for problem in problems))
         return 1

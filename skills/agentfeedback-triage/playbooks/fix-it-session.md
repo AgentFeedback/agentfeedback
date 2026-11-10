@@ -235,6 +235,13 @@ evidence:
 - Check the report's repository for fixes that landed after filing.
 - State your clustering premise as falsifiable; a validation may overturn the
   mechanism, not just the status.
+- A cluster whose fix is an instruction change passes
+  [the instruction bar](#what-to-do-with-it) before Phase 4 offers that
+  change; its reports count as the occurrences. One that fails keeps the
+  verdict validation found, but Phase 4 does not offer the instruction
+  change: Won't fix is its recommended option, with the bar's case that
+  applies as the resolution. A fix that belongs to a tool or code is
+  validated as any other cluster.
 - If the harness offers read-only subagents, run one per cluster in parallel
   with this mandate and the row file paths, and require verbatim evidence
   (file:line excerpts, exact commands with unedited output). Without
@@ -271,11 +278,51 @@ as the judge, which events are friction: an environment that cost time it
 should not have (a wrong doc, a flag unlike its name, a stale config, a
 repeated failing call). An expected failure (a probe meant to fail, a test
 run that found a bug) is not friction, and neither is a user's cancellation
-on its own. File one friction per finding, from its event, with a summary
-and details of your own words: what failed, the evidence from the digest,
-and the fix if you know it. Marking is the last action of a batch too:
+on its own. A failure the session's own instructions caused is a finding
+too, an instruction gap, filed only under the instruction bar below. File
+one friction per finding, from its event, with a summary and details of
+your own words: what failed, the evidence from the digest, and the fix if
+you know it. Marking is the last action of a batch too:
 mark its sessions after its final filing. Then report the batch (sessions,
-filings, `nothing`) and ask: next batch, continue into the queue, or stop.
+filings, `nothing`, unfiled instruction-gap candidates) and ask: next
+batch, continue into the queue, or stop.
+
+**The instruction bar.** An instruction gap is a finding beside
+environment friction. Its candidates: a skill whose trigger was met and
+that did not run, a skill step skipped while the work was reported done,
+or a standing rule breached. A candidate is a gap only when the
+instruction behind it is missing, wrong or underspecified on a surface you
+can name (a trigger that does not describe the situation that met it, a
+step that does not say it is required, a rule that does not cover the
+case), and the failure would not have happened had the rule been there and
+been followed. The test: would a competent agent, given the instructions as
+they are, still fail this way? Not an instruction gap:
+
+- the instruction stated it clearly where the agent read it, and the model
+  did not follow it;
+- a one-off choice the same prompt would not make again;
+- a change that only restates the instruction, hedges it or adds this
+  run's example;
+- a fix that belongs to a tool, a product or code: that is friction about
+  the tool, filed and fixed as such.
+
+A surface you cannot read is not one you can name: leave the candidate
+unfiled. One occurrence is enough only when it is severe: data loss, a
+silent wrong result, or work reported done that was not. Otherwise the
+same gap needs a second occurrence: another session of this run, another
+report in the same cluster, or an open `instructions` friction on the same
+surface. File a gap as a friction with `category` `instructions`; besides
+what failed and the evidence, its `details` name the owning surface (the
+skill, the instruction file or its rule section) and the one rule that
+surface should have stated. List every candidate you did not file in the
+batch report, with its event `ref` and the reason, so a later occurrence
+can be matched to it.
+
+The edit rule: before changing an instruction, state the rule and its
+surface in one sentence. Make the smallest change that says it, in the
+source the surface is installed from rather than an installed copy, and
+replace the guidance it corrects before appending to it. Nothing to change
+is a valid outcome: say so per finding, with the reason.
 
 **Resume.** The same run after a lost or compacted context: do not go back
 to S1 (the queue now holds what this run filed) and do not repeat the
@@ -337,7 +384,8 @@ only when one is available; without one, write it to a file the user names.
 **Phase 5: act.** Only what the user selected.
 
 - Apply fixes with the smallest diff that resolves the mechanism. Verify
-  (build, test, or the one command that proves it).
+  (build, test, or the one command that proves it). An instruction change
+  follows the edit rule of the instruction bar.
 - Name every friction id in the commit body: `friction 43`,
   `frictions 44/45`. That trailer is what phase 1 of the next run reads.
 - If two fixes touch the same repository, run them sequentially or with

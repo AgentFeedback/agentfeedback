@@ -28,8 +28,12 @@ harness, use `--by harness,category` and `--harness <harness>` instead.
 
 - Separate defects in tools and docs (fix the tool or the doc) from model
   behaviour (a misread flag, an ignored instruction). The second kind calls
-  for clearer guidance where the model reads it: the project's agent
-  instructions file or the skill it used.
-- Propose the guidance change to the user with the ids it rests on; edit
+  for an instruction change only when it passes
+  [the instruction bar](fix-it-session.md#what-to-do-with-it), on the
+  surface the model reads (the project's agent instructions file or the
+  skill it used), made by that bar's edit rule. An instruction the model
+  was clearly given and ignored does not pass. When it does not pass,
+  there is nothing to change: say so with the reason.
+- Propose the instruction change to the user with the ids it rests on; edit
   nothing before the user agrees.
 - To act on the rows themselves, run [`fix-it-session.md`](fix-it-session.md).
