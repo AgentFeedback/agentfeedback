@@ -352,7 +352,7 @@ func TestCaptureNamedOutcomesAndTimestampFallback(t *testing.T) {
 	}
 	for i, c := range cs {
 		state := StateUnsupportedFormat
-		if i == 0 {
+		if i == 0 || c.Harness == HarnessCursor {
 			state = StateAbsent
 		}
 		assertCaptureRefused(t, w.env(), c, state)

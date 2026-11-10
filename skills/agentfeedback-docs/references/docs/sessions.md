@@ -45,8 +45,9 @@ agentfeedback sessions push --due --limit 10 --json
 agentfeedback sessions push codex:<session-id> --since 2026-01-01T00:00:00Z --dry-run --json
 ```
 
-Push supports Claude Code (`claude-code-jsonl`), Codex (`codex-rollout`)
-and OpenCode V1 and 2 (`opencode-virtual-log`). It sends the whole complete-line
+Push supports Claude Code (`claude-code-jsonl`), Codex (`codex-rollout`),
+OpenCode V1 and 2 (`opencode-virtual-log`) and Cursor
+(`cursor-agent-transcript`, storage only). It sends the whole complete-line
 revision, not the digest or only new entries. The revision is the decimal
 source byte count. An unfinished last line is excluded; changes during
 capture defer the upload.
@@ -318,11 +319,34 @@ digest adds `#<span>`, the reader's id of the log entry that carries it
 
 ### Cursor
 
-Not read. The agent-transcripts JSONL under
-`~/.cursor/projects/*/agent-transcripts/`, the path Cursor's hooks pass,
-records no tool results, timestamps, call ids or working directory. The
-cursor-agent `store.db` and the IDE's `state.vscdb` hold them, but are
-undocumented SQLite with protobuf content that changes between versions.
+Hook-indexed listing and capture are supported; semantic digests are not.
+`postToolUseFailure`, `stop` and `sessionEnd` record the conversation id,
+absolute transcript path beneath the home directory, workspace roots and
+reported cwd in the existing owner-only session counters cache (seven-day retention).
+`install cursor` wires all three events; `sessionEnd` is fire-and-forget.
+No transcript is opened by the hook.
+
+Listing and push apply collection policy and repository upload vetoes to every
+recorded workspace root and the reported cwd before opening the transcript.
+The first root supplies the displayed project. Missing or invalid roots are
+`unknown-project`; symlinks (including ancestor components) and nonregular
+files are refused. A symlinked home or ancestor therefore prevents capture.
+Only complete lines are captured, labelled `cursor-agent-transcript` for
+both IDE and CLI sessions. Transcript mtime supplies the capture timestamps;
+tool counts and model metadata are unavailable.
+Automatic mixed-harness digests skip Cursor without opening its transcripts.
+After seven days without a hook update, cache pruning removes the transcript
+pointer; the transcript remains untouched but is no longer discoverable until
+another hook indexes it.
+
+Verification is documentation-based, using the official
+[hooks contract](https://cursor.com/docs/hooks) and
+[CLI changelog](https://cursor.com/docs/cli/changelog), checked 2026-11-10,
+plus synthetic IDE and CLI fixtures. No installed Cursor version was
+live-verified. The CLI changelog's Claude Code-compatible JSONL claim does
+not establish digest compatibility; both surfaces remain storage-only.
+The IDE format lacks tool results, timestamps, call ids and cwd. The
+undocumented SQLite/protobuf stores (`store.db`, `state.vscdb`) are not read.
 
 ### Antigravity
 

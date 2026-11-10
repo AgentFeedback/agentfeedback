@@ -803,7 +803,12 @@ def main():
                       prelude="DIGEST=$(agentfeedback digest --kind friction)\n",
                       postlude="\nprintf '%s\\n' \"$DIGEST\" > digest-dir\n", local=local) and ok
     harnesses = session_harnesses()
+    # Storage-only capture has no semantic digest for this triage workflow.
+    storage_only = {"cursor"}
     for harness in harnesses:
+        if harness in storage_only:
+            print(f"SKIP  session triage for {harness}: storage-only capture, no semantic digest")
+            continue
         if harness not in SESSION_STORES:
             print(f"FAIL  no session fixture for {harness}: every session reader needs one here")
             ok = False

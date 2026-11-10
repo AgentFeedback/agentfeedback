@@ -1,0 +1,33 @@
+{
+  "stores": [
+    {
+      "harness": "cursor",
+      "location": "{{HOME}}/.cache/agentfeedback/sessions/cursor",
+      "state": "present"
+    }
+  ],
+  "sessions": [
+    {
+      "ref": "cursor:cli",
+      "harness": "cursor",
+      "session_id": "cli",
+      "path": "{{HOME}}/.cursor/agent-transcripts/cli.txt",
+      "project": "/nonexistent-af/proj",
+      "cwds": [
+        "/nonexistent-af/proj"
+      ],
+      "start": "2026-11-10T10:00:00Z",
+      "end": "2026-11-10T10:00:00Z",
+      "counts": {
+        "entries": 5,
+        "prompts": 0,
+        "tool_calls": 0,
+        "tool_errors": 0,
+        "interrupts": 0,
+        "denials": 0,
+        "unparsed": 0
+      },
+      "state": "new"
+    }
+  ]
+}

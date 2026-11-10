@@ -1,0 +1,55 @@
+{
+  "stores": [
+    {
+      "harness": "cursor",
+      "location": "<HOME>/.cache/agentfeedback/sessions/cursor",
+      "state": "present"
+    }
+  ],
+  "sessions": [
+    {
+      "ref": "cursor:cli",
+      "harness": "cursor",
+      "session_id": "cli",
+      "path": "<HOME>/cursor-cli-transcript.jsonl",
+      "project": "<CWD>",
+      "cwds": [
+        "<CWD>"
+      ],
+      "start": "2026-11-01T12:00:00Z",
+      "end": "2026-11-01T12:00:00Z",
+      "counts": {
+        "entries": 5,
+        "prompts": 0,
+        "tool_calls": 0,
+        "tool_errors": 0,
+        "interrupts": 0,
+        "denials": 0,
+        "unparsed": 0
+      },
+      "state": "new"
+    },
+    {
+      "ref": "cursor:ide",
+      "harness": "cursor",
+      "session_id": "ide",
+      "path": "<HOME>/cursor-ide-transcript.txt",
+      "project": "<CWD>",
+      "cwds": [
+        "<CWD>"
+      ],
+      "start": "2026-11-01T12:00:00Z",
+      "end": "2026-11-01T12:00:00Z",
+      "counts": {
+        "entries": 12,
+        "prompts": 0,
+        "tool_calls": 0,
+        "tool_errors": 0,
+        "interrupts": 0,
+        "denials": 0,
+        "unparsed": 0
+      },
+      "state": "new"
+    }
+  ]
+}

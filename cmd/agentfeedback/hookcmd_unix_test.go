@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -37,6 +38,79 @@ func TestHook_NeverOpensTranscript(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("the hook blocked on the transcript FIFO")
+	}
+}
+
+func TestHook_CursorNeverOpensTranscript(t *testing.T) {
+	for _, event := range []string{"stop", "sessionEnd", "postToolUseFailure"} {
+		t.Run(event, func(t *testing.T) {
+			_, cache := isolate(t)
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			fifo := filepath.Join(home, "transcript.txt")
+			if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+				t.Skip(err)
+			}
+			payload := cursorHookFixture(t, event, home)
+			payload["transcript_path"] = fifo
+			raw, _ := json.Marshal(payload)
+			done := make(chan result, 1)
+			go func() { done <- runCLI(t, string(raw), "hook", "cursor", event) }()
+			select {
+			case r := <-done:
+				if r.code != 0 || r.stdout != "" || r.stderr != "" {
+					t.Fatalf("%+v", r)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("the hook blocked on the transcript FIFO")
+			}
+			st := cursorHookState(t, cache, "conv-1")
+			if st.Cursor == nil || st.Cursor.TranscriptPath != fifo {
+				t.Fatalf("the hook timed out instead of indexing without transcript IO: %+v", st.Cursor)
+			}
+		})
+	}
+}
+
+func TestHook_CursorIndexUsesCounterLock(t *testing.T) {
+	_, cache := isolate(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	payload := cursorHookFixture(t, "stop", home)
+	raw, _ := json.Marshal(payload)
+	if r := runCLI(t, string(raw), "hook", "cursor", "stop"); r.code != 0 {
+		t.Fatalf("seed: %+v", r)
+	}
+	before := cursorHookState(t, cache, "conv-1")
+	lock, err := os.OpenFile(detect.StatePath(cache, "cursor", "conv-1")+".lock", os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = lock.Close() }()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		t.Skip(err)
+	}
+	payload["transcript_path"] = nil
+	raw, _ = json.Marshal(payload)
+	ev, ok := detect.Parse("cursor", "stop", raw)
+	if !ok {
+		t.Fatal("invalid test payload")
+	}
+	var failed error
+	hookDetect(cache, "cursor", "stop", ev, time.Now().Add(30*time.Millisecond), func(err error) { failed = err })
+	after := cursorHookState(t, cache, "conv-1")
+	if failed != detect.ErrLocked || before.Cursor == nil || after.Cursor == nil ||
+		!reflect.DeepEqual(after.Cursor, before.Cursor) || !after.Updated.Equal(before.Updated) {
+		t.Fatalf("index escaped the counter lock: before=%+v after=%+v err=%v", before, after, failed)
+	}
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_UN); err != nil {
+		t.Fatal(err)
+	}
+	if r := runCLI(t, string(raw), "hook", "cursor", "stop"); r.code != 0 {
+		t.Fatalf("unlocked update: %+v", r)
+	}
+	if st := cursorHookState(t, cache, "conv-1"); st.Cursor != nil {
+		t.Fatalf("unlocked invalid metadata did not clear the mapping: %+v", st.Cursor)
 	}
 }
 

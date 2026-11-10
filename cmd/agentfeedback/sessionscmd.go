@@ -65,7 +65,8 @@ func sessionsEnvOf(getenv func(string) string, home string, file fileConfig) ses
 		Home: home, ClaudeConfigDir: dir("CLAUDE_CONFIG_DIR", ".claude"),
 		CodexHome: dir("CODEX_HOME", ".codex"), CopilotHome: dir("COPILOT_HOME", ".copilot"), GeminiDir: gemini,
 		DataHome: dir("XDG_DATA_HOME", ".local", "share"), OpenCodeDB: getenv("OPENCODE_DB"),
-		Policy: file.Collect, Now: nowFunc,
+		CacheDir: filepath.Join(dir("XDG_CACHE_HOME", ".cache"), "agentfeedback"),
+		Policy:   file.Collect, Now: nowFunc,
 	}
 }
 

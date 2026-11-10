@@ -280,7 +280,10 @@ the same policy and expose the last automatic push record. Policy discovery
 itself sends no transcript. When enabled, existing turn-end hooks and eligible
 CLI commands can launch a bounded, detached
 [`sessions push --due` sweep](docs/sessions.md#automatic-sweep); no resident
-daemon, scheduler or new hook registration is installed. See
+daemon or scheduler is installed. Cursor installation also wires its
+fire-and-forget `sessionEnd` hook: together with `stop` and
+`postToolUseFailure`, it indexes transcript metadata for policy-gated,
+storage-only capture. See [Cursor sessions](docs/sessions.md#cursor) and
 [Session policy settings](docs/operate.md#session-policy-settings).
 
 OpenCode's `opencode` input alias selects the variant `opencode --version`

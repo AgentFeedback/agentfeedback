@@ -1006,7 +1006,11 @@ func TestReaderMatchesRegistry(t *testing.T) {
 		}
 	}
 	for _, r := range readers {
-		if got, want := DetectorFor(r.harness()), r.name()+"/"+DetectorVersion; got != want {
+		want := r.name() + "/" + DetectorVersion
+		if !digestSupported(r) {
+			want = ""
+		}
+		if got := DetectorFor(r.harness()); got != want {
 			t.Fatalf("DetectorFor(%s) = %q, want %q", r.harness(), got, want)
 		}
 	}

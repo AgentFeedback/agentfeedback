@@ -21,7 +21,7 @@ import (
 // The wire goldens retain corpus metadata while replacing machine-dependent
 // sizes and hashes only after their relationships have been checked.
 func TestSessionsPushGolden(t *testing.T) {
-	for _, harness := range []string{"claude-code", "codex", "opencode-v1", "opencode-v2"} {
+	for _, harness := range []string{"claude-code", "codex", "opencode-v1", "opencode-v2", "cursor"} {
 		t.Run(harness, func(t *testing.T) {
 			home := goldenWorld(t)
 			goldenStores[harness](t, home)
@@ -126,6 +126,9 @@ func TestSessionsPushGolden(t *testing.T) {
 				envelope := manifest["envelope"].(map[string]any)
 				payload := envelope["payload"].(map[string]any)
 				revision := manifest["revision"].(string)
+				if harness == "cursor" && payload["format"] != "cursor-agent-transcript" {
+					t.Fatalf("Cursor format: %v", payload["format"])
+				}
 				_, sid, _ := strings.Cut(session.Ref, ":")
 				if envelope["key"] != fmt.Sprintf("session-%x", sha256.Sum256([]byte(harness+"\x00"+sid+"\x00"+revision))) {
 					t.Fatal("incorrect revision identity")

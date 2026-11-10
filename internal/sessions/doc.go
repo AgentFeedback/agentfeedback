@@ -21,6 +21,12 @@
 //     the session_meta first line, read before the rest of the file.
 //   - copilot-events (copilot.go): <CopilotHome>/session-state/<session
 //     id>/events.jsonl. Gated on the cwd of the workspace.yaml beside it.
+//   - cursor-agent-transcript (cursor.go): opaque IDE text or CLI JSONL
+//     named by Cursor metadata in <CacheDir>/sessions/cursor counter files.
+//     Workspace policy is checked before opening; missing workspace roots,
+//     paths outside home, symlinks (including ancestors), and nonregular
+//     files are refused. Only complete lines are captured; timestamps fall
+//     back to transcript mtime. Digest and span lookup are unsupported.
 //   - gemini-cli-jsonl (gemini.go): <GeminiDir>/tmp/<project>/chats/session-*.jsonl.
 //     Gated on the path in <project>/.project_root.
 //   - opencode-sqlite (opencode.go): Env.OpenCodeDB, else opencode.db and
@@ -31,9 +37,9 @@
 //     session_v2 table only (OpenCode 2 migrates a V1 database in place).
 //     Gated on the session_v2 row's directory.
 //
-// Cursor and Antigravity stores were examined and are not read: their
-// registry records say why. A directory of a store that cannot be listed
-// is named in Store.Problems and its sessions are not listed.
+// Antigravity stores were examined and are not read: its registry record
+// says why. A directory of a store that cannot be listed is named in
+// Store.Problems and its sessions are not listed.
 //
 // # Policy before opening
 //

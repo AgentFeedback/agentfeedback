@@ -682,7 +682,7 @@ func TestInstall_HookEntries(t *testing.T) {
 	}{
 		{".claude/settings.json", []string{bin + " hook claude-code PostToolUseFailure", bin + " hook claude-code Stop"}},
 		{".codex/hooks.json", []string{bin + " hook codex Stop"}},
-		{".cursor/hooks.json", []string{bin + " hook cursor postToolUseFailure", bin + " hook cursor stop", `"timeout": 5`}},
+		{".cursor/hooks.json", []string{bin + " hook cursor postToolUseFailure", bin + " hook cursor stop", bin + " hook cursor sessionEnd", `"timeout": 5`}},
 		{".config/opencode/plugins/agentfeedback.js", []string{`await run("tool.execute.after"`, `run("session.idle"`, filepath.Join(cache, "agentfeedback", "hooks", "opencode.spawn-error.json")}},
 		{".omp/agent/extensions/agentfeedback.ts", []string{`run("tool_result"`, `run("agent_end"`, "additionalContext: text", filepath.Join(cache, "agentfeedback", "hooks", "omp.spawn-error.json")}},
 		{".pi/agent/extensions/agentfeedback.ts", []string{`run("tool_result"`, `run("agent_settled"`, `deliverAs: "nextTurn"`, filepath.Join(cache, "agentfeedback", "hooks", "pi.spawn-error.json")}},
@@ -705,6 +705,67 @@ func TestInstall_HookEntries(t *testing.T) {
 	}
 }
 
+func TestInstall_CursorSessionEndPreservesUserHooks(t *testing.T) {
+	e := testEnv(t)
+	path := filepath.Join(e.Home, ".cursor", "hooks.json")
+	put(t, path, `{"version":1,"hooks":{"stop":[{"command":"user-stop"}],"sessionEnd":[{"command":"user-end"}]}}`+"\n")
+	for range 2 {
+		if _, err := e.Run(cliRequest("cursor")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config struct {
+		Hooks map[string][]struct {
+			Command string `json:"command"`
+			Timeout int    `json:"timeout"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(raw, &config); err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range []string{"stop", "sessionEnd", "postToolUseFailure"} {
+		count := 0
+		for _, hook := range config.Hooks[event] {
+			if hook.Command == "/usr/local/bin/agentfeedback hook cursor "+event {
+				count++
+				if hook.Timeout != 5 {
+					t.Errorf("%s timeout=%d, want 5", event, hook.Timeout)
+				}
+			}
+		}
+		if count != 1 {
+			t.Errorf("%s installed %d times, want once: %s", event, count, raw)
+		}
+	}
+	for _, event := range []string{"stop", "sessionEnd"} {
+		user := "user-stop"
+		if event == "sessionEnd" {
+			user = "user-end"
+		}
+		if !slices.ContainsFunc(config.Hooks[event], func(h struct {
+			Command string `json:"command"`
+			Timeout int    `json:"timeout"`
+		},
+		) bool {
+			return h.Command == user
+		}) {
+			t.Errorf("%s removed the user's hook: %s", event, raw)
+		}
+	}
+	if _, err := e.Run(Request{Harnesses: []string{"cursor"}, Uninstall: true}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err = os.ReadFile(path)
+	if err != nil || !strings.Contains(string(raw), "user-stop") ||
+		!strings.Contains(string(raw), "user-end") || strings.Contains(string(raw), "agentfeedback hook cursor") {
+		t.Fatalf("uninstall did not preserve only the user's hooks: %s, %v", raw, err)
+	}
+}
+
 // TestInstall_QuotedBinary: a binary path with a character a shell treats
 // specially is single-quoted in every command-string hook entry.
 func TestInstall_QuotedBinary(t *testing.T) {
@@ -722,7 +783,7 @@ func TestInstall_QuotedBinary(t *testing.T) {
 	}{
 		{".claude/settings.json", []string{q + " hook claude-code PostToolUseFailure", q + " hook claude-code Stop", q + " prime"}},
 		{".codex/hooks.json", []string{q + " hook codex Stop", q + " prime"}},
-		{".cursor/hooks.json", []string{q + " hook cursor postToolUseFailure", q + " hook cursor stop", q + " prime --format cursor"}},
+		{".cursor/hooks.json", []string{q + " hook cursor postToolUseFailure", q + " hook cursor stop", q + " hook cursor sessionEnd", q + " prime --format cursor"}},
 		{".copilot/hooks/agentfeedback.json", []string{q + " hook copilot postToolUseFailure", q + " hook copilot agentStop"}},
 		{".gemini/config/hooks.json", []string{q + " hook antigravity PostToolUse", q + " hook antigravity PreInvocation", q + " hook antigravity Stop"}},
 		{".config/devin/config.json", []string{q + " hook devin Stop"}},

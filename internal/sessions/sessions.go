@@ -89,6 +89,9 @@ type Env struct {
 	DataHome string
 	// OpenCodeDB is $OPENCODE_DB as set, "" when unset.
 	OpenCodeDB string
+	// CacheDir is the resolved agentfeedback cache root, shared with hook
+	// counters. An unset or relative path disables hook-indexed readers.
+	CacheDir string
 	// Policy is the user config's [collect] table.
 	Policy collect.Policy
 	// Now is the clock; nil means time.Now.
@@ -163,7 +166,7 @@ var errUnsupported = errors.New("unsupported session store format")
 
 // readerOrder is the listing order of the readers, by harness; a harness
 // whose reader is not registered is skipped.
-var readerOrder = []string{"claude-code", "codex", "copilot", "gemini-cli", "opencode-v1", "opencode-v2"}
+var readerOrder = []string{"claude-code", "codex", "copilot", "cursor", "gemini-cli", "opencode-v1", "opencode-v2"}
 
 // registered are the readers register added, by harness.
 var registered = map[string]reader{}
@@ -194,10 +197,10 @@ func register(r reader) {
 
 // DetectorFor names the reader of harness and the digest rules' version,
 // for context.detector of a submission built from a digest: "<reader
-// name>/<DetectorVersion>", "" for a harness without a reader.
+// name>/<DetectorVersion>", "" for a harness without digest support.
 func DetectorFor(harness string) string {
 	r, ok := readerFor(harness)
-	if !ok {
+	if !ok || !digestSupported(r) {
 		return ""
 	}
 
@@ -290,6 +293,9 @@ type candidate struct {
 	// gated is the store metadata the gate read from the session file, for
 	// load to check it is unchanged; nil for readers without one.
 	gated *gatedMeta
+	// cursor is the hook-index snapshot; capture must revalidate it before
+	// reopening the transcript.
+	cursor *cursorIndex
 }
 
 // gateCwd applies the user policy to the working directory the store's
@@ -413,6 +419,10 @@ func (ev *evaluated) lastSeen() time.Time {
 func read(env Env, r reader, c candidate, row *store.SessionSeen, full bool) *evaluated {
 	ev := &evaluated{r: r, c: c, row: row}
 	if ev.state, ev.reason = r.gate(env, c); ev.state != "" {
+		return ev
+	}
+	if full && !digestSupported(r) {
+		ev.state, ev.reason = StateUnsupportedFormat, cursorDigestReason
 		return ev
 	}
 	tr, err := r.load(env, c)

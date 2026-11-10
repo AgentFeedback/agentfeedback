@@ -1,0 +1,15 @@
+{
+  "kind": "synthetic",
+  "checked_at": "2026-11-10",
+  "sources": [
+    "https://cursor.com/docs/hooks",
+    "https://cursor.com/docs/cli/changelog"
+  ],
+  "fixtures": [
+    {"path": "cursor-ide-transcript.txt", "surface": "IDE", "representation": "synthetic plain-text transcript"},
+    {"path": "cursor-cli-transcript.jsonl", "surface": "CLI", "representation": "synthetic JSONL transcript"}
+  ],
+  "installed_cursor_version": null,
+  "live_credentialed_capture": false,
+  "scope": "Official documentation establishes hook transcript_path metadata. Fixture body layouts are synthetic, not verified exports or guaranteed schemas. Both are opaque complete-line storage capture under cursor-agent-transcript. CLI semantic digest compatibility remains unverified."
+}

@@ -1,8 +1,10 @@
 {
+  "fixture_provenance": "synthetic; https://cursor.com/docs/hooks checked 2026-11-10; not a live capture",
   "conversation_id": "conv-1",
   "generation_id": "gen-1",
   "hook_event_name": "stop",
   "workspace_roots": ["/project"],
+  "transcript_path": "/home/synthetic/.cursor/projects/example/agent-transcripts/conv-1.txt",
   "status": "completed",
   "loop_count": 0
 }

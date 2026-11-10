@@ -38,8 +38,17 @@ func (c Config) Normalized() Config {
 	return c
 }
 
-// State is one session's counters. It holds no command text: commands are
-// counted under their digest.
+// CursorSession is the hook-reported location of a Cursor conversation.
+// Transcript contents are read only by the sessions reader, never by hooks.
+type CursorSession struct {
+	ConversationID string   `json:"conversation_id"`
+	TranscriptPath string   `json:"transcript_path"`
+	WorkspaceRoots []string `json:"workspace_roots"`
+	Cwd            string   `json:"cwd,omitempty"`
+}
+
+// State is one session's counters and optional transcript location. It holds
+// no command text: commands are counted under their digest.
 type State struct {
 	// Tools and Commands count failures per tool name and per command
 	// digest since the last note; Failures counts every failure since then.
@@ -63,6 +72,9 @@ type State struct {
 	PendingFacts *Facts    `json:"pending_facts,omitempty"`
 	Created      time.Time `json:"created"`
 	Updated      time.Time `json:"updated"`
+	// Cursor is present only when a Cursor hook reported a transcript path
+	// strictly beneath the user's home directory.
+	Cursor *CursorSession `json:"cursor,omitempty"`
 }
 
 // Input is everything Decide needs besides the state.

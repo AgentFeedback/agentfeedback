@@ -1,0 +1,18 @@
+[
+  {
+    "bytes": "\u003cENVELOPE_BYTES\u003e",
+    "part_count": 1,
+    "preview": "{\"fixture\":\"synthetic Cursor CLI transcript; not a live export\",\"conversation_id\":\"{{SID}}\"}\n{\"type\":\"user\",\"cwd\":\"{{CWD}}\",\"message\":{\"role\":\"user\",\"content\":\"Inspect the synthetic CLI failure.\"}}\n{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"tool_use\",\"name\":\"Shell\",\"input\":{\"command\":\"printf synthetic\"}}]}}\n{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"content\":\"synthetic\"}]}}\n{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":\"Synthetic response with example credential [REDACTED:aws_access_key]\"}}\n",
+    "ref": "cursor:cli",
+    "revision": "563",
+    "status": "dry-run"
+  },
+  {
+    "bytes": "\u003cENVELOPE_BYTES\u003e",
+    "part_count": 1,
+    "preview": "Synthetic Cursor IDE transcript fixture; not a live export.\nuser:\n\u003cuser_query\u003e\nInvestigate the synthetic failure for {{SID}} in {{CWD}}.\n\u003c/user_query\u003e\nassistant:\nExample credential for scrubbing: [REDACTED:aws_access_key]\n[Tool call] Shell\n  command: printf synthetic\n[Tool result] synthetic\nassistant:\nThe synthetic investigation is complete.\n",
+    "ref": "cursor:ide",
+    "revision": "339",
+    "status": "dry-run"
+  }
+]

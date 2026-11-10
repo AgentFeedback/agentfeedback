@@ -1,0 +1,5 @@
+{"fixture":"synthetic Cursor CLI transcript; not a live export","conversation_id":"{{SID}}"}
+{"type":"user","cwd":"{{CWD}}","message":{"role":"user","content":"Inspect the synthetic CLI failure."}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Shell","input":{"command":"printf synthetic"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"synthetic"}]}}
+{"type":"assistant","message":{"role":"assistant","content":"Synthetic response with example credential AKIAIOSFODNN7EXAMPLE"}}

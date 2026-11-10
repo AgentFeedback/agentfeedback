@@ -155,8 +155,9 @@ an empty `submissions` array is an empty queue.
 `location`, `store` (`present`, `absent`, `unreadable`,
 `unsupported-format`) and `states` (sessions per state), and `selection`
 (`harnesses`, `since`, `limit`) when one is saved. Offer only harnesses
-whose store is present. `new` and `changed` sessions are the unprocessed
-ones.
+whose store is present and whose reader supports semantic digests. Cursor
+supports storage-only capture, not this digest-based triage workflow; do not
+offer it here. `new` and `changed` sessions are the unprocessed ones.
 
 **S3.** `sessions list --json` prints `sessions[]` with `ref`, `harness`,
 `state` and `end`. The digest prints `notice`, `detector_version`,

@@ -3,6 +3,7 @@ package detect
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -31,8 +32,9 @@ func TestParse_Fixtures(t *testing.T) {
 		{"amp", "agent.end", Event{Class: ClassTurnEnd, SessionID: "amp-1", Cwd: "/repo", ExitCode: -1, EndsTurn: true}},
 		{"cline", "afterTool", Event{Class: ClassToolFailed, SessionID: "cline-1", Cwd: "/repo", Tool: "execute_command", Command: "npm test", ExitCode: -1, ErrorClass: "error"}},
 		{"cline", "afterRun", Event{Class: ClassTurnEnd, SessionID: "cline-1", Cwd: "/repo", ExitCode: -1, EndsTurn: true}},
-		{"cursor", "postToolUseFailure", Event{Class: ClassToolFailed, SessionID: "conv-1", Cwd: "/project", Tool: "Shell", Command: "npm test", ExitCode: -1, ErrorClass: "timeout"}},
-		{"cursor", "stop", Event{Class: ClassTurnEnd, SessionID: "conv-1", Cwd: "/project", ExitCode: -1, EndsTurn: true}},
+		{"cursor", "postToolUseFailure", Event{Class: ClassToolFailed, SessionID: "conv-1", Cwd: "/project", Tool: "Shell", Command: "npm test", ExitCode: -1, ErrorClass: "timeout", Cursor: CursorSession{ConversationID: "conv-1", TranscriptPath: "/home/synthetic/.cursor/projects/example/agent-transcripts/conv-1.txt", WorkspaceRoots: []string{"/project"}, Cwd: "/project"}}},
+		{"cursor", "stop", Event{Class: ClassTurnEnd, SessionID: "conv-1", Cwd: "/project", ExitCode: -1, EndsTurn: true, Cursor: CursorSession{ConversationID: "conv-1", TranscriptPath: "/home/synthetic/.cursor/projects/example/agent-transcripts/conv-1.txt", WorkspaceRoots: []string{"/project"}}}},
+		{"cursor", "sessionEnd", Event{Class: ClassTurnEnd, SessionID: "conv-1", Cwd: "/project", ExitCode: -1, EndsTurn: true, Cursor: CursorSession{ConversationID: "conv-1", TranscriptPath: "/home/synthetic/.cursor/projects/example/agent-transcripts/conv-1.txt", WorkspaceRoots: []string{"/project"}}}},
 		{"copilot", "postToolUseFailure", Event{Class: ClassToolFailed, SessionID: "cp-1", Cwd: "/repo", Tool: "bash", Command: "make test", ExitCode: 2, ErrorClass: "exit"}},
 		{"copilot", "agentStop", Event{Class: ClassTurnEnd, SessionID: "cp-1", Cwd: "/repo", ExitCode: -1, EndsTurn: true}},
 		{"antigravity", "PostToolUse", Event{Class: ClassToolFailed, SessionID: "ec33ebf9-0cba-4100-8142-c61503f6c587", Cwd: "/workspace/project", Tool: "run_command", Command: "npm test", ExitCode: -1, ErrorClass: "error"}},
@@ -55,9 +57,28 @@ func TestParse_Fixtures(t *testing.T) {
 			t.Errorf("%s %s: args digest %q", tt.harness, tt.event, got.ArgsDigest)
 		}
 		got.ArgsDigest = ""
-		if got != tt.want {
+		if !reflect.DeepEqual(got, tt.want) {
 			t.Errorf("%s %s:\n got %+v\nwant %+v", tt.harness, tt.event, got, tt.want)
 		}
+	}
+}
+
+func TestParse_CursorMetadata(t *testing.T) {
+	for _, event := range []string{"stop", "sessionEnd", "postToolUseFailure"} {
+		t.Run(event, func(t *testing.T) {
+			ev, ok := Parse("cursor", event, []byte(`{"conversation_id":"original/conv:id","session_id":"other","cwd":"/workspace/sub","workspace_roots":["/workspace","/second"],"transcript_path":"/home/user/transcript.txt"}`))
+			want := CursorSession{ConversationID: "original/conv:id", TranscriptPath: "/home/user/transcript.txt", WorkspaceRoots: []string{"/workspace", "/second"}, Cwd: "/workspace/sub"}
+			if !ok || ev.SessionID != want.ConversationID || ev.Cwd != "/workspace/sub" || !reflect.DeepEqual(ev.Cursor, want) {
+				t.Fatalf("metadata: %+v, recognized=%v", ev, ok)
+			}
+			if event != "postToolUseFailure" && (!ev.EndsTurn || ev.Class != ClassTurnEnd || CanDeliver("cursor", event)) {
+				t.Fatalf("end event can deliver or does not end the turn: %+v", ev)
+			}
+			ev, ok = Parse("cursor", event, []byte(`{"session_id":"fallback","transcript_path":null,"workspace_roots":null}`))
+			if !ok || ev.SessionID != "fallback" || !reflect.DeepEqual(ev.Cursor, CursorSession{}) {
+				t.Fatalf("null metadata and session fallback: %+v, recognized=%v", ev, ok)
+			}
+		})
 	}
 }
 
@@ -81,7 +102,7 @@ func TestOpenCodeCanonicalAndLegacyIdentity(t *testing.T) {
 		payload := fixture(t, "opencode", event)
 		old, oldOK := Parse("opencode", event, payload)
 		current, currentOK := Parse("opencode-v1", event, payload)
-		if !oldOK || !currentOK || old != current {
+		if !oldOK || !currentOK || !reflect.DeepEqual(old, current) {
 			t.Fatalf("%s alias mismatch: %+v %+v", event, old, current)
 		}
 		if KnownEvent("opencode-v1", event) != KnownEvent("opencode", event) || CanDeliver("opencode-v1", event) != CanDeliver("opencode", event) {

@@ -61,7 +61,7 @@ type ocCapturer interface {
 
 func captureSupported(r reader) bool {
 	switch r.(type) {
-	case claudeReader, codexReader, opencodeReader, opencodeV2Reader:
+	case claudeReader, codexReader, cursorReader, opencodeReader, opencodeV2Reader:
 		return true
 	default:
 		return false
@@ -235,7 +235,7 @@ func captureEvaluate(env Env, r reader, c candidate, known []string) CaptureCand
 		tr, err = r.load(env, c)
 	}
 	after, stampErr := captureStampOf(r, c)
-	if stampErr != nil || !before.equal(after) || errors.Is(err, errCodexChanged) {
+	if stampErr != nil || !before.equal(after) || errors.Is(err, errCodexChanged) || errors.Is(err, ErrCaptureChanged) {
 		return refuse(StateChanged, "capture_changed")
 	}
 	if errors.Is(err, errUnsupported) {
@@ -339,6 +339,13 @@ func OpenCapture(ctx context.Context, env Env, c CaptureCandidate) (io.ReadClose
 			_, err := oc.loadCapture(producerEnv, c.source.c, pw)
 			_ = pw.CloseWithError(err)
 		}()
+	} else if cr, ok := c.source.r.(cursorReader); ok {
+		env.captureOnly = true
+		f, err := cr.open(env, c.source.c)
+		if err != nil {
+			return nil, CaptureMeta{}, err
+		}
+		raw = f
 	} else {
 		f, err := env.open(c.source.c.path)
 		if err != nil {

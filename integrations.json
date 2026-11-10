@@ -24,8 +24,8 @@
       "name": "Cursor",
       "kind": "adapter",
       "install": "`agentfeedback install cursor`",
-      "status": "documented",
-      "date": "2026-10-07",
+      "status": "fixture-tested",
+      "date": "2026-11-10",
       "docs": "docs/operate.md"
     },
     {

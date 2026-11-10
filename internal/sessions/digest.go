@@ -58,6 +58,15 @@ type DigestRequest struct {
 	AllowUnknownProject bool
 }
 
+// Cursor transcripts are opaque storage-only sources. A readable transcript
+// does not establish compatible semantic digest rules.
+func digestSupported(r reader) bool {
+	_, cursor := r.(cursorReader)
+	return !cursor
+}
+
+const cursorDigestReason = "Cursor transcripts support storage capture only; semantic digest support is unverified"
+
 // Event is a prompt or a tool call that did not succeed.
 type Event struct {
 	Span       string `json:"span"`
@@ -205,6 +214,18 @@ func Digest(ctx context.Context, db *store.DB, env Env, req DigestRequest) (Dige
 			return DigestOutput{}, err
 		}
 		for _, r := range rs {
+			if !digestSupported(r) {
+				if req.Harness != "" {
+					cands, _, err := r.candidates(env)
+					if err != nil && !errors.Is(err, fs.ErrNotExist) {
+						return DigestOutput{}, err
+					}
+					for _, c := range cands {
+						out.Errors = append(out.Errors, DigestError{Ref: Ref(r.harness(), c.sessionID), State: StateUnsupportedFormat, Message: cursorDigestReason})
+					}
+				}
+				continue
+			}
 			_, all, _, err := evaluateAll(ctx, db, env, r, time.Time{})
 			if err != nil {
 				return DigestOutput{}, err
@@ -288,6 +309,10 @@ func Digest(ctx context.Context, db *store.DB, env Env, req DigestRequest) (Dige
 			return DigestOutput{}, err
 		}
 		ref := Ref(ev.r.harness(), ev.c.sessionID)
+		if !digestSupported(ev.r) {
+			out.Errors = append(out.Errors, DigestError{Ref: ref, State: StateUnsupportedFormat, Message: cursorDigestReason})
+			continue
+		}
 		switch ev.state {
 		case StateNew, StateChanged, StateProcessed:
 		case StateUnknownProject:
@@ -725,6 +750,9 @@ func Locate(ctx context.Context, env Env, ref, span string) (SpanFacts, error) {
 		return SpanFacts{}, fmt.Errorf("%s: %w: empty span", ref, ErrSpanNotFound)
 	}
 	r, _ := readerFor(h)
+	if !digestSupported(r) {
+		return SpanFacts{}, &RefusedError{Ref: ref, State: StateUnsupportedFormat, Reason: cursorDigestReason}
+	}
 	cands, _, err := r.candidates(env)
 	if state := refusedStore(err); state != "" {
 		return SpanFacts{}, &RefusedError{Ref: ref, State: state, Reason: err.Error()}

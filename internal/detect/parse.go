@@ -29,7 +29,7 @@ const (
 	IgnoreSelf       = "self"
 )
 
-// Event is what a hook payload says, reduced to what the rule needs.
+// Event is a hook payload reduced to detector fields and session metadata.
 type Event struct {
 	// Class is tool_failed, turn_end or deliver; "" is an event the caller
 	// ignores (a tool call that succeeded).
@@ -50,6 +50,9 @@ type Event struct {
 	// EndsTurn is set on a turn_end event and on a deliver event that also
 	// ends the turn (OpenCode's session.idle).
 	EndsTurn bool
+	// Cursor is Cursor's hook-reported metadata, before path validation.
+	// WorkspaceRoots and Cwd retain every reported policy location.
+	Cursor CursorSession
 }
 
 // object is a decoded payload: member name to raw value.
@@ -332,13 +335,30 @@ func parse(harness, event string, payload []byte) (Event, bool) {
 		}
 	case "cursor":
 		sid := o.str("conversation_id", "session_id")
+		var roots []string
+		if json.Unmarshal(o["workspace_roots"], &roots) != nil {
+			roots = nil
+		}
 		cwd := o.str("cwd")
-		if cwd == "" {
-			cwd = o.firstString("workspace_roots")
+		cursor := CursorSession{
+			ConversationID: o.str("conversation_id"),
+			TranscriptPath: o.str("transcript_path"),
+			WorkspaceRoots: roots,
+			Cwd:            cwd,
+		}
+		if raw, present := o["cwd"]; present {
+			if value, ok := asString(raw); !ok || value == "" {
+				// Malformed optional metadata must clear an older hook mapping.
+				cursor.TranscriptPath = ""
+			}
+		}
+		if cwd == "" && len(roots) > 0 {
+			cwd = roots[0]
 		}
 		switch event {
 		case "postToolUseFailure":
 			ev := failure(sid, cwd, o.str("tool_name"), o.raw("tool_input"), commandOf(o.sub("tool_input"), "command"))
+			ev.Cursor = cursor
 			if ft := o.str("failure_type"); ft != "" {
 				ev.ErrorClass = ft
 			}
@@ -350,8 +370,11 @@ func parse(harness, event string, payload []byte) (Event, bool) {
 			}
 
 			return ev, true
-		case "stop":
-			return turnEnd(sid, cwd), true
+		case "stop", "sessionEnd":
+			ev := turnEnd(sid, cwd)
+			ev.Cursor = cursor
+
+			return ev, true
 		}
 	case "copilot":
 		sid := o.str("sessionId", "session_id")

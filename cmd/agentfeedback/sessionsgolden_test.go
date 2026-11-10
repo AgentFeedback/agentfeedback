@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io/fs"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,6 +36,7 @@ func goldenWorld(t *testing.T) string {
 	isolateCLI(t)
 	home := os.Getenv("HOME")
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
 	for _, name := range []string{"CODEX_HOME", "COPILOT_HOME", "GEMINI_CLI_HOME", "OPENCODE_DB"} {
 		t.Setenv(name, "")
 	}
@@ -87,10 +90,8 @@ func copyStore(t *testing.T, src, dst string, vars map[string]string) {
 	}
 }
 
-// TestSessionsGolden runs sessions list and sessions digest over every
-// reader's fixture store and compares their JSON, with the home and the
-// working directory written as <HOME>, <CWD> and <CWD_ENC>, with
-// testdata/sessions/<harness>.{list,digest}.golden.json.
+// TestSessionsGolden compares each reader's list and digest (or storage-only
+// capture preview) with fixtures, normalising home and working directory paths.
 func TestSessionsGolden(t *testing.T) {
 	for _, h := range sessions.Harnesses() {
 		t.Run(h, func(t *testing.T) {
@@ -103,6 +104,24 @@ func TestSessionsGolden(t *testing.T) {
 			// The working directory first, as written and in Claude Code's
 			// project directory form: it may lie under the home.
 			normalise := strings.NewReplacer(cwd, "<CWD>", encodeCwd(cwd), "<CWD_ENC>", home, "<HOME>")
+			if h == "cursor" {
+				srv := startServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+					switch r.URL.Path {
+					case "/api/v1/openapi.json":
+						fmt.Fprint(w, `{"paths":{"/api/v1/sessions/policy":{"get":{}}}}`)
+					case "/api/v1/sessions/policy":
+						fmt.Fprint(w, `{"org_id":"11111111-1111-4111-8111-111111111111","enabled":true,"notice_version":"1","max_part_bytes":10485760,"max_session_bytes":25165824,"incomplete_upload_ttl_seconds":86400}`)
+					case "/api/v1/meta":
+						fmt.Fprint(w, `{}`)
+					default:
+						t.Errorf("dry-run attempted unexpected request: %s", r.URL.Path)
+						w.WriteHeader(http.StatusInternalServerError)
+					}
+				}))
+				t.Setenv(envURL, srv.URL)
+				t.Setenv(envAPIKey, testKey)
+			}
 			for _, run := range []struct {
 				kind string
 				args []string
@@ -110,9 +129,29 @@ func TestSessionsGolden(t *testing.T) {
 				{"list", []string{"sessions", "list", "--json", "--harness", h}},
 				{"digest", []string{"sessions", "digest", "--json", "--unprocessed", "--harness", h}},
 			} {
+				if h == "cursor" && run.kind == "digest" {
+					run.kind = "dry-run"
+					run.args = []string{"sessions", "push", "cursor:cli", "cursor:ide", "--since", "2020-01-01T00:00:00Z", "--dry-run", "--json"}
+				}
 				r := runCLI(t, "", run.args...)
 				if r.code != 0 {
 					t.Fatalf("%v: %+v", run.args, r)
+				}
+				if run.kind == "dry-run" {
+					var rows []map[string]any
+					if err := json.Unmarshal([]byte(r.stdout), &rows); err != nil {
+						t.Fatal(err)
+					}
+					for _, row := range rows {
+						if _, ok := row["bytes"]; ok {
+							row["bytes"] = "<ENVELOPE_BYTES>"
+						}
+					}
+					encoded, err := json.Marshal(rows)
+					if err != nil {
+						t.Fatal(err)
+					}
+					r.stdout = string(encoded)
 				}
 				var buf bytes.Buffer
 				if err := json.Indent(&buf, []byte(r.stdout), "", "  "); err != nil {

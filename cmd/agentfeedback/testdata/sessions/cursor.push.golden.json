@@ -1,0 +1,122 @@
+[
+  {
+    "manifest": {
+      "capture_end": "2026-11-01T12:00:00Z",
+      "capture_start": "2026-11-01T12:00:00Z",
+      "content_bytes": "\u003cCONTENT_BYTES\u003e",
+      "content_sha256": "\u003cSHA256\u003e",
+      "envelope": {
+        "context": {
+          "arch": "amd64",
+          "client": "agentfeedback/dev",
+          "detector": "cursor-agent-transcript/1",
+          "folder": "cursor-project",
+          "origin": "session-capture",
+          "os": "linux",
+          "session_harness": "cursor",
+          "session_id": "cli"
+        },
+        "harness": "cursor",
+        "key": "\u003cREVISION_KEY\u003e",
+        "kind": "session",
+        "machine": "\u003cMACHINE\u003e",
+        "occurred_at": "2026-11-01T12:00:00Z",
+        "payload": {
+          "counts": {
+            "entries": 5,
+            "prompts": 0,
+            "tool_calls": 0,
+            "tool_errors": 0
+          },
+          "detector_version": "1",
+          "format": "cursor-agent-transcript",
+          "line_count": 5,
+          "revision": "\u003cSOURCE_BYTES\u003e",
+          "size": "\u003cSOURCE_BYTES\u003e"
+        },
+        "project": "cursor-project"
+      },
+      "envelope_bytes": "\u003cENVELOPE_BYTES\u003e",
+      "installation": "\u003cMACHINE\u003e",
+      "part_count": 1,
+      "revision": "\u003cSOURCE_BYTES\u003e",
+      "session_ref": "cursor:cli"
+    },
+    "outcomes": [
+      {
+        "bytes": "\u003cENVELOPE_BYTES\u003e",
+        "part_count": 1,
+        "ref": "cursor:cli",
+        "revision": "\u003cSOURCE_BYTES\u003e",
+        "status": "pushed",
+        "submission_uid": "11111111-1111-4111-8111-111111111111"
+      },
+      {
+        "reason": "already_pushed",
+        "ref": "cursor:cli",
+        "revision": "\u003cSOURCE_BYTES\u003e",
+        "status": "replayed"
+      }
+    ]
+  },
+  {
+    "manifest": {
+      "capture_end": "2026-11-01T12:00:00Z",
+      "capture_start": "2026-11-01T12:00:00Z",
+      "content_bytes": "\u003cCONTENT_BYTES\u003e",
+      "content_sha256": "\u003cSHA256\u003e",
+      "envelope": {
+        "context": {
+          "arch": "amd64",
+          "client": "agentfeedback/dev",
+          "detector": "cursor-agent-transcript/1",
+          "folder": "cursor-project",
+          "origin": "session-capture",
+          "os": "linux",
+          "session_harness": "cursor",
+          "session_id": "ide"
+        },
+        "harness": "cursor",
+        "key": "\u003cREVISION_KEY\u003e",
+        "kind": "session",
+        "machine": "\u003cMACHINE\u003e",
+        "occurred_at": "2026-11-01T12:00:00Z",
+        "payload": {
+          "counts": {
+            "entries": 12,
+            "prompts": 0,
+            "tool_calls": 0,
+            "tool_errors": 0
+          },
+          "detector_version": "1",
+          "format": "cursor-agent-transcript",
+          "line_count": 12,
+          "revision": "\u003cSOURCE_BYTES\u003e",
+          "size": "\u003cSOURCE_BYTES\u003e"
+        },
+        "project": "cursor-project"
+      },
+      "envelope_bytes": "\u003cENVELOPE_BYTES\u003e",
+      "installation": "\u003cMACHINE\u003e",
+      "part_count": 1,
+      "revision": "\u003cSOURCE_BYTES\u003e",
+      "session_ref": "cursor:ide"
+    },
+    "outcomes": [
+      {
+        "bytes": "\u003cENVELOPE_BYTES\u003e",
+        "part_count": 1,
+        "ref": "cursor:ide",
+        "revision": "\u003cSOURCE_BYTES\u003e",
+        "status": "pushed",
+        "submission_uid": "11111111-1111-4111-8111-111111111111"
+      },
+      {
+        "reason": "already_pushed",
+        "ref": "cursor:ide",
+        "revision": "\u003cSOURCE_BYTES\u003e",
+        "status": "replayed"
+      }
+    ]
+  }
+]

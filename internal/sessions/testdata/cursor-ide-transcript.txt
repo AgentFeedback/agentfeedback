@@ -1,0 +1,12 @@
+Synthetic Cursor IDE transcript fixture; not a live export.
+user:
+<user_query>
+Investigate the synthetic failure for {{SID}} in {{CWD}}.
+</user_query>
+assistant:
+Example credential for scrubbing: AKIAIOSFODNN7EXAMPLE
+[Tool call] Shell
+  command: printf synthetic
+[Tool result] synthetic
+assistant:
+The synthetic investigation is complete.

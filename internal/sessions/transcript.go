@@ -42,11 +42,16 @@ type transcript struct {
 	captureModel string
 	entries      []entry
 	captureOnly  bool // discard record content after classification
+	storageOnly  bool // opaque complete lines, with no semantic entries
 }
 
 // summarise fills total and lastModel and drops the entries and the
 // unparsed offsets: List and Status keep only the summary of a session.
 func (t *transcript) summarise(keep bool) {
+	if t.storageOnly {
+		t.total = Counts{Entries: t.parsed}
+		return
+	}
 	t.total, t.lastModel = t.counts(0), t.model()
 	if !keep {
 		t.entries, t.badLines = nil, nil

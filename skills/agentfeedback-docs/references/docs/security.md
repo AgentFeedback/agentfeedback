@@ -116,9 +116,10 @@ and failures never grant permission. See
 [Session policy settings](operate.md#session-policy-settings) for cache and
 backoff behavior.
 
-`sessions push` sends eligible Claude Code, Codex and OpenCode (V1 and 2) transcripts
-to that configured server when its organisation enables processing. These
-contain prompts, responses, tool calls and tool output. Collection rules,
+`sessions push` sends eligible Claude Code, Codex, OpenCode (V1 and 2) and
+Cursor transcripts to that configured server when its organisation enables
+processing. Depending on the harness, these contain prompts, responses,
+tool calls and tool output. Collection rules,
 repository upload vetoes and the policy's consent cutoff apply. Every scrub
 class is applied before hashing and partitioning, with JSON strings decoded
 so escaping cannot hide credentials and multiline private keys redacted
@@ -131,6 +132,14 @@ preview stays in command output; it is not saved or sent to the upload
 routes. Pending uploads retain only their initial scrubbed manifest metadata
 and partition size in SQLite, never transcript content or parts. Source
 permissions and snapshot stability are checked again before each request.
+
+Cursor hooks store only the conversation id, home-contained absolute
+transcript path, workspace roots and reported cwd in the existing owner-only
+counters cache, subject to its seven-day pruning. Hooks never open the transcript.
+Listing and export check collection policy and repository upload vetoes for
+every recorded root and cwd before reading; missing or invalid workspace roots,
+symlink paths and nonregular transcripts are refused.
+Cursor capture is storage-only, not a semantic digest.
 
 Where it reads and writes (`XDG_*` unset or not absolute means the default
 under the home directory, on every operating system):

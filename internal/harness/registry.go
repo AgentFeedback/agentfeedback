@@ -27,6 +27,7 @@ const (
 	EventToolFailed   = "tool_failed"
 	EventTurnEnd      = "turn_end"
 	EventSessionStart = "session_start"
+	EventSessionEnd   = "session_end"
 )
 
 // Instructions are the instruction files a harness reads. Install writes
@@ -412,23 +413,34 @@ var registry = []Adapter{
 			Project:  []string{"AGENTS.md", ".cursor/rules/"},
 		},
 		Hook: Hook{
-			File:     homePath(".cursor", "hooks.json"),
-			Format:   "json-element",
-			Events:   events("postToolUseFailure", "stop", "sessionStart"),
+			File:   homePath(".cursor", "hooks.json"),
+			Format: "json-element",
+			Events: map[string]string{
+				EventToolFailed: "postToolUseFailure", EventTurnEnd: "stop",
+				EventSessionStart: "sessionStart", EventSessionEnd: "sessionEnd",
+			},
 			Deliver:  "postToolUseFailure",
 			Reminder: true,
 		},
 		MCP: MCP{File: homePath(".cursor", "mcp.json"), Path: []string{"mcpServers"}, EnvRef: "${env:AGENT_FEEDBACK_API_KEY}"},
 		Sessions: Sessions{
-			Locations: []string{"~/.cursor/projects/*/agent-transcripts/"}, Reader: "none", NoReader: "the session stores were examined and are not read; see docs/sessions.md",
-			Verified: Verified{Level: LevelUnsupported, Date: verifiedDate, Note: "docs/sessions.md#cursor"},
+			Locations: []string{"<cache>/sessions/cursor/*.json → hook-reported transcript_path beneath home"},
+			Reader:    "cursor-agent-transcript",
+			Verified: Verified{
+				Level: LevelFixtureTested, Date: "2026-11-10",
+				Note: "official Cursor hook and CLI documentation; synthetic IDE and CLI fixtures; storage-only, digest compatibility unverified",
+			},
 		},
-		Verified: documented(),
+		Verified: Verified{
+			Level: LevelFixtureTested, Date: "2026-11-10",
+			Note: "official Cursor hooks contract; synthetic hook and transcript capture fixtures, no live version checked; storage-only",
+		},
 		hook: func(p *plan, o Options) ([]Item, []string) {
 			f := filepath.Join(p.env.Home, ".cursor", "hooks.json")
 			items := []Item{
 				element(f, []string{"hooks", "postToolUseFailure"}, obj("command", str(hookCmd(o, "cursor", "postToolUseFailure")), "timeout", "5"), RoleHook),
 				element(f, []string{"hooks", "stop"}, obj("command", str(hookCmd(o, "cursor", "stop")), "timeout", "5"), RoleHook),
+				element(f, []string{"hooks", "sessionEnd"}, obj("command", str(hookCmd(o, "cursor", "sessionEnd")), "timeout", "5"), RoleHook),
 			}
 			if o.Reminder {
 				items = append(items, element(f, []string{"hooks", "sessionStart"}, obj("command", str(primeCmd(o)+" --format cursor"), "timeout", "5"), RoleReminder))
@@ -446,7 +458,7 @@ var registry = []Adapter{
 		row: docsRow{
 			detected: "`cursor-agent`, or an `agent` that resolves into a Cursor install; `~/.cursor`",
 			skill:    "`~/.cursor/skills/agentfeedback/SKILL.md`",
-			hook:     "`~/.cursor/hooks.json` `hooks.postToolUseFailure` (note) and `hooks.stop`",
+			hook:     "`~/.cursor/hooks.json` `hooks.postToolUseFailure` (note), `hooks.stop` and `hooks.sessionEnd`",
 			reminder: "`hooks.sessionStart` runs `agentfeedback prime --format cursor`",
 			rule:     "none: Cursor's User Rules live in its settings UI, not in a file",
 			mcp:      "`~/.cursor/mcp.json` `mcpServers.agentfeedback`",

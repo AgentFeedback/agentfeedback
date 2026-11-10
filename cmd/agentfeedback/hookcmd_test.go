@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -83,6 +84,333 @@ func TestHook_ClaudeCode(t *testing.T) {
 	state, _ := os.ReadFile(detect.StatePath(cache, "claude-code", "sess-1"))
 	if len(state) == 0 || strings.Contains(string(state), "npm") {
 		t.Errorf("state %s", state)
+	}
+}
+
+// cursorHookFixture loads a synthetic payload based on the official hook
+// contract, substituting this test's home and workspace (not a live capture).
+func cursorHookFixture(t *testing.T, event, home string) map[string]any {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "internal", "detect", "testdata", "payloads", "cursor."+event+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatal(err)
+	}
+	payload["transcript_path"] = strings.ReplaceAll(payload["transcript_path"].(string), "/home/synthetic", home)
+	payload["workspace_roots"] = []string{filepath.Join(home, "workspace"), filepath.Join(home, "second")}
+	if event == "postToolUseFailure" {
+		payload["cwd"] = filepath.Join(home, "workspace", "sub")
+	}
+
+	return payload
+}
+
+func cursorHookState(t *testing.T, cache, session string) detect.State {
+	t.Helper()
+	raw, err := os.ReadFile(detect.StatePath(cache, "cursor", session))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var st detect.State
+	if err := json.Unmarshal(raw, &st); err != nil {
+		t.Fatal(err)
+	}
+
+	return st
+}
+
+func TestHook_CursorFixtureIndexesTranscript(t *testing.T) {
+	for _, event := range []string{"stop", "sessionEnd", "postToolUseFailure"} {
+		t.Run(event, func(t *testing.T) {
+			_, cache := isolate(t)
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			payload := cursorHookFixture(t, event, home)
+			const session = "original-conv:id"
+			payload["conversation_id"] = session
+			payload["session_id"] = "different-session-id"
+			raw, _ := json.Marshal(payload)
+			if r := runCLI(t, string(raw), "hook", "cursor", event); r.code != 0 || r.stdout != "" || r.stderr != "" {
+				t.Fatalf("%+v", r)
+			}
+			st := cursorHookState(t, cache, session)
+			want := detect.CursorSession{
+				ConversationID: session, TranscriptPath: payload["transcript_path"].(string),
+				WorkspaceRoots: []string{filepath.Join(home, "workspace"), filepath.Join(home, "second")},
+			}
+			if event == "postToolUseFailure" {
+				want.Cwd = filepath.Join(home, "workspace", "sub")
+			}
+			if st.Cursor == nil || !reflect.DeepEqual(*st.Cursor, want) {
+				t.Fatalf("indexed metadata: %+v, want %+v", st.Cursor, want)
+			}
+			wantTotal := 0
+			if event == "postToolUseFailure" {
+				wantTotal = 1
+			}
+			if st.Total != wantTotal || st.Created.IsZero() || st.Updated.IsZero() {
+				t.Fatalf("detector counters changed: %+v", st)
+			}
+			path := detect.StatePath(cache, "cursor", session)
+			if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o600 {
+				t.Fatalf("state permissions: %v, %v", info, err)
+			}
+			if info, err := os.Stat(filepath.Dir(path)); err != nil || info.Mode().Perm() != 0o700 {
+				t.Fatalf("index directory permissions: %v, %v", info, err)
+			}
+			if _, err := os.Stat(want.TranscriptPath); !os.IsNotExist(err) {
+				t.Fatalf("fixture unexpectedly created a transcript: %v", err)
+			}
+		})
+	}
+}
+
+func TestHook_CursorInvalidTranscriptClearsIndex(t *testing.T) {
+	for _, event := range []string{"stop", "sessionEnd", "postToolUseFailure"} {
+		for _, name := range []string{"null", "missing", "empty", "relative", "outside", "sibling-prefix", "home", "traversal", "wrong-type", "nul"} {
+			t.Run(event+"/"+name, func(t *testing.T) {
+				cfg, cache := isolate(t)
+				putFile(t, cfg, "[detect]\nnudge = false\n", 0o600)
+				home := t.TempDir()
+				t.Setenv("HOME", home)
+				payload := cursorHookFixture(t, event, home)
+				raw, _ := json.Marshal(payload)
+				if r := runCLI(t, string(raw), "hook", "cursor", event); r.code != 0 || r.stdout != "" || r.stderr != "" {
+					t.Fatalf("seed: %+v", r)
+				}
+				if cursorHookState(t, cache, "conv-1").Cursor == nil {
+					t.Fatal("seed mapping missing")
+				}
+				switch name {
+				case "null":
+					payload["transcript_path"] = nil
+				case "missing":
+					delete(payload, "transcript_path")
+				case "empty":
+					payload["transcript_path"] = ""
+				case "relative":
+					payload["transcript_path"] = ".cursor/transcript.txt"
+				case "outside":
+					payload["transcript_path"] = filepath.Join(t.TempDir(), "transcript.txt")
+				case "sibling-prefix":
+					payload["transcript_path"] = home + "-other/transcript.txt"
+				case "home":
+					payload["transcript_path"] = home
+				case "traversal":
+					payload["transcript_path"] = home + "/../outside/transcript.txt"
+				case "wrong-type":
+					payload["transcript_path"] = map[string]string{"path": home + "/transcript.txt"}
+				case "nul":
+					payload["transcript_path"] = home + "/transcript\x00.txt"
+				}
+				raw, _ = json.Marshal(payload)
+				if r := runCLI(t, string(raw), "hook", "cursor", event); r.code != 0 || r.stdout != "" || r.stderr != "" {
+					t.Fatalf("invalid metadata: %+v", r)
+				}
+				st := cursorHookState(t, cache, "conv-1")
+				if st.Cursor != nil {
+					t.Fatalf("unsafe or stale mapping retained: %+v", st.Cursor)
+				}
+				wantTotal := 0
+				if event == "postToolUseFailure" {
+					wantTotal = 2
+				}
+				if st.Total != wantTotal {
+					t.Fatalf("metadata validation changed counting: %+v", st)
+				}
+			})
+		}
+	}
+}
+
+func TestHook_CursorWorkspaceDoesNotReuseStaleRootOrToolCwd(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		roots any
+	}{
+		{"null", nil},
+		{"missing", nil},
+		{"empty", []string{}},
+		{"relative", []string{"relative"}},
+		{"relative-secondary", []string{"/workspace", "relative"}},
+		{"empty-secondary", []string{"/workspace", ""}},
+		{"nul-secondary", []string{"/workspace", "/private\x00"}},
+		{"wrong-type", "not-an-array"},
+		{"mixed-type", []any{"/workspace", 7}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, cache := isolate(t)
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			payload := cursorHookFixture(t, "stop", home)
+			raw, _ := json.Marshal(payload)
+			if r := runCLI(t, string(raw), "hook", "cursor", "stop"); r.code != 0 || r.stdout != "" || r.stderr != "" {
+				t.Fatalf("seed: %+v", r)
+			}
+			payload["cwd"] = filepath.Join(home, "old-workspace", "sub")
+			payload["workspace_roots"] = tt.roots
+			if tt.name == "missing" {
+				delete(payload, "workspace_roots")
+			}
+			raw, _ = json.Marshal(payload)
+			if r := runCLI(t, string(raw), "hook", "cursor", "stop"); r.code != 0 || r.stdout != "" || r.stderr != "" {
+				t.Fatalf("%+v", r)
+			}
+			st := cursorHookState(t, cache, "conv-1")
+			if st.Cursor == nil || len(st.Cursor.WorkspaceRoots) != 0 {
+				t.Fatalf("missing or invalid roots did not replace stale workspace metadata: %+v", st.Cursor)
+			}
+		})
+	}
+}
+
+func TestHook_CursorInvalidCwdClearsIndex(t *testing.T) {
+	for _, event := range []string{"stop", "sessionEnd", "postToolUseFailure"} {
+		for _, tt := range []struct {
+			name string
+			cwd  any
+		}{
+			{"empty", ""}, {"null", nil}, {"wrong-type", 7}, {"relative", "relative"}, {"nul", "/workspace\x00"},
+		} {
+			t.Run(event+"/"+tt.name, func(t *testing.T) {
+				_, cache := isolate(t)
+				home := t.TempDir()
+				t.Setenv("HOME", home)
+				payload := cursorHookFixture(t, event, home)
+				raw, _ := json.Marshal(payload)
+				if r := runCLI(t, string(raw), "hook", "cursor", event); r.code != 0 || r.stdout != "" || r.stderr != "" {
+					t.Fatalf("seed: %+v", r)
+				}
+				if cursorHookState(t, cache, "conv-1").Cursor == nil {
+					t.Fatal("seed mapping missing")
+				}
+				payload["cwd"] = tt.cwd
+				raw, _ = json.Marshal(payload)
+				if r := runCLI(t, string(raw), "hook", "cursor", event); r.code != 0 || r.stderr != "" {
+					t.Fatalf("invalid cwd: %+v", r)
+				}
+				if st := cursorHookState(t, cache, "conv-1"); st.Cursor != nil {
+					t.Fatalf("invalid cwd retained a mapping: %+v", st.Cursor)
+				}
+			})
+		}
+	}
+}
+
+func TestHook_CursorInvalidConversationIDsNotIndexed(t *testing.T) {
+	for _, event := range []string{"stop", "sessionEnd", "postToolUseFailure"} {
+		for _, tt := range []struct {
+			name, id string
+		}{
+			{"missing", ""},
+			{"empty", ""},
+			{"slash", "invalid/id"},
+			{"backslash", `invalid\id`},
+			{"hash", "invalid#id"},
+			{"dot", "."},
+			{"dotdot", ".."},
+		} {
+			t.Run(event+"/"+tt.name, func(t *testing.T) {
+				_, cache := isolate(t)
+				home := t.TempDir()
+				t.Setenv("HOME", home)
+				payload := cursorHookFixture(t, event, home)
+				payload["conversation_id"] = tt.id
+				if tt.name == "missing" {
+					delete(payload, "conversation_id")
+				}
+				payload["session_id"] = "detector-fallback"
+				raw, _ := json.Marshal(payload)
+				if r := runCLI(t, string(raw), "hook", "cursor", event); r.code != 0 || r.stdout != "" || r.stderr != "" {
+					t.Fatalf("invalid conversation id: %+v", r)
+				}
+				session := tt.id
+				if session == "" {
+					session = "detector-fallback"
+				}
+				if st := cursorHookState(t, cache, session); st.Cursor != nil {
+					t.Fatalf("unrepresentable conversation indexed: %+v", st.Cursor)
+				}
+			})
+		}
+	}
+}
+
+func TestHook_CursorSessionEndDropsPendingWithoutNudge(t *testing.T) {
+	_, cache := isolate(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := detect.Update(cache, "cursor", "conv-1", time.Now().Add(time.Second), func(st *detect.State) {
+		st.Total, st.Failures = 5, 5
+		st.Tools = map[string]int{"Shell": 5}
+		st.LastTool = "Shell"
+		st.Pending = true
+		st.PendingFacts = &detect.Facts{Reason: detect.ReasonSameTool, Tool: "Shell", Count: 5}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(cursorHookFixture(t, "sessionEnd", home))
+	if r := runCLI(t, string(raw), "hook", "cursor", "sessionEnd"); r.code != 0 || r.stdout != "" || r.stderr != "" {
+		t.Fatalf("%+v", r)
+	}
+	st := cursorHookState(t, cache, "conv-1")
+	if st.Pending || st.PendingFacts != nil || st.Nudges != 0 || st.Total != 5 || st.Cursor == nil {
+		t.Fatalf("sessionEnd failed fire-and-forget semantics: %+v", st)
+	}
+}
+
+func TestHook_CursorSessionEndFlushes(t *testing.T) {
+	isolate(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	var hits atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"id":1,"kind":"friction","key":"k-hook","duplicate":false}`))
+	}))
+	defer srv.Close()
+	t.Setenv(envURL, srv.URL)
+	t.Setenv(envAPIKey, "throwaway")
+	spoolOne(t, dataRoot(t), srv.URL)
+	raw, _ := json.Marshal(cursorHookFixture(t, "sessionEnd", home))
+	r := runCLI(t, string(raw), "hook", "cursor", "sessionEnd")
+	if r.code != 0 || r.stdout != "" || r.stderr != "" || hits.Load() == 0 {
+		t.Fatalf("sessionEnd did not flush silently: %+v hits=%d", r, hits.Load())
+	}
+}
+
+func TestHook_CursorMetadataDoesNotChangeNudges(t *testing.T) {
+	_, cache := isolate(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	payload := cursorHookFixture(t, "postToolUseFailure", home)
+	raw, _ := json.Marshal(payload)
+	if r := runCLI(t, string(raw), "hook", "cursor", "postToolUseFailure"); r.code != 0 || r.stdout != "" || r.stderr != "" {
+		t.Fatalf("first failure: %+v", r)
+	}
+	payload["transcript_path"] = nil
+	raw, _ = json.Marshal(payload)
+	r := runCLI(t, string(raw), "hook", "cursor", "postToolUseFailure")
+	var note struct {
+		AdditionalContext string `json:"additional_context"`
+	}
+	if r.code != 0 || r.stderr != "" || json.Unmarshal([]byte(r.stdout), &note) != nil ||
+		!strings.Contains(note.AdditionalContext, "agentfeedback submit friction") ||
+		!strings.Contains(note.AdditionalContext, "--context session_id=conv-1 --context session_harness=cursor") {
+		t.Fatalf("second failure did not give the existing Cursor note: %+v", r)
+	}
+	st := cursorHookState(t, cache, "conv-1")
+	if st.Total != 2 || st.Nudges != 1 || st.Cursor != nil {
+		t.Fatalf("metadata changed detector semantics: %+v", st)
+	}
+	data, err := os.ReadFile(detect.StatePath(cache, "cursor", "conv-1"))
+	if err != nil || strings.Contains(string(data), "npm test") || strings.Contains(string(data), "Command timed out") {
+		t.Fatalf("state retained hook content: %s, %v", data, err)
 	}
 }
 

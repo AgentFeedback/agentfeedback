@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -219,6 +220,12 @@ func hookDetect(cache, name, event string, ev detect.Event, deadline time.Time, 
 	}
 	var dec detect.Decision
 	err := detect.Update(cache, name, ev.SessionID, deadline, func(st *detect.State) {
+		if name == "cursor" {
+			home, _ := os.UserHomeDir()
+			// Every new payload replaces the mapping, including clearing an
+			// old one when transcripts are disabled or the new path is unsafe.
+			st.Cursor = hookCursorSession(home, ev.Cursor)
+		}
 		dec = detect.Decide(st, detect.Input{
 			Harness: name, Event: event, Ev: ev, Config: cfg, Now: now,
 			Filed: func() bool {
@@ -236,6 +243,38 @@ func hookDetect(cache, name, event string, ev detect.Event, deadline time.Time, 
 	}
 
 	return detect.Render(name, event, detect.Text(name, ev.SessionID, dec.Facts))
+}
+
+// hookCursorSession validates only path strings; it never stats, opens or
+// resolves the transcript. The reader separately rejects symlinked paths.
+func hookCursorSession(home string, session detect.CursorSession) *detect.CursorSession {
+	if session.ConversationID == "" || strings.ContainsAny(session.ConversationID, `/\#`) ||
+		session.ConversationID == "." || session.ConversationID == ".." || !filepath.IsAbs(home) ||
+		!filepath.IsAbs(session.TranscriptPath) || strings.ContainsRune(session.TranscriptPath, '\x00') {
+		return nil
+	}
+	path := filepath.Clean(session.TranscriptPath)
+	rel, err := filepath.Rel(filepath.Clean(home), path)
+	if err != nil || rel == "." || rel == ".." || filepath.IsAbs(rel) ||
+		strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return nil
+	}
+	session.TranscriptPath = path
+	for i, root := range session.WorkspaceRoots {
+		if !filepath.IsAbs(root) || strings.ContainsRune(root, '\x00') {
+			session.WorkspaceRoots = nil
+			break
+		}
+		session.WorkspaceRoots[i] = filepath.Clean(root)
+	}
+	if session.Cwd != "" {
+		if !filepath.IsAbs(session.Cwd) || strings.ContainsRune(session.Cwd, '\x00') {
+			return nil
+		}
+		session.Cwd = filepath.Clean(session.Cwd)
+	}
+
+	return &session
 }
 
 // writeLastRun records the hook's run for doctor: owner-only, written by

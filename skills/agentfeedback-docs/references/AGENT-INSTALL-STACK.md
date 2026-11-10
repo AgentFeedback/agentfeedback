@@ -269,6 +269,8 @@ This is an expected policy status, not a failed installation check.
 Manual [`sessions push`](docs/sessions.md#push) therefore sends no transcript
 to this stack, and the [automatic sweep](docs/sessions.md#automatic-sweep)
 is a no-op; both require a server whose organisation enables processing.
+This also applies to Cursor's hook-indexed, storage-only transcripts:
+installing its hooks does not enable uploads to this OSS stack.
 
 **Outcome:**
 
