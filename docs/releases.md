@@ -213,6 +213,56 @@ version; corrections to release prose need no new tag. For prose-only repairs,
 use `gh release edit <tag> --repo AgentFeedback/agentfeedback --title '<tag> — <title>' --notes-file /path/to/notes.md`;
 leave tags, assets, pre-release status and the latest release unchanged.
 
+## v4.4.0 — Session capture and Cloud onboarding
+
+Compatible with every 4.x client and server; the HTTP API stays `1.0`.
+The client can upload scrubbed session transcripts when the configured
+server's organisation enables processing, and offers hosted authentication
+and a machine-settings editor. Local mode remains local; upgrading does not
+grant capture permission.
+
+- **Session capture:** `sessions push` sends complete session revisions
+  through resumable uploads for Claude Code, Codex, OpenCode V1 and 2, and
+  hook-indexed Cursor transcripts. Existing turn-end hooks and eligible CLI
+  commands can launch a bounded upload child after the quiet interval; no
+  resident daemon or scheduler is installed. Organisation policy,
+  collection restrictions and repository upload permission are checked
+  before sending. Transcripts are scrubbed, never spooled.
+- **Onboarding and settings:** capability-advertised servers support email
+  device login, agent self-enrolment and enrolment tokens, alongside key
+  paste. `login` explicitly reauthenticates a configured client.
+  `agentfeedback config` edits machine settings without overriding
+  organisation policy or repository restrictions.
+- **Harnesses:** OpenCode has explicit `opencode-v1` and `opencode-v2`
+  integrations; the install alias selects the detected major version and
+  replaces the other variant's wiring. Cursor capture uses hook-provided
+  transcript paths, not undocumented databases. Devin, Amp and Cline gain
+  failure nudges; omp and pi distinguish aborted tools from failures.
+- **Reliability:** the UI shows local session status in both modes;
+  successful stdio MCP friction submissions mark the session as filed.
+  Installation honors the configured Copilot home and rejects relative
+  Claude Code and Codex homes. Doctor accepts the Cloud initialization
+  destination and treats unversioned Git builds as unknown.
+- **Source builds:** a pinned Nix flake builds the client from source.
+  Decoder and export/import conformance checks cover more of the existing
+  API contract.
+
+**Upgrade:** install the new binary and run `agentfeedback init` or
+`agentfeedback install <harness>` to refresh harness wiring. OpenCode V1
+references and state keep working; an OpenCode 2 database migration exposes
+sessions under `opencode-v2` without carrying over V1 session marks.
+Hosted authentication and capture require the server to advertise the
+corresponding capabilities; self-hosted OSS continues to support key paste.
+Full transcripts can contain sensitive content despite scrubbing: review
+the [session contract](sessions.md) and [security boundaries](security.md)
+before enabling organisation processing. See [authentication and machine
+settings](operate.md#authenticate-a-client) for setup.
+
+**Verification scope:** release acceptance uses isolated mock hosted
+endpoints for the client capture path, plus the repository release gates.
+Live Cloud rollout, extraction and candidate generation are not verified
+by this release.
+
 ## v4.3.0 — External friction remediation CLI
 
 Compatible with every 4.x client and server; the HTTP API stays `1.0`.
