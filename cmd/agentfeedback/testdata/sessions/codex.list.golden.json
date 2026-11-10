@@ -74,6 +74,38 @@
       "state": "new"
     },
     {
+      "ref": "codex:0199c3a1-0000-7000-8000-000000000005",
+      "harness": "codex",
+      "session_id": "0199c3a1-0000-7000-8000-000000000005",
+      "path": "<HOME>/.codex/sessions/2026/10/09/rollout-2026-10-09T08-00-00-0199c3a1-0000-7000-8000-000000000005.jsonl",
+      "project": "<CWD>",
+      "cwds": [
+        "<CWD>"
+      ],
+      "start": "2026-10-09T08:00:00Z",
+      "end": "2026-10-09T08:00:03Z",
+      "counts": {
+        "entries": 7,
+        "prompts": 1,
+        "tool_calls": 1,
+        "tool_errors": 0,
+        "interrupts": 0,
+        "denials": 0,
+        "unparsed": 0
+      },
+      "skills_used": [
+        {
+          "name": "golden-review",
+          "span": "L735"
+        },
+        {
+          "name": "golden-lint",
+          "span": "call_s1"
+        }
+      ],
+      "state": "new"
+    },
+    {
       "ref": "codex:0199c3a1-0000-7000-8000-000000000004",
       "harness": "codex",
       "session_id": "0199c3a1-0000-7000-8000-000000000004",

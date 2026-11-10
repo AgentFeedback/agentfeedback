@@ -420,6 +420,9 @@ func TestSessionsEnvOf(t *testing.T) {
 		got.GeminiDir != filepath.Join(abs("gemini"), ".gemini") || got.DataHome != abs("data") || got.OpenCodeDB != "rel/opencode.db" {
 		t.Fatalf("absolute: %+v", got)
 	}
+	if d := got.SkillDirs; len(d) == 0 || d[0].Harness != "claude-code" || len(d[0].Home) != 1 || d[0].Home[0] != filepath.Join(abs("claude"), "skills") {
+		t.Fatalf("skill directories: %+v", d)
+	}
 	for k := range set {
 		if k != "OPENCODE_DB" {
 			set[k] = "relative/" + k
@@ -459,5 +462,58 @@ func TestPrintDigest_SelfMarker(t *testing.T) {
 	}
 	if !strings.Contains(b.String(), "error  (agentfeedback's own command)  #a\n") || strings.Count(b.String(), "own command") != 1 {
 		t.Fatalf("%s", b.String())
+	}
+}
+
+// TestSessions_ProjectAndSkills: list --project keeps the sessions in the
+// project, a relative path taken from the working directory; sessions
+// skills needs a scope, lists a project's skills and names a SKILL.md it
+// cannot read on stderr.
+func TestSessions_ProjectAndSkills(t *testing.T) {
+	cfg := sessionsWorld(t)
+	base := t.TempDir()
+	a, b := filepath.Join(base, "a"), filepath.Join(base, "b")
+	for _, d := range []string{a, b} {
+		if err := os.Mkdir(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	putSession(t, cfg, "in-a", a)
+	putSession(t, cfg, "in-b", b)
+	t.Chdir(base)
+	r := runCLI(t, "", "sessions", "list", "--json", "--project", "a")
+	if r.code != 0 {
+		t.Fatal(r)
+	}
+	var l sessions.Listing
+	decodeJSON(t, r.stdout, &l)
+	if len(l.Sessions) != 1 || l.Sessions[0].SessionID != "in-a" {
+		t.Fatalf("--project a: %+v", l.Sessions)
+	}
+
+	if r := runCLI(t, "", "sessions", "skills"); r.code != 2 {
+		t.Fatalf("no scope: %+v", r)
+	}
+	for name, body := range map[string]string{"deploy": "---\nname: deploy\ndescription: Ship it.\n---\n", "broken": "no front matter\n"} {
+		p := filepath.Join(a, ".claude", "skills", name, "SKILL.md")
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r = runCLI(t, "", "sessions", "skills", "--project", a, "--json")
+	if r.code != 0 {
+		t.Fatal(r)
+	}
+	var inv sessions.Inventory
+	decodeJSON(t, r.stdout, &inv)
+	if len(inv.Skills) != 1 || inv.Skills[0].Name != "deploy" || inv.Skills[0].Scope != sessions.ScopeProject || len(inv.Problems) != 1 {
+		t.Fatalf("inventory: %+v", inv)
+	}
+	r = runCLI(t, "", "sessions", "skills", "--project", a)
+	if r.code != 0 || !strings.HasPrefix(r.stdout, "NAME") || !strings.Contains(r.stdout, "deploy") || !strings.Contains(r.stderr, "broken") {
+		t.Fatalf("text form: %+v", r)
 	}
 }

@@ -362,12 +362,13 @@ Devin: no documented local session store; not read (best effort).
 
 | Command | Flags | What |
 |---|---|---|
-| `sessions list` | `--harness H`, `--since T`, `--unprocessed`, `--json` | every session with its state; `--since` keeps sessions whose last entry is at or after T (RFC 3339 or `30m`, `12h`, `7d`, `2w`); `--unprocessed` keeps `new` and `changed` |
+| `sessions list` | `--harness H`, `--since T`, `--unprocessed`, `--project PATH` (repeatable), `--json` | every session with its state; `--since` keeps sessions whose last entry is at or after T (RFC 3339 or `30m`, `12h`, `7d`, `2w`); `--unprocessed` keeps `new` and `changed`; `--project` keeps the sessions in PATH or beneath it ([Projects](#projects)) |
 | `sessions digest <harness:id>...` | `--allow-unknown-project`, `--json` | the digest of the named sessions; a `processed` session named here is digested whole again |
 | `sessions digest --unprocessed` | `--harness H`, `--limit N`, `--allow-unknown-project`, `--json` | the digest of the `new` and `changed` sessions (and the `unknown-project` ones with `--allow-unknown-project`), oldest last entry first, at most N (0: no limit) |
 | `sessions mark <harness:id>...` | `--outcome filed\|nothing\|skipped`, `--ref UID` (repeatable), `--json` | records the outcome and the uids filed; all refs or none; a session not digested yet is refused, and so is a uid not in the submission uid form (an RFC 9562 UUID, 8-4-4-4-12 hex) |
 | `sessions status` | `--json` | per harness: the store location and state, counts per session state; the saved selection |
 | `sessions status --set-selection` | `--harness H` (repeatable), `--since T`, `--limit N`, `--json` | saves the processor's selection (`since` is kept as written), then prints the status |
+| `sessions skills` | `--project PATH` (repeatable), `--global`, `--json` | the skills installed for the projects at PATH and, with `--global`, the user-level ones of every harness ([Skills](#skills)); one of the two is required |
 
 Without `--json` the output is a table (`list`), readable text with the
 notice first (`digest`) or a summary (`status`, `mark`). `sessions list`
@@ -376,6 +377,87 @@ each of its `problems`, always; an `absent` store only when `--harness` names
 its harness. `digest` exits 1
 when sessions were requested and none could be digested; its JSON then names
 each in `errors`. A wrong command line exits 2.
+
+`sessions list --json` gives a session that was read and used a skill
+`skills_used`: `[{name, span}]`, the first use of each skill in log order
+(the member is left out otherwise, and the table does not show it).
+`sessions skills` prints the table NAME, SCOPE, HARNESSES, PATH, its
+`problems` on stderr; `--json` prints `{skills, problems}`: per SKILL.md
+`{name, description, path, scope, harnesses}` (`scope` `project` or
+`global`; a directory several harnesses read, such as `.agents/skills`, is
+one entry naming them all), sorted by scope, name and path, and per SKILL.md
+or skill directory that could not be read `{path, reason}`. A relative
+`--project` is taken from the working directory.
+
+### Projects
+
+A session is in a project when a directory it is known by is the project
+directory or lies beneath it, matched as `[collect]` matches: each as
+written and with its symbolic links resolved, without case on macOS and
+Windows. The directories are the working directories the read recorded; for
+a session refused before the read, the one checked before the open
+([Harnesses](#harnesses)) and, for Claude Code, the encoded project
+directory name. That name has lost the path's separators, so a Claude Code
+session refused before it is opened in a sibling such as `/p/foo-bar` is
+listed under `--project /p/foo` too, with its refused state only and nothing
+read from it. The filter never changes a state: a `denied` session in the
+project is listed `denied`, with nothing read from it. An `absent` row
+records no directory and is in no project.
+
+## Skills
+
+A harness reads skills from user-level directories (the ones `install`
+writes the skill to) and from project directories, each holding
+`<name>/SKILL.md`, one level deep; a symbolically linked skill directory is
+followed. The project directories, relative to the project directory and
+each of its ancestors up to and including the nearest one that holds `.git`
+(the project directory alone when none does). The walk stops below the
+home directory: neither home nor a directory above it is a project
+directory, so a `.git` in home does not turn the user-level skill
+directories into project ones, and `--project` on home lists no project
+skill. `sessions skills` applies the `[collect]` policy to each `--project`
+path first, as for a session's working directory: a disabled or denied
+project is not read, and a `problems` entry names the reason:
+
+| Harness | Project skill directories |
+|---|---|
+| `claude-code` | `.claude/skills` |
+| `codex` | `.agents/skills`, `.codex/skills` |
+| `copilot` | `.github/skills`, `.agents/skills`, `.claude/skills` |
+| `gemini-cli` | `.gemini/skills`, `.agents/skills` |
+| `opencode-v1`, `opencode-v2` | `.opencode/skill`, `.opencode/skills`, `.claude/skills`, `.agents/skills` |
+| `cursor` | `.cursor/skills`, `.agents/skills`, `.claude/skills`, `.codex/skills` |
+
+Other harnesses have no project skill directories here: they were not
+verified. Only the front matter of a SKILL.md is read: the YAML between a
+first line `---` and the next line `---`, within the first 64 KiB, for
+`name` and `description`. A SKILL.md that is not a regular file (after
+symbolic links) is never opened; it, and one without that block, with front
+matter that is not YAML or without a `name`, is reported in `problems`; a
+subdirectory without a SKILL.md is not a skill. `name`, `path`,
+`description` and `problems` are scrubbed.
+
+`skills_used` (in `sessions list --json` and in each digested session)
+names the skills a session used, from the harness's own record of a skill
+use, kept only when a skill directory holds the skill: the user-level skills
+of every harness and the project skills of every working directory the
+session records that the `[collect]` policy allows. A use names its skill by its exact front-matter `name`, or, when
+the log names a SKILL.md path, by the skill directory's base name; the
+`name` reported is the front-matter name. A plugin's skill
+(`plugin:skill`) is not in a skill directory and is not reported. Per reader:
+
+| Reader | Skill use | Not seen |
+|---|---|---|
+| `claude-code-jsonl` | a `Skill` tool call's `input.skill`; a user text, not `isMeta`, made of the slash-command tags (`<command-name>/X</command-name>` with or without `<command-message>` before it), when X is a skill | a skill whose body was read with another tool |
+| `codex-rollout` | the `<skill><name>X</name>` user message Codex injects for a `$X` mention; a tool call whose command or `path` argument names `…/skills/<X>/SKILL.md` (or `…/skill/<X>/SKILL.md`; `/` or `\` separators) | a skill Codex loaded without either; a shell command that edits a SKILL.md counts as a use |
+| `copilot-events` | a `skill.invoked` event's `data.name` | a sub-agent's skill use (sub-agent events are not read) |
+| `gemini-cli-jsonl` | an `activate_skill` tool call's `args.name`, as last written, at the line that first wrote it | |
+| `opencode-sqlite` | a `skill` tool part's `input.name` | |
+| `opencode-v2-sqlite` | a `skill` tool call's `input.id`; a `session_message` row of type `skill` (a skill the user invoked), its `name`, else its `skill` | |
+
+The SKILL.md path rule applies to Codex only: the other harnesses record
+their skill uses, and a path rule would count an agent editing a SKILL.md as
+a use. Cursor sessions are storage-only and report no skill use.
 
 ## States
 
@@ -396,9 +478,9 @@ Precedence, first match wins:
 A recorded working directory that no longer exists gets the user rules only;
 the repository file cannot be read and is skipped. A session refused after
 the read (`disabled` or `denied` by a recorded working directory) is listed
-with nothing read from the file: no `project`, `cwds`, `start`, `end` or
-`counts`. `list` and `status` scrub `path`, `project`, `cwds` and `problems`
-with the formats of `submit --scrub`.
+with nothing read from the file: no `project`, `cwds`, `start`, `end`,
+`counts` or `skills_used`. `list` and `status` scrub `path`, `project`,
+`cwds`, `skills_used` and `problems` with the formats of `submit --scrub`.
 
 ## Watermark
 
@@ -456,6 +538,7 @@ Each session:
 | `denials[]` | spans of the denied tool calls |
 | `flagged[]` | `{span, phrase}`: prompts with a phrase such as `still failing`, `doesn't work`, `wrong`, `why did you`, `again` |
 | `final_excerpt` | the last assistant text |
+| `skills_used` | `[{name, span}]`: the skills first used in the range the events cover, in log order ([Skills](#skills)): at or after `from_offset` and, in a `truncated` digest, before its watermark, so a skill past the cut comes in the next digest; counted in the session cap; `[]` when none |
 
 Caps: a summary is at most 160 bytes, an excerpt 240; one session's digest is
 at most 64 KiB (the events completed first that fit are kept, listed in log
@@ -561,7 +644,7 @@ data-directory database either way); the HTTP `/mcp` never serves them.
 
 | Tool | Arguments | CLI |
 |---|---|---|
-| `sessions_list` | `harness`, `since`, `unprocessed` | `sessions list` |
+| `sessions_list` | `harness`, `since`, `unprocessed`, `projects[]` (absolute paths; a relative one is refused) | `sessions list` |
 | `sessions_digest` | `refs[]` or `unprocessed`; `harness`, `limit` (with `unprocessed`) | `sessions digest` (records the watermark, so not read-only); `--allow-unknown-project` is a human's decision and has no argument |
 | `sessions_mark` | `refs[]`, `outcome`, `uids[]` | `sessions mark` |
 

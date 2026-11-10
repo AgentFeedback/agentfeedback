@@ -125,7 +125,52 @@
           "phrase": "again"
         }
       ],
-      "final_excerpt": "Done. The build passes now."
+      "final_excerpt": "Done. The build passes now.",
+      "skills_used": []
+    },
+    {
+      "ref": "copilot:golden-1-skills",
+      "harness": "copilot",
+      "session_id": "golden-1-skills",
+      "project": "<CWD>",
+      "cwd": "<CWD>",
+      "start": "2026-10-09T08:00:00.000Z",
+      "end": "2026-10-09T08:00:05.000Z",
+      "model": "gpt-test-1",
+      "from_offset": 0,
+      "truncated": false,
+      "counts": {
+        "entries": 6,
+        "prompts": 1,
+        "tool_calls": 0,
+        "tool_errors": 0,
+        "interrupts": 0,
+        "denials": 0,
+        "unparsed": 0
+      },
+      "events": [
+        {
+          "span": "e-1002",
+          "ref": "copilot:golden-1-skills#e-1002",
+          "at": "2026-10-09T08:00:01.000Z",
+          "type": "prompt",
+          "summary": "Build it with the project skill."
+        }
+      ],
+      "retries": [],
+      "denials": [],
+      "flagged": [],
+      "final_excerpt": "Built.",
+      "skills_used": [
+        {
+          "name": "golden-build",
+          "span": "e-1003"
+        },
+        {
+          "name": "golden-review",
+          "span": "e-1005"
+        }
+      ]
     }
   ],
   "errors": [],

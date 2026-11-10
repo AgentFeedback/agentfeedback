@@ -20,7 +20,7 @@ var SessionTools = []string{ToolSessionsList, ToolSessionsDigest, ToolSessionsMa
 
 // Argument sets of the session tools.
 var (
-	sessionsListArgs   = []string{"harness", "since", "unprocessed"}
+	sessionsListArgs   = []string{"harness", "since", "unprocessed", "projects"}
 	sessionsDigestArgs = []string{"refs", "unprocessed", "harness", "limit"}
 	sessionsMarkArgs   = []string{"refs", "outcome", "uids"}
 )
@@ -30,6 +30,7 @@ type SessionsListArgs struct {
 	Harness     string
 	Since       string
 	Unprocessed bool
+	Projects    []string
 }
 
 // SessionsDigestArgs are the decoded arguments of sessions_digest.
@@ -69,6 +70,7 @@ var (
 		"harness":     prop("string", "only this harness, such as claude-code; omitted: every harness with a session reader"),
 		"since":       prop("string", "sessions whose last entry is on or after this RFC 3339 time or relative time (30m, 12h, 7d, 2w)"),
 		"unprocessed": prop("boolean", "true: only new and changed sessions"),
+		"projects":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "absolute project directories: only sessions in one of them or beneath it"},
 	}, false)
 	sessionsDigestSchema = object(map[string]any{
 		"refs":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "session refs <harness>:<session id>; or use unprocessed"},
@@ -120,6 +122,9 @@ func (t *tools) sessionsList(ctx context.Context, req *sdk.CallToolRequest) (*sd
 		return t.respond(ctx, nil, err)
 	}
 	if la.Unprocessed, err = a.boolValue("unprocessed"); err != nil {
+		return t.respond(ctx, nil, err)
+	}
+	if la.Projects, err = a.strings("projects"); err != nil {
 		return t.respond(ctx, nil, err)
 	}
 	body, err := t.sessions.List(ctx, la)

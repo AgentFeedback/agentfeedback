@@ -45,4 +45,8 @@ func init() {
 
 		return cwd
 	})
+	registerGoldenSkillSessions("opencode-v1", func(t *testing.T, home, cwd string) {
+		execGoldenSQL(t, filepath.Join(home, ".local", "share", "opencode", "opencode.db"), filepath.Join(skillsFixtures, "opencode", "skills.sql"),
+			map[string]string{"{{SID}}": "ses_golden0001", "{{CWD}}": cwd})
+	})
 }

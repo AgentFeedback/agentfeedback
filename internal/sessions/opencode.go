@@ -450,6 +450,9 @@ type ocPart struct {
 }
 
 const (
+	// ocSkillTool is the tool OpenCode loads a skill with; V1's input is
+	// {"name"}, OpenCode 2's {"id"}.
+	ocSkillTool   = "skill"
 	ocAborted     = "MessageAbortedError"
 	ocToolAborted = "Tool execution aborted"
 	ocRejected    = "The user rejected permission to use this specific tool call"
@@ -795,6 +798,14 @@ func (t *transcript) layoutMessage(ctx context.Context, m ocRow, parts *sql.Rows
 		case "tool":
 			c := &call{id: p.CallID, tool: p.Tool, result: true, resultOffset: pat}
 			c.status, c.exitCode = toolStatus(&p)
+			if p.Tool == ocSkillTool {
+				var in struct {
+					Name string `json:"name"`
+				}
+				if json.Unmarshal(p.State.Input, &in) == nil {
+					t.addSkillHit(in.Name, pr.id, pat)
+				}
+			}
 			if !t.captureOnly {
 				c.input = p.State.Input
 				var in struct {

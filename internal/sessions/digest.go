@@ -119,6 +119,8 @@ type SessionDigest struct {
 	Denials      []string `json:"denials"`
 	Flagged      []Flag   `json:"flagged"`
 	FinalExcerpt string   `json:"final_excerpt,omitempty"`
+	// SkillsUsed are the skills first used at or after FromOffset.
+	SkillsUsed []SessionSkill `json:"skills_used"`
 }
 
 // DigestError is a session the digest refused or could not find.
@@ -303,6 +305,7 @@ func Digest(ctx context.Context, db *store.DB, env Env, req DigestRequest) (Dige
 
 	var marks []store.SessionDigest
 	total := 0
+	skills := newSkillIndex(env)
 	now := env.now().UnixMicro()
 	for _, ev := range evs {
 		if err := ctx.Err(); err != nil {
@@ -327,7 +330,7 @@ func Digest(ctx context.Context, db *store.DB, env Env, req DigestRequest) (Dige
 
 			continue
 		}
-		sd, size, covered, err := buildDigest(ev)
+		sd, size, covered, err := buildDigest(ev, skills)
 		if err != nil {
 			return DigestOutput{}, err
 		}
@@ -395,12 +398,19 @@ type spanned[T any] struct {
 // time, so covered lies past every kept event and the next incremental
 // digest reports the rest. A retry is kept with the failed event it
 // repeats, so a pair split by the cap may go unreported.
-func buildDigest(ev *evaluated) (SessionDigest, int, int64, error) {
+func buildDigest(ev *evaluated, skills *skillIndex) (SessionDigest, int, int64, error) {
 	tr := ev.tr
 	ref := Ref(ev.r.harness(), ev.c.sessionID)
 	sd := SessionDigest{
 		Ref: ref, Harness: ev.r.harness(), SessionID: ev.c.sessionID, Model: tr.lastModel,
 		FromOffset: ev.from, Counts: tr.counts(ev.from),
+	}
+	// Skills follow the events: only those first used before the size the
+	// digest covers, so a skill past a cut is reported by the next digest.
+	used := skills.matched(tr, ev.from)
+	sd.SkillsUsed = skillsBefore(used, tr.size)
+	if sd.SkillsUsed == nil {
+		sd.SkillsUsed = []SessionSkill{}
 	}
 	if len(tr.cwds) > 0 {
 		sd.Project, sd.Cwd = tr.cwds[0], tr.lastCwd
@@ -497,8 +507,11 @@ func buildDigest(ev *evaluated) (SessionDigest, int, int64, error) {
 		return SessionDigest{}, 0, 0, err
 	}
 	kept := make([]bool, len(events))
-	assemble := func(truncated bool) ([]byte, SessionDigest, error) {
+	assemble := func(truncated bool, covered int64) ([]byte, SessionDigest, error) {
 		out := head
+		if out.SkillsUsed = skillsBefore(used, covered); out.SkillsUsed == nil {
+			out.SkillsUsed = []SessionSkill{}
+		}
 		out.Events = take(events, kept, true)
 		out.Retries = take(retries, kept, false)
 		out.Denials = take(denials, kept, false)
@@ -511,7 +524,7 @@ func buildDigest(ev *evaluated) (SessionDigest, int, int64, error) {
 	for i := range kept {
 		kept[i] = true
 	}
-	b, out, err := assemble(false)
+	b, out, err := assemble(false, tr.size)
 	if err != nil {
 		return SessionDigest{}, 0, 0, err
 	}
@@ -570,12 +583,16 @@ func buildDigest(ev *evaluated) (SessionDigest, int, int64, error) {
 				kept[idx] = true
 			}
 		}
-		b, out, err = assemble(true)
+		covered := tr.size
+		if k < len(groups) {
+			covered = events[groups[k][0]].done
+		}
+		b, out, err = assemble(true, covered)
 		if err != nil {
 			return SessionDigest{}, 0, 0, err
 		}
 		if len(b) <= MaxSessionBytes {
-			return out, len(b), events[groups[k][0]].done, nil
+			return out, len(b), covered, nil
 		}
 		if k == 0 {
 			return SessionDigest{}, 0, 0, fmt.Errorf("digest of %s: %d bytes without events, over the %d byte cap", ref, len(b), MaxSessionBytes)

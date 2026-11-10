@@ -2,11 +2,13 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,6 +29,68 @@ func registerGoldenStore(harness string, fn func(t *testing.T, home string) (cwd
 		panic("golden store for " + harness + " registered twice")
 	}
 	goldenStores[harness] = fn
+}
+
+// goldenSkillSessions add to one harness's materialised store the sessions
+// that use skills, from testdata/skills of internal/sessions; they are kept
+// apart from the stores, which other tests read whole. Every reader with a
+// semantic digest registers one.
+var goldenSkillSessions = map[string]func(t *testing.T, home, cwd string){}
+
+func registerGoldenSkillSessions(harness string, fn func(t *testing.T, home, cwd string)) {
+	if _, ok := goldenSkillSessions[harness]; ok {
+		panic("golden skill sessions for " + harness + " registered twice")
+	}
+	goldenSkillSessions[harness] = fn
+}
+
+// skillsFixtures is internal/sessions' tree of skill-using sessions.
+var skillsFixtures = filepath.Join("..", "..", "internal", "sessions", "testdata", "skills")
+
+// writeSkill writes a SKILL.md named name under root/dir.
+func writeSkill(t *testing.T, root, dir, name string) {
+	t.Helper()
+	p := filepath.Join(root, dir, "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte("---\nname: "+name+"\ndescription: The "+name+" fixture skill.\n---\n\nBody.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// goldenSkills installs the golden world's skills: golden-review and
+// golden-lint user-level (~/.agents/skills, read by Codex), and
+// golden-build in the project at cwd when it exists (.claude/skills).
+func goldenSkills(t *testing.T, home, cwd string) {
+	t.Helper()
+	writeSkill(t, filepath.Join(home, ".agents", "skills"), "golden-review", "golden-review")
+	writeSkill(t, filepath.Join(home, ".agents", "skills"), "golden-lint", "golden-lint")
+	if info, err := os.Stat(cwd); err == nil && info.IsDir() {
+		writeSkill(t, filepath.Join(cwd, ".claude", "skills"), "golden-build", "golden-build")
+	}
+}
+
+// execGoldenSQL executes the statements of file, its placeholders filled
+// from vars, in the SQLite database at db.
+func execGoldenSQL(t *testing.T, db, file string, vars map[string]string) {
+	t.Helper()
+	b, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pairs []string
+	for k, v := range vars {
+		pairs = append(pairs, k, v)
+	}
+	conn, err := sql.Open("sqlite", "file:"+(&url.URL{Path: filepath.ToSlash(db)}).EscapedPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	if _, err := conn.Exec(strings.NewReplacer(pairs...).Replace(string(b))); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // goldenWorld isolates the CLI with every harness store directory under
@@ -101,6 +165,12 @@ func TestSessionsGolden(t *testing.T) {
 			}
 			home := goldenWorld(t)
 			cwd := materialise(t, home)
+			if add, ok := goldenSkillSessions[h]; ok {
+				goldenSkills(t, home, cwd)
+				add(t, home, cwd)
+			} else if h != "cursor" {
+				t.Fatalf("%s has no golden skill sessions (registerGoldenSkillSessions)", h)
+			}
 			// The working directory first, as written and in Claude Code's
 			// project directory form: it may lie under the home.
 			normalise := strings.NewReplacer(cwd, "<CWD>", encodeCwd(cwd), "<CWD_ENC>", home, "<HOME>")

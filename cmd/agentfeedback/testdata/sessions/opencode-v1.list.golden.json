@@ -28,6 +28,34 @@
         "unparsed": 0
       },
       "state": "new"
+    },
+    {
+      "ref": "opencode-v1:ses_golden0001_skills",
+      "harness": "opencode-v1",
+      "session_id": "ses_golden0001_skills",
+      "path": "<HOME>/.local/share/opencode/opencode.db",
+      "project": "<CWD>",
+      "cwds": [
+        "<CWD>"
+      ],
+      "start": "2026-10-09T07:00:01Z",
+      "end": "2026-10-09T07:00:03Z",
+      "counts": {
+        "entries": 4,
+        "prompts": 1,
+        "tool_calls": 1,
+        "tool_errors": 0,
+        "interrupts": 0,
+        "denials": 0,
+        "unparsed": 0
+      },
+      "skills_used": [
+        {
+          "name": "golden-build",
+          "span": "prt_s002"
+        }
+      ],
+      "state": "new"
     }
   ]
 }

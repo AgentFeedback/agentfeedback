@@ -94,6 +94,10 @@ type Adapter struct {
 	Binaries   []string
 	ConfigDirs func(Env) []string
 	SkillDirs  func(Env) []string
+	// ProjectSkillDirs are the directories, relative to a project directory,
+	// the harness reads project skills from; nil where they were not
+	// verified against the harness.
+	ProjectSkillDirs []string
 	// NoSkill is why SkillDirs is empty.
 	NoSkill      string
 	Instructions Instructions
@@ -306,10 +310,11 @@ func (p *plan) ampConfig() (string, error) {
 // registry is every harness the package knows, in display order.
 var registry = []Adapter{
 	{
-		Name:       "claude-code",
-		Binaries:   []string{"claude"},
-		ConfigDirs: dirs(Env.claudeDir),
-		SkillDirs:  func(e Env) []string { return []string{filepath.Join(e.claudeDir(), "skills")} },
+		Name:             "claude-code",
+		Binaries:         []string{"claude"},
+		ConfigDirs:       dirs(Env.claudeDir),
+		SkillDirs:        func(e Env) []string { return []string{filepath.Join(e.claudeDir(), "skills")} },
+		ProjectSkillDirs: []string{".claude/skills"},
 		Instructions: Instructions{
 			Global:  func(e Env) []string { return []string{filepath.Join(e.claudeDir(), "CLAUDE.md")} },
 			Project: []string{"CLAUDE.md"},
@@ -353,10 +358,11 @@ var registry = []Adapter{
 		},
 	},
 	{
-		Name:       "codex",
-		Binaries:   []string{"codex"},
-		ConfigDirs: dirs(Env.codexHome),
-		SkillDirs:  func(e Env) []string { return []string{filepath.Join(e.Home, ".agents", "skills")} },
+		Name:             "codex",
+		Binaries:         []string{"codex"},
+		ConfigDirs:       dirs(Env.codexHome),
+		SkillDirs:        func(e Env) []string { return []string{filepath.Join(e.Home, ".agents", "skills")} },
+		ProjectSkillDirs: []string{".agents/skills", ".codex/skills"},
 		Instructions: Instructions{
 			Global:  func(e Env) []string { return []string{filepath.Join(e.codexHome(), "AGENTS.md")} },
 			Project: []string{"AGENTS.md"},
@@ -404,10 +410,11 @@ var registry = []Adapter{
 		},
 	},
 	{
-		Name:       "cursor",
-		Binaries:   []string{"cursor-agent", "agent"},
-		ConfigDirs: dirs(homePath(".cursor")),
-		SkillDirs:  dirs(homePath(".cursor", "skills")),
+		Name:             "cursor",
+		Binaries:         []string{"cursor-agent", "agent"},
+		ConfigDirs:       dirs(homePath(".cursor")),
+		SkillDirs:        dirs(homePath(".cursor", "skills")),
+		ProjectSkillDirs: []string{".cursor/skills", ".agents/skills", ".claude/skills", ".codex/skills"},
 		Instructions: Instructions{
 			NoGlobal: "Cursor's User Rules live in its settings UI, not in a file",
 			Project:  []string{"AGENTS.md", ".cursor/rules/"},
@@ -465,10 +472,11 @@ var registry = []Adapter{
 		},
 	},
 	{
-		Name:       "opencode-v1",
-		Binaries:   []string{"opencode"},
-		ConfigDirs: dirs(Env.opencodeDir),
-		SkillDirs:  func(e Env) []string { return []string{filepath.Join(e.opencodeDir(), "skills")} },
+		Name:             "opencode-v1",
+		Binaries:         []string{"opencode"},
+		ConfigDirs:       dirs(Env.opencodeDir),
+		SkillDirs:        func(e Env) []string { return []string{filepath.Join(e.opencodeDir(), "skills")} },
+		ProjectSkillDirs: []string{".opencode/skill", ".opencode/skills", ".claude/skills", ".agents/skills"},
 		Instructions: Instructions{
 			Global:  func(e Env) []string { return []string{filepath.Join(e.opencodeDir(), "AGENTS.md")} },
 			Project: []string{"AGENTS.md"},
@@ -507,10 +515,11 @@ var registry = []Adapter{
 		},
 	},
 	{
-		Name:       "opencode-v2",
-		Binaries:   []string{"opencode"},
-		ConfigDirs: dirs(Env.opencodeDir),
-		SkillDirs:  func(e Env) []string { return []string{filepath.Join(e.opencodeDir(), "skills")} },
+		Name:             "opencode-v2",
+		Binaries:         []string{"opencode"},
+		ConfigDirs:       dirs(Env.opencodeDir),
+		SkillDirs:        func(e Env) []string { return []string{filepath.Join(e.opencodeDir(), "skills")} },
+		ProjectSkillDirs: []string{".opencode/skill", ".opencode/skills", ".claude/skills", ".agents/skills"},
 		Instructions: Instructions{
 			Global:  func(e Env) []string { return []string{filepath.Join(e.opencodeDir(), "AGENTS.md")} },
 			Project: []string{"AGENTS.md"},
@@ -624,10 +633,11 @@ var registry = []Adapter{
 		},
 	},
 	{
-		Name:       "copilot",
-		Binaries:   []string{"copilot"},
-		ConfigDirs: dirs(Env.copilotDir),
-		SkillDirs:  func(e Env) []string { return []string{filepath.Join(e.copilotDir(), "skills")} },
+		Name:             "copilot",
+		Binaries:         []string{"copilot"},
+		ConfigDirs:       dirs(Env.copilotDir),
+		SkillDirs:        func(e Env) []string { return []string{filepath.Join(e.copilotDir(), "skills")} },
+		ProjectSkillDirs: []string{".github/skills", ".agents/skills", ".claude/skills"},
 		Instructions: Instructions{
 			Global:  func(e Env) []string { return []string{filepath.Join(e.copilotDir(), "copilot-instructions.md")} },
 			Project: []string{".github/copilot-instructions.md", "AGENTS.md"},
@@ -897,10 +907,11 @@ var registry = []Adapter{
 		},
 	},
 	{
-		Name:       "gemini-cli",
-		Binaries:   []string{"gemini"},
-		ConfigDirs: func(Env) []string { return nil },
-		SkillDirs:  func(e Env) []string { return []string{filepath.Join(e.geminiCLIDir(), "skills")} },
+		Name:             "gemini-cli",
+		Binaries:         []string{"gemini"},
+		ConfigDirs:       func(Env) []string { return nil },
+		SkillDirs:        func(e Env) []string { return []string{filepath.Join(e.geminiCLIDir(), "skills")} },
+		ProjectSkillDirs: []string{".gemini/skills", ".agents/skills"},
 		Instructions: Instructions{
 			Global:  func(e Env) []string { return []string{filepath.Join(e.geminiCLIDir(), "GEMINI.md")} },
 			Project: []string{"GEMINI.md"},
@@ -992,6 +1003,7 @@ func Adapters() []Adapter {
 	out := make([]Adapter, len(registry))
 	for i, a := range registry {
 		a.Binaries = slices.Clone(a.Binaries)
+		a.ProjectSkillDirs = slices.Clone(a.ProjectSkillDirs)
 		a.Instructions.Project = slices.Clone(a.Instructions.Project)
 		a.Hook.Events = maps.Clone(a.Hook.Events)
 		a.MCP.Path = slices.Clone(a.MCP.Path)
@@ -1034,6 +1046,26 @@ func (a *Adapter) refusal(mode string) *Refusal {
 	}
 
 	return a.noCLI
+}
+
+// SkillDirs are the directories one harness reads skills from: Home the
+// user-level ones under an environment, Project relative to a project
+// directory.
+type SkillDirs struct {
+	Harness string
+	Home    []string
+	Project []string
+}
+
+// SkillLocations lists the skill directories of every harness under e, in
+// display order.
+func SkillLocations(e Env) []SkillDirs {
+	out := make([]SkillDirs, len(registry))
+	for i, a := range registry {
+		out[i] = SkillDirs{Harness: a.Name, Home: a.SkillDirs(e), Project: slices.Clone(a.ProjectSkillDirs)}
+	}
+
+	return out
 }
 
 // skillDirs is the directories the harness reads skills from.

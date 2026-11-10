@@ -21,4 +21,8 @@ func init() {
 
 		return cwd
 	})
+	registerGoldenSkillSessions("claude-code", func(t *testing.T, _, cwd string) {
+		copyStore(t, filepath.Join(skillsFixtures, "claude-code"), os.Getenv("CLAUDE_CONFIG_DIR"),
+			map[string]string{"{{SID}}": "golden-1", "{{CWD}}": cwd, "{{CWD_ENC}}": encodeCwd(cwd)})
+	})
 }

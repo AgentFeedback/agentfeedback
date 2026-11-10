@@ -28,6 +28,34 @@
         "unparsed": 1
       },
       "state": "new"
+    },
+    {
+      "ref": "gemini-cli:session-2026-10-09T08-00-c0ffee01",
+      "harness": "gemini-cli",
+      "session_id": "session-2026-10-09T08-00-c0ffee01",
+      "path": "<HOME>/.gemini/tmp/golden-proj/chats/session-2026-10-09T08-00-c0ffee01.jsonl",
+      "project": "<CWD>",
+      "cwds": [
+        "<CWD>"
+      ],
+      "start": "2026-10-09T08:00:00Z",
+      "end": "2026-10-09T08:00:03Z",
+      "counts": {
+        "entries": 3,
+        "prompts": 1,
+        "tool_calls": 1,
+        "tool_errors": 0,
+        "interrupts": 0,
+        "denials": 0,
+        "unparsed": 0
+      },
+      "skills_used": [
+        {
+          "name": "golden-build",
+          "span": "m-1002"
+        }
+      ],
+      "state": "new"
     }
   ]
 }

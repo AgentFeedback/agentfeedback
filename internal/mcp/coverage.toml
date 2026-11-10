@@ -58,6 +58,7 @@ command = "sessions list"
 harness = { flag = "--harness" }
 since = { flag = "--since" }
 unprocessed = { flag = "--unprocessed" }
+projects = { flag = "--project" }
 
 [local.sessions_digest]
 command = "sessions digest"

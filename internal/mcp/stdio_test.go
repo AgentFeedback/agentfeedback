@@ -228,6 +228,9 @@ func TestStdio_SessionTools(t *testing.T) {
 	if b, isErr := call(t, cs, mcp.ToolSessionsList, map[string]any{"harness": "claude-code", "since": "7d", "unprocessed": true}); isErr || string(b) != `{"tool":"list"}` {
 		t.Fatalf("list: %v %s", isErr, b)
 	}
+	if b, isErr := call(t, cs, mcp.ToolSessionsList, map[string]any{"projects": []any{"/p/a", "/p/b"}}); isErr {
+		t.Fatalf("list projects: %s", b)
+	}
 	if b, isErr := call(t, cs, mcp.ToolSessionsDigest, map[string]any{"unprocessed": true, "harness": "claude-code", "limit": 3}); isErr {
 		t.Fatalf("digest: %s", b)
 	}
@@ -237,7 +240,7 @@ func TestStdio_SessionTools(t *testing.T) {
 	if b, isErr := call(t, cs, mcp.ToolSessionsMark, map[string]any{"refs": []any{"claude-code:a"}, "outcome": "filed", "uids": []any{"u1"}}); isErr {
 		t.Fatalf("mark: %s", b)
 	}
-	wantList := []mcp.SessionsListArgs{{Harness: "claude-code", Since: "7d", Unprocessed: true}}
+	wantList := []mcp.SessionsListArgs{{Harness: "claude-code", Since: "7d", Unprocessed: true}, {Projects: []string{"/p/a", "/p/b"}}}
 	wantDigest := []mcp.SessionsDigestArgs{{Unprocessed: true, Harness: "claude-code", Limit: 3}, {Refs: []string{"claude-code:a"}}}
 	wantMark := []mcp.SessionsMarkArgs{{Refs: []string{"claude-code:a"}, Outcome: "filed", UIDs: []string{"u1"}}}
 	if !reflect.DeepEqual(f.list, wantList) || !reflect.DeepEqual(f.digest, wantDigest) || !reflect.DeepEqual(f.mark, wantMark) {
@@ -251,6 +254,9 @@ func TestStdio_SessionTools(t *testing.T) {
 	}{
 		{mcp.ToolSessionsList, map[string]any{"bogus": 1}, "validation_error"},
 		{mcp.ToolSessionsList, map[string]any{"unprocessed": "yes"}, "validation_error"},
+		{mcp.ToolSessionsList, map[string]any{"project": []any{"/p"}}, "validation_error"},
+		{mcp.ToolSessionsList, map[string]any{"projects": "/p"}, "validation_error"},
+		{mcp.ToolSessionsList, map[string]any{"projects": []any{1}}, "validation_error"},
 		{mcp.ToolSessionsDigest, map[string]any{}, "validation_error"},
 		{mcp.ToolSessionsDigest, map[string]any{"refs": []any{"claude-code:a"}, "unprocessed": true}, "validation_error"},
 		{mcp.ToolSessionsDigest, map[string]any{"refs": []any{"claude-code:a"}, "limit": 2}, "validation_error"},
@@ -266,7 +272,7 @@ func TestStdio_SessionTools(t *testing.T) {
 			t.Errorf("%s %v: %v %s", tt.tool, tt.args, isErr, b)
 		}
 	}
-	if len(f.list) != 1 || len(f.digest) != 2 || len(f.mark) != 1 {
+	if len(f.list) != 2 || len(f.digest) != 2 || len(f.mark) != 1 {
 		t.Fatalf("a refused call reached the provider: %+v %+v %+v", f.list, f.digest, f.mark)
 	}
 

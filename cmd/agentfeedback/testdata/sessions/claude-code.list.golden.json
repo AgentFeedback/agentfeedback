@@ -28,6 +28,38 @@
         "unparsed": 1
       },
       "state": "new"
+    },
+    {
+      "ref": "claude-code:golden-1-skills",
+      "harness": "claude-code",
+      "session_id": "golden-1-skills",
+      "path": "<HOME>/.claude/projects/<CWD_ENC>/golden-1-skills.jsonl",
+      "project": "<CWD>",
+      "cwds": [
+        "<CWD>"
+      ],
+      "start": "2026-10-09T08:00:01Z",
+      "end": "2026-10-09T08:00:08Z",
+      "counts": {
+        "entries": 8,
+        "prompts": 3,
+        "tool_calls": 2,
+        "tool_errors": 0,
+        "interrupts": 0,
+        "denials": 0,
+        "unparsed": 0
+      },
+      "skills_used": [
+        {
+          "name": "golden-review",
+          "span": "a-1002"
+        },
+        {
+          "name": "golden-build",
+          "span": "u-1004"
+        }
+      ],
+      "state": "new"
     }
   ]
 }

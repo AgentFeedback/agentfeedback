@@ -21,4 +21,8 @@ func init() {
 
 		return cwd
 	})
+	registerGoldenSkillSessions("gemini-cli", func(t *testing.T, home, cwd string) {
+		copyStore(t, filepath.Join(skillsFixtures, "gemini-cli"), filepath.Join(home, ".gemini"),
+			map[string]string{"{{SID}}": "c0ffee01", "{{CWD}}": cwd})
+	})
 }

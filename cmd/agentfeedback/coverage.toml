@@ -217,7 +217,7 @@ reason = "scraped by monitoring, not a client read"
 # opencode:<id> session refs.
 [local.sessions_list]
 command = "sessions list"
-flags = ["--harness", "--since", "--unprocessed", "--json"]
+flags = ["--harness", "--since", "--unprocessed", "--project", "--json"]
 args = []
 
 [local.sessions_digest]
@@ -242,6 +242,11 @@ args = []
 command = "sessions push"
 flags = ["--due", "--since", "--dry-run", "--limit", "--json"]
 args = ["<harness:id>..."]
+
+[local.sessions_skills]
+command = "sessions skills"
+flags = ["--project", "--global", "--json"]
+args = []
 
 [local.install]
 command = "install"

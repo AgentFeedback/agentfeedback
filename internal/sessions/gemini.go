@@ -1,6 +1,7 @@
 package sessions
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -160,6 +161,7 @@ func (geminiReader) gate(env Env, c candidate) (state, reason string) { return g
 
 const (
 	geminiShellTool   = "run_shell_command"
+	geminiSkillTool   = "activate_skill"
 	geminiUserDenied  = "[Operation Cancelled] Reason: User denied execution."
 	geminiPolicyDeny  = "Tool execution denied by policy."
 	geminiSessionCtx  = "<session_context>"
@@ -199,6 +201,11 @@ type geminiParse struct {
 	index map[string]int
 	calls map[string]map[string]*call
 	dirs  []string
+	// skills is the skill each activate_skill call names, with the offset
+	// of the line that named it, and order the calls in order of first
+	// naming one.
+	skills map[*call]skillHit
+	order  []*call
 }
 
 // parse reads the complete lines of r into a transcript; every entry gets
@@ -207,12 +214,25 @@ type geminiParse struct {
 // the project root.
 func (geminiReader) parse(r io.Reader, cwd string) (*transcript, error) {
 	t := &transcript{}
-	g := &geminiParse{t: t, cwd: t.addCwd(cwd), index: map[string]int{}, calls: map[string]map[string]*call{}}
+	g := &geminiParse{t: t, cwd: t.addCwd(cwd), index: map[string]int{}, calls: map[string]map[string]*call{}, skills: map[*call]skillHit{}}
 	if err := scanJSONL(r, t, g.line); err != nil {
 		return nil, err
 	}
 	for _, d := range g.dirs {
 		t.addCwd(d)
+	}
+	// A message is rewritten as it changes: each call's skill is the last
+	// one written, at the line that first named it, so an incremental
+	// digest from a later line still sees a skill a rewrite introduced.
+	hits := make([]skillHit, 0, len(g.order))
+	for _, c := range g.order {
+		if h := g.skills[c]; h.name != "" {
+			hits = append(hits, h)
+		}
+	}
+	slices.SortStableFunc(hits, func(a, b skillHit) int { return cmp.Compare(a.offset, b.offset) })
+	for _, h := range hits {
+		t.addSkillHit(h.name, h.span, h.offset)
 	}
 	t.summarise(true)
 
@@ -341,6 +361,18 @@ func (g *geminiParse) updateCall(offset int64, id string, n int, e *entry, rec g
 	}
 	if rec.Name != "" {
 		c.tool = rec.Name
+	}
+	if len(rec.Args) > 0 && c.tool == geminiSkillTool {
+		var in struct {
+			Name string `json:"name"`
+		}
+		_ = json.Unmarshal(rec.Args, &in)
+		if prev, ok := g.skills[c]; !ok || prev.name != in.Name {
+			if !ok {
+				g.order = append(g.order, c)
+			}
+			g.skills[c] = skillHit{name: in.Name, span: id, offset: offset}
+		}
 	}
 	if len(rec.Args) > 0 {
 		c.input = rec.Args

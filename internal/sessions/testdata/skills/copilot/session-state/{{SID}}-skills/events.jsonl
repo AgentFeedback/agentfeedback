@@ -1,0 +1,6 @@
+{"type":"session.start","data":{"sessionId":"{{SID}}-skills","version":1,"producer":"copilot-agent","copilotVersion":"1.0.92","startTime":"2026-10-09T08:00:00.000Z","selectedModel":"gpt-test-1","context":{"cwd":"{{CWD}}","branch":"main"}},"id":"e-1001","timestamp":"2026-10-09T08:00:00.000Z","parentId":null}
+{"type":"user.message","data":{"content":"Build it with the project skill.","source":"user","interactionId":"i-1"},"id":"e-1002","timestamp":"2026-10-09T08:00:01.000Z","parentId":"e-1001"}
+{"type":"skill.invoked","data":{"name":"golden-build","path":"{{CWD}}/.claude/skills/golden-build/SKILL.md"},"id":"e-1003","timestamp":"2026-10-09T08:00:02.000Z","parentId":"e-1002"}
+{"type":"skill.invoked","data":{"name":"not-installed","path":"/elsewhere/skills/not-installed/SKILL.md"},"id":"e-1004","timestamp":"2026-10-09T08:00:03.000Z","parentId":"e-1003"}
+{"type":"skill.invoked","data":{"name":"golden-review"},"id":"e-1005","timestamp":"2026-10-09T08:00:04.000Z","parentId":"e-1004"}
+{"type":"assistant.message","data":{"messageId":"m-1","content":"Built.","model":"gpt-test-1"},"id":"e-1006","timestamp":"2026-10-09T08:00:05.000Z","parentId":"e-1005"}

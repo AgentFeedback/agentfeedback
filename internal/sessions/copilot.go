@@ -382,6 +382,13 @@ func (t *transcript) addCopilotLine(offset int64, body []byte, calls *cpCalls) b
 		t.addCwd(d.Cwd)
 	case typ == "session.model_change":
 		e.model = cpModel(l.Data)
+	case typ == "skill.invoked":
+		var sk struct {
+			Name string `json:"name"`
+		}
+		if json.Unmarshal(l.Data, &sk) == nil {
+			t.addSkillHit(sk.Name, e.span, offset)
+		}
 	case typ == "user.message":
 		if (d.Source == "" || d.Source == "user") && !d.IsAutopilotContinuation && strings.TrimSpace(d.Content) != "" {
 			e.kind, e.text = kindPrompt, d.Content

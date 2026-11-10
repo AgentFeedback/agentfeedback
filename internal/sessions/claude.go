@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -171,6 +172,29 @@ type ccItem struct {
 	IsError   bool            `json:"is_error"`
 }
 
+// ccSkillTool is the tool Claude Code runs a skill with, input
+// {"skill": "<name>"}.
+const ccSkillTool = "Skill"
+
+// ccCommandName is the marker of a slash command the user typed; a user who
+// invokes a skill as /<name> leaves only the command tags. Claude Code
+// writes <command-message> before or after <command-name> depending on the
+// release, so a text counts when it starts with a command tag of either
+// kind, and a command named mid-sentence does not.
+var ccCommandName = regexp.MustCompile(`<command-name>/([^<\s]+)</command-name>`)
+
+// addCommandSkill records the slash command of a user text made of command
+// tags as a skill use; matching against the skill inventory drops commands
+// that are not skills.
+func (t *transcript) addCommandSkill(text, span string, offset int64) {
+	if !strings.HasPrefix(strings.TrimSpace(text), "<command-") {
+		return
+	}
+	if m := ccCommandName.FindStringSubmatch(text); m != nil {
+		t.addSkillHit(m[1], span, offset)
+	}
+}
+
 const (
 	interruptText = "[Request interrupted by user"
 	denyText1     = "The user doesn't want to proceed with this tool use"
@@ -245,9 +269,13 @@ func (t *transcript) addLine(offset int64, body []byte, calls map[string]*call) 
 				c := &call{id: it.ID, tool: it.Name, input: it.Input}
 				var in struct {
 					Command *string `json:"command"`
+					Skill   string  `json:"skill"`
 				}
 				if json.Unmarshal(it.Input, &in) == nil && in.Command != nil {
 					c.command, c.hasCommand = *in.Command, true
+				}
+				if it.Name == ccSkillTool {
+					t.addSkillHit(in.Skill, e.span, offset)
 				}
 				e.calls = append(e.calls, c)
 				if it.ID != "" {
@@ -269,6 +297,7 @@ func (t *transcript) addLine(offset int64, body []byte, calls map[string]*call) 
 		var s string
 		if json.Unmarshal(l.Message.Content, &s) == nil {
 			if !l.IsMeta {
+				t.addCommandSkill(s, e.span, offset)
 				e.kind, e.text = userTextKind(s), s
 			}
 
@@ -297,6 +326,9 @@ func (t *transcript) addLine(offset int64, body []byte, calls map[string]*call) 
 				}
 			case "text":
 				texts = append(texts, it.Text)
+				if !l.IsMeta {
+					t.addCommandSkill(it.Text, e.span, offset)
+				}
 			}
 		}
 		if !results && !l.IsMeta && len(texts) > 0 {

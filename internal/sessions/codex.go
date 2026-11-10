@@ -423,6 +423,11 @@ func (p *codexParse) line(offset int64, body []byte) bool {
 func (p *codexParse) responseItem(e *entry, offset int64, pl cxPayload) {
 	switch pl.Type {
 	case "message":
+		if pl.Role == "user" {
+			for _, m := range codexSkillBlock.FindAllStringSubmatch(joinTexts(pl.Content, "input_text"), -1) {
+				p.t.addSkillHit(m[1], e.span, offset)
+			}
+		}
 		if pl.Role != "assistant" {
 			return
 		}
@@ -565,7 +570,9 @@ func (p *codexParse) eventMsg(e *entry, offset int64, pl cxPayload) {
 	}
 }
 
-// addCall makes e the tool call entry of c, spanned by its call id.
+// addCall makes e the tool call entry of c, spanned by its call id, and
+// records each SKILL.md its command or a path argument names as a skill
+// use: Codex has no skill tool, and reading the file is how it loads one.
 func (p *codexParse) addCall(e *entry, c *call) {
 	e.kind = kindToolCall
 	e.calls = append(e.calls, c)
@@ -574,7 +581,26 @@ func (p *codexParse) addCall(e *entry, c *call) {
 		p.calls[c.id] = c
 	}
 	p.open = append(p.open, c)
+	var in struct {
+		Path string `json:"path"`
+	}
+	_ = json.Unmarshal(c.input, &in)
+	for _, s := range []string{c.command, in.Path} {
+		for _, m := range skillFilePath.FindAllStringSubmatch(s, -1) {
+			p.t.addSkillDir(m[1], e.span, e.offset)
+		}
+	}
 }
+
+var (
+	// codexSkillBlock is the block Codex injects as a user message when the
+	// user mentions a skill as $<name>.
+	codexSkillBlock = regexp.MustCompile(`<skill>\s*<name>([^<]+)</name>`)
+	// skillFilePath is a path to a SKILL.md one level below a skills (or
+	// OpenCode's skill) directory, with / or native Windows \ separators;
+	// its group is the skill directory's name.
+	skillFilePath = regexp.MustCompile(`[/\\]skills?[/\\]([^/\\\s"'\x60]+)[/\\]SKILL\.md`)
+)
 
 // refine sets the status of the call id names from a completion record;
 // it sets the result offset when no output line came first or the status

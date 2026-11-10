@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -41,8 +42,11 @@ type transcript struct {
 	// turn_context without an assistant must not change upload metadata.
 	captureModel string
 	entries      []entry
-	captureOnly  bool // discard record content after classification
-	storageOnly  bool // opaque complete lines, with no semantic entries
+	// skillHits are the skill uses the reader saw, in log order, before
+	// they are matched against the skill inventory.
+	skillHits   []skillHit
+	captureOnly bool // discard record content after classification
+	storageOnly bool // opaque complete lines, with no semantic entries
 }
 
 // summarise fills total and lastModel and drops the entries and the
@@ -95,6 +99,30 @@ func (t *transcript) addEntry(e entry) {
 		}
 	}
 	t.entries = append(t.entries, e)
+}
+
+// skillHit is one use of a skill as the log records it: by name, or by
+// dir, the base name of the skill directory whose SKILL.md it names.
+type skillHit struct {
+	name   string
+	dir    string
+	span   string
+	offset int64
+}
+
+// addSkillHit records a use of the skill name; capture keeps none, like
+// text.
+func (t *transcript) addSkillHit(name, span string, offset int64) {
+	if name = strings.TrimSpace(name); name != "" && !t.captureOnly {
+		t.skillHits = append(t.skillHits, skillHit{name: name, span: span, offset: offset})
+	}
+}
+
+// addSkillDir records a use of the skill in the skill directory dir.
+func (t *transcript) addSkillDir(dir, span string, offset int64) {
+	if dir != "" && !t.captureOnly {
+		t.skillHits = append(t.skillHits, skillHit{dir: dir, span: span, offset: offset})
+	}
 }
 
 // seen widens the transcript's start and end to at and returns at in UTC.

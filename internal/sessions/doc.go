@@ -92,6 +92,10 @@
 //     selection (triage_state key "selection").
 //   - Locate: the facts of one entry (span) of a session, for a submission
 //     that cites it; Key: the idempotency key of such a submission.
+//   - Skills: the skills in Env.SkillDirs, user-level and per project
+//     (skills.go). List and Digest report the skills a session used: the
+//     skill uses each reader takes from its harness's record, kept when a
+//     skill directory holds a skill of that name.
 //
 // A ref names a session as "<harness>:<session id>"; an event's ref adds
 // "#<span>", the reader's id of the log entry that carries it: the uuid

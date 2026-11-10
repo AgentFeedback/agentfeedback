@@ -94,6 +94,10 @@ type Env struct {
 	CacheDir string
 	// Policy is the user config's [collect] table.
 	Policy collect.Policy
+	// SkillDirs are the skill directories of every harness
+	// (harness.SkillLocations under the caller's environment); Skills and
+	// skills_used read only these.
+	SkillDirs []harnessreg.SkillDirs
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
 	// Open opens a session file for reading; nil means os.Open. Every
@@ -333,9 +337,9 @@ type Store struct {
 	Problems []string `json:"problems,omitempty"`
 }
 
-// Session is one listed session. Project, Cwds, Start, End and Counts are
-// empty when the file was not read or the session is refused after the
-// read. Path, Project and Cwds are scrubbed.
+// Session is one listed session. Project, Cwds, Start, End, Counts and
+// SkillsUsed are empty when the file was not read or the session is
+// refused after the read. Path, Project, Cwds and SkillsUsed are scrubbed.
 type Session struct {
 	Ref       string    `json:"ref"`
 	Harness   string    `json:"harness"`
@@ -346,8 +350,11 @@ type Session struct {
 	Start     time.Time `json:"start,omitzero"`
 	End       time.Time `json:"end,omitzero"`
 	Counts    *Counts   `json:"counts,omitempty"`
-	State     string    `json:"state"`
-	Reason    string    `json:"reason,omitempty"`
+	// SkillsUsed are the skills the session used, by its harness's record
+	// of them, that the skill directories hold.
+	SkillsUsed []SessionSkill `json:"skills_used,omitempty"`
+	State      string         `json:"state"`
+	Reason     string         `json:"reason,omitempty"`
 }
 
 // Listing is List's result.
@@ -358,11 +365,13 @@ type Listing struct {
 
 // ListOptions select sessions. Harness "" means every harness with a
 // reader; Since keeps sessions whose last entry (the file's mtime when it
-// was not read) is not before it; Unprocessed keeps new and changed ones.
+// was not read) is not before it; Unprocessed keeps new and changed ones;
+// Projects, absolute paths, keeps the sessions in one of them (inProject).
 type ListOptions struct {
 	Harness     string
 	Since       time.Time
 	Unprocessed bool
+	Projects    []string
 }
 
 // evaluated is one candidate after the policy, the read and the watermark.
@@ -374,6 +383,10 @@ type evaluated struct {
 	tr     *transcript
 	from   int64
 	row    *store.SessionSeen
+	// cwds are the directories the read recorded, kept when the session is
+	// refused after the read so a project filter still places it; never
+	// output.
+	cwds []string
 }
 
 func (ev *evaluated) session() Session {
@@ -441,6 +454,7 @@ func read(env Env, r reader, c candidate, row *store.SessionSeen, full bool) *ev
 
 		return ev
 	}
+	ev.cwds = tr.cwds
 	if state, reason := cwdPolicy(env, tr.cwds); state != "" {
 		ev.state, ev.reason = state, reason
 
@@ -621,8 +635,37 @@ func evaluateAll(ctx context.Context, db *store.DB, env Env, r reader, since tim
 	return st, evs, absent, nil
 }
 
+// inProject reports whether the session lies within one of projects: a
+// directory it is known by is one of them or beneath one, matched as
+// [collect] matches. The known directories are those the read recorded;
+// for a session refused before the read, the directory its store's
+// metadata names and, for Claude Code, the encoded project directory.
+func (ev *evaluated) inProject(projects []string) bool {
+	dirs := ev.cwds
+	if len(dirs) == 0 {
+		if ev.c.cwd != "" {
+			dirs = append(dirs, ev.c.cwd)
+		}
+		if ev.c.gated != nil && ev.c.gated.cwd != "" {
+			dirs = append(dirs, ev.c.gated.cwd)
+		}
+		if ev.r.harness() == HarnessClaudeCode && ev.c.project != "" && withinAny(ev.c.project, projects, collect.FoldCase()) {
+			return true
+		}
+	}
+	for _, d := range dirs {
+		for _, p := range projects {
+			if collect.Within(d, p) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 // List returns the session stores and sessions selected by opts, oldest
-// last entry first.
+// last entry first. A session that was read carries the skills it used.
 func List(ctx context.Context, db *store.DB, env Env, opts ListOptions) (Listing, error) {
 	rs, err := selectReaders(opts.Harness)
 	if err != nil {
@@ -634,6 +677,7 @@ func List(ctx context.Context, db *store.DB, env Env, opts ListOptions) (Listing
 		when time.Time
 	}
 	var all []keyed
+	skills := newSkillIndex(env)
 	for _, r := range rs {
 		st, evs, absent, err := evaluateAll(ctx, db, env, r, opts.Since)
 		if err != nil {
@@ -641,7 +685,17 @@ func List(ctx context.Context, db *store.DB, env Env, opts ListOptions) (Listing
 		}
 		out.Stores = append(out.Stores, st)
 		for _, ev := range evs {
-			all = append(all, keyed{ev.session(), ev.lastSeen()})
+			if len(opts.Projects) > 0 && !ev.inProject(opts.Projects) {
+				continue
+			}
+			s := ev.session()
+			s.SkillsUsed = skills.used(ev.tr, 0)
+			all = append(all, keyed{s, ev.lastSeen()})
+		}
+		// A row whose file is gone records no directory: it is in no
+		// project.
+		if len(opts.Projects) > 0 {
+			continue
 		}
 		for _, s := range absent {
 			all = append(all, keyed{s, time.Time{}})

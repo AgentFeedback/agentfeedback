@@ -137,7 +137,48 @@
           "phrase": "again"
         }
       ],
-      "final_excerpt": "Done. The build passes now."
+      "final_excerpt": "Done. The build passes now.",
+      "skills_used": []
+    },
+    {
+      "ref": "gemini-cli:session-2026-10-09T08-00-c0ffee01",
+      "harness": "gemini-cli",
+      "session_id": "session-2026-10-09T08-00-c0ffee01",
+      "project": "<CWD>",
+      "cwd": "<CWD>",
+      "start": "2026-10-09T08:00:00.000Z",
+      "end": "2026-10-09T08:00:03.000Z",
+      "model": "gemini-test-1",
+      "from_offset": 0,
+      "truncated": false,
+      "counts": {
+        "entries": 3,
+        "prompts": 1,
+        "tool_calls": 1,
+        "tool_errors": 0,
+        "interrupts": 0,
+        "denials": 0,
+        "unparsed": 0
+      },
+      "events": [
+        {
+          "span": "m-1001",
+          "ref": "gemini-cli:session-2026-10-09T08-00-c0ffee01#m-1001",
+          "at": "2026-10-09T08:00:01.000Z",
+          "type": "prompt",
+          "summary": "Build it with the project skill."
+        }
+      ],
+      "retries": [],
+      "denials": [],
+      "flagged": [],
+      "final_excerpt": "Built.",
+      "skills_used": [
+        {
+          "name": "golden-build",
+          "span": "m-1002"
+        }
+      ]
     }
   ],
   "errors": [],

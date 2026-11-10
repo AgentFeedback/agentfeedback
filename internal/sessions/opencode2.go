@@ -479,6 +479,19 @@ func (t *transcript) layoutMessageV2(id, typ string, data []byte, hasParts bool,
 		}
 	case "assistant":
 		e.model = msg.Model.ID
+	case "skill":
+		// A skill the user invoked: the row names it, the tool is not run.
+		var sk struct {
+			Name  string          `json:"name"`
+			Skill json.RawMessage `json:"skill"`
+		}
+		if json.Unmarshal(data, &sk) == nil {
+			name := sk.Name
+			if name == "" {
+				_ = json.Unmarshal(sk.Skill, &name)
+			}
+			t.addSkillHit(name, id, at)
+		}
 	case "location-switched":
 		// locationsV2 has added both directories already.
 		if cwd := t.addCwd(msg.Location.Directory); cwd != "" {
@@ -545,6 +558,14 @@ func (t *transcript) addItemV2(it *oc2Item, at int64, span string, when time.Tim
 	case "tool":
 		c := &call{id: it.ID, tool: it.Name, result: true, resultOffset: at}
 		c.status, c.exitCode = oc2ToolStatus(it)
+		if it.Name == ocSkillTool {
+			var in struct {
+				ID string `json:"id"`
+			}
+			if json.Unmarshal(it.State.Input, &in) == nil {
+				t.addSkillHit(in.ID, span, at)
+			}
+		}
 		if !t.captureOnly {
 			c.input = it.State.Input
 			var in struct {

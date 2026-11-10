@@ -23,20 +23,22 @@ import (
 )
 
 const (
-	sessionsSynopsis       = "sessions list|digest|mark|status|push [flags]"
-	sessionsListSynopsis   = "sessions list [--harness H] [--since T] [--unprocessed] [--json]"
+	sessionsSynopsis       = "sessions list|digest|mark|status|push|skills [flags]"
+	sessionsListSynopsis   = "sessions list [--harness H] [--since T] [--unprocessed] [--project PATH]... [--json]"
 	sessionsDigestSynopsis = "sessions digest <harness:id>... | --unprocessed [--harness H] [--limit N] [--allow-unknown-project] [--json]"
 	sessionsMarkSynopsis   = "sessions mark <harness:id>... --outcome filed|nothing|skipped [--ref UID]... [--json]"
 	sessionsStatusSynopsis = "sessions status [--json] | sessions status --set-selection [--harness H]... [--since T] [--limit N] [--json]"
+	sessionsSkillsSynopsis = "sessions skills [--project PATH]... [--global] [--json]"
 )
 
 // sessionsSubcommands are the subcommands of sessions, in help order.
-var sessionsSubcommands = []string{"list", "digest", "mark", "status", "push"}
+var sessionsSubcommands = []string{"list", "digest", "mark", "status", "push", "skills"}
 
 // sessionsEnvFrom is the internal/sessions environment: the home directory,
 // the harnesses' store directories (each an absolute environment variable,
 // else its default under the home directory; Claude Code's as install
-// resolves it), $OPENCODE_DB as set and the config file's [collect] table.
+// resolves it), $OPENCODE_DB as set, the harnesses' skill directories as
+// install resolves them and the config file's [collect] table.
 func sessionsEnvFrom(getenv func(string) string, file fileConfig) (sessions.Env, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -65,8 +67,9 @@ func sessionsEnvOf(getenv func(string) string, home string, file fileConfig) ses
 		Home: home, ClaudeConfigDir: dir("CLAUDE_CONFIG_DIR", ".claude"),
 		CodexHome: dir("CODEX_HOME", ".codex"), CopilotHome: dir("COPILOT_HOME", ".copilot"), GeminiDir: gemini,
 		DataHome: dir("XDG_DATA_HOME", ".local", "share"), OpenCodeDB: getenv("OPENCODE_DB"),
-		CacheDir: filepath.Join(dir("XDG_CACHE_HOME", ".cache"), "agentfeedback"),
-		Policy:   file.Collect, Now: nowFunc,
+		CacheDir:  filepath.Join(dir("XDG_CACHE_HOME", ".cache"), "agentfeedback"),
+		SkillDirs: harness.SkillLocations(harness.Env{Home: home, Getenv: getenv}),
+		Policy:    file.Collect, Now: nowFunc,
 	}
 }
 
@@ -180,7 +183,14 @@ func (s *sessionsService) List(ctx context.Context, a mcp.SessionsListArgs) ([]b
 	if err != nil {
 		return nil, mcp.InvalidArgument("since", err.Error())
 	}
-	l, err := sessions.List(ctx, s.db, s.env, sessions.ListOptions{Harness: a.Harness, Since: since, Unprocessed: a.Unprocessed})
+	// The server's working directory is not the caller's: a relative path
+	// would name another project.
+	for _, p := range a.Projects {
+		if !filepath.IsAbs(p) {
+			return nil, mcp.InvalidArgument("projects", fmt.Sprintf("project %q is not an absolute path", p))
+		}
+	}
+	l, err := sessions.List(ctx, s.db, s.env, sessions.ListOptions{Harness: a.Harness, Since: since, Unprocessed: a.Unprocessed, Projects: a.Projects})
 	if err != nil {
 		return nil, err
 	}
@@ -245,8 +255,8 @@ func runSessions(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	}
 	switch args[0] {
 	case "-h", "--help", "-help":
-		fmt.Fprintf(stderr, "usage: agentfeedback %s\n  %s\n  %s\n  %s\n  %s\n  %s\n", sessionsSynopsis,
-			sessionsListSynopsis, sessionsDigestSynopsis, sessionsMarkSynopsis, sessionsStatusSynopsis, sessionsPushSynopsis)
+		fmt.Fprintf(stderr, "usage: agentfeedback %s\n  %s\n  %s\n  %s\n  %s\n  %s\n  %s\n", sessionsSynopsis,
+			sessionsListSynopsis, sessionsDigestSynopsis, sessionsMarkSynopsis, sessionsStatusSynopsis, sessionsPushSynopsis, sessionsSkillsSynopsis)
 
 		return flag.ErrHelp
 	case "list":
@@ -259,6 +269,8 @@ func runSessions(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return runSessionsStatus(args[1:], stdout, stderr)
 	case "push":
 		return runSessionsPush(args[1:], stdout, stderr)
+	case "skills":
+		return runSessionsSkills(args[1:], stdout, stderr)
 	}
 
 	return usageErr(fmt.Sprintf("unknown sessions subcommand %q", args[0]), "use agentfeedback "+sessionsSynopsis)
@@ -269,6 +281,8 @@ func runSessionsList(args []string, stdout, stderr io.Writer) error {
 	harness := fs.String("harness", "", "only this harness ("+strings.Join(sessions.Harnesses(), ", ")+")")
 	since := fs.String("since", "", "sessions whose last entry is on or after this RFC 3339 time or <n>m, <n>h, <n>d, <n>w ago")
 	unprocessed := fs.Bool("unprocessed", false, "only new and changed sessions")
+	var projects multiFlag
+	fs.Var(&projects, "project", "only sessions in this directory or beneath it; repeatable")
 	asJSON := fs.Bool("json", false, "print the listing as JSON")
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), "usage: agentfeedback %s\n", sessionsListSynopsis)
@@ -288,11 +302,15 @@ func runSessionsList(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
+	abs, err := absPaths(projects)
+	if err != nil {
+		return err
+	}
 	svc, err := newSessionsService(context.Background(), os.Getenv, stderr)
 	if err != nil {
 		return err
 	}
-	l, err := sessions.List(context.Background(), svc.db, svc.env, sessions.ListOptions{Harness: *harness, Since: t, Unprocessed: *unprocessed})
+	l, err := sessions.List(context.Background(), svc.db, svc.env, sessions.ListOptions{Harness: *harness, Since: t, Unprocessed: *unprocessed, Projects: abs})
 	if err != nil {
 		return errSessions(err)
 	}
@@ -341,6 +359,71 @@ func runSessionsList(args []string, stdout, stderr io.Writer) error {
 			prompts, calls, errs = strconv.Itoa(s.Counts.Prompts), strconv.Itoa(s.Counts.ToolCalls), strconv.Itoa(s.Counts.ToolErrors)
 		}
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", s.Ref, state, dash(s.Project), shownTime(s.Start), shownTime(s.End), prompts, calls, errs, dash(pushed[s.Ref]))
+	}
+
+	return tw.Flush()
+}
+
+// absPaths makes each --project value absolute against the working
+// directory.
+func absPaths(paths []string) ([]string, error) {
+	out := make([]string, 0, len(paths))
+	for _, p := range paths {
+		if p == "" {
+			return nil, usageErr("--project is empty", "pass a directory")
+		}
+		a, err := filepath.Abs(p)
+		if err != nil {
+			return nil, usageErr(fmt.Sprintf("--project %q: %v", p, err), "pass an absolute directory")
+		}
+		out = append(out, a)
+	}
+
+	return out, nil
+}
+
+func runSessionsSkills(args []string, stdout, stderr io.Writer) error {
+	fs := newFlagSet("sessions skills")
+	var projects multiFlag
+	fs.Var(&projects, "project", "the skills of the project at this directory; repeatable")
+	global := fs.Bool("global", false, "the user-level skills of every harness")
+	asJSON := fs.Bool("json", false, "print the inventory as JSON")
+	fs.Usage = func() {
+		fmt.Fprintf(fs.Output(), "usage: agentfeedback %s\n", sessionsSkillsSynopsis)
+		fs.PrintDefaults()
+	}
+	pos, err := parseInterleaved(fs, args, stderr)
+	if err != nil {
+		return errFlags("sessions skills", err)
+	}
+	if len(pos) != 0 {
+		return errArgs("sessions skills", sessionsSkillsSynopsis)
+	}
+	if len(projects) == 0 && !*global {
+		return usageErr("no skills selected", "pass --project PATH, --global, or both")
+	}
+	abs, err := absPaths(projects)
+	if err != nil {
+		return err
+	}
+	env, err := sessionsEnv(os.Getenv)
+	if err != nil {
+		return err
+	}
+	inv, err := sessions.Skills(env, sessions.SkillsRequest{Projects: abs, Global: *global})
+	if err != nil {
+		return errSessions(err)
+	}
+	if *asJSON {
+		return writeJSON(stdout, inv)
+	}
+	for _, p := range inv.Problems {
+		fmt.Fprintf(stderr, "agentfeedback sessions skills: warning: %s: %s\n", p.Path, p.Reason)
+	}
+	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "NAME\tSCOPE\tHARNESSES\tPATH")
+	for _, s := range inv.Skills {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", s.Name, s.Scope, strings.Join(s.Harnesses, ","), s.Path)
 	}
 
 	return tw.Flush()

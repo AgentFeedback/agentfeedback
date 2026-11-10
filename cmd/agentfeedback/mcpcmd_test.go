@@ -161,6 +161,14 @@ func TestMcp_StdioOnLocalDatabase(t *testing.T) {
 	if st := toolText(t, cs, "sessions_list", map[string]any{}); st["stores"] == nil {
 		t.Errorf("sessions_list: %+v", st)
 	}
+	if st := toolText(t, cs, "sessions_list", map[string]any{"projects": []any{"/nonexistent-af/p"}}); st["stores"] == nil {
+		t.Errorf("sessions_list projects: %+v", st)
+	}
+	// The server's working directory is not the caller's.
+	res, err := cs.CallTool(context.Background(), &sdk.CallToolParams{Name: "sessions_list", Arguments: map[string]any{"projects": []any{"rel/p"}}})
+	if err != nil || !res.IsError {
+		t.Errorf("sessions_list relative project: %v %+v", err, res)
+	}
 	sub := toolText(t, cs, "submit_feedback", map[string]any{
 		"kind": "friction", "summary": "stdio mcp row", "project": "p1",
 		"payload": map[string]any{"category": "tooling", "details": "d", "suggested_fix": "f"},

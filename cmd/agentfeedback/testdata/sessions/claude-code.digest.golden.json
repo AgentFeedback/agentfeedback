@@ -97,7 +97,66 @@
           "phrase": "again"
         }
       ],
-      "final_excerpt": "Done. The build passes now."
+      "final_excerpt": "Done. The build passes now.",
+      "skills_used": []
+    },
+    {
+      "ref": "claude-code:golden-1-skills",
+      "harness": "claude-code",
+      "session_id": "golden-1-skills",
+      "project": "<CWD>",
+      "cwd": "<CWD>",
+      "start": "2026-10-09T08:00:01.000Z",
+      "end": "2026-10-09T08:00:08.000Z",
+      "model": "claude-test-1",
+      "from_offset": 0,
+      "truncated": false,
+      "counts": {
+        "entries": 8,
+        "prompts": 3,
+        "tool_calls": 2,
+        "tool_errors": 0,
+        "interrupts": 0,
+        "denials": 0,
+        "unparsed": 0
+      },
+      "events": [
+        {
+          "span": "u-1001",
+          "ref": "claude-code:golden-1-skills#u-1001",
+          "at": "2026-10-09T08:00:01.000Z",
+          "type": "prompt",
+          "summary": "Review the change."
+        },
+        {
+          "span": "u-1004",
+          "ref": "claude-code:golden-1-skills#u-1004",
+          "at": "2026-10-09T08:00:04.000Z",
+          "type": "prompt",
+          "summary": "<command-name>/golden-build</command-name>"
+        },
+        {
+          "span": "u-1005",
+          "ref": "claude-code:golden-1-skills#u-1005",
+          "at": "2026-10-09T08:00:05.000Z",
+          "type": "prompt",
+          "summary": "<command-name>/clear</command-name>"
+        }
+      ],
+      "retries": [],
+      "denials": [],
+      "flagged": [],
+      "final_excerpt": "Reviewed and built.",
+      "skills_used": [
+        {
+          "name": "golden-review",
+          "span": "a-1002"
+        },
+        {
+          "name": "golden-build",
+          "span": "u-1004"
+        }
+      ]
     }
   ],
   "errors": [],

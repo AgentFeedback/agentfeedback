@@ -58,7 +58,52 @@
           "phrase": "again"
         }
       ],
-      "final_excerpt": "Running the build verbosely."
+      "final_excerpt": "Running the build verbosely.",
+      "skills_used": []
+    },
+    {
+      "ref": "opencode-v2:ses_golden0001_skills",
+      "harness": "opencode-v2",
+      "session_id": "ses_golden0001_skills",
+      "project": "<CWD>",
+      "cwd": "<CWD>",
+      "start": "2026-11-10T10:26:41.000Z",
+      "end": "2026-11-10T10:26:44.000Z",
+      "model": "test-model-1",
+      "from_offset": 0,
+      "truncated": false,
+      "counts": {
+        "entries": 5,
+        "prompts": 1,
+        "tool_calls": 1,
+        "tool_errors": 0,
+        "interrupts": 0,
+        "denials": 0,
+        "unparsed": 0
+      },
+      "events": [
+        {
+          "span": "msg_s000",
+          "ref": "opencode-v2:ses_golden0001_skills#msg_s000",
+          "at": "2026-11-10T10:26:41.000Z",
+          "type": "prompt",
+          "summary": "Review, then build."
+        }
+      ],
+      "retries": [],
+      "denials": [],
+      "flagged": [],
+      "final_excerpt": "Built.",
+      "skills_used": [
+        {
+          "name": "golden-review",
+          "span": "msg_s001"
+        },
+        {
+          "name": "golden-build",
+          "span": "msg_s002/0"
+        }
+      ]
     }
   ],
   "errors": [],

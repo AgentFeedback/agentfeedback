@@ -28,6 +28,38 @@
         "unparsed": 1
       },
       "state": "new"
+    },
+    {
+      "ref": "copilot:golden-1-skills",
+      "harness": "copilot",
+      "session_id": "golden-1-skills",
+      "path": "<HOME>/.copilot/session-state/golden-1-skills/events.jsonl",
+      "project": "<CWD>",
+      "cwds": [
+        "<CWD>"
+      ],
+      "start": "2026-10-09T08:00:00Z",
+      "end": "2026-10-09T08:00:05Z",
+      "counts": {
+        "entries": 6,
+        "prompts": 1,
+        "tool_calls": 0,
+        "tool_errors": 0,
+        "interrupts": 0,
+        "denials": 0,
+        "unparsed": 0
+      },
+      "skills_used": [
+        {
+          "name": "golden-build",
+          "span": "e-1003"
+        },
+        {
+          "name": "golden-review",
+          "span": "e-1005"
+        }
+      ],
+      "state": "new"
     }
   ]
 }

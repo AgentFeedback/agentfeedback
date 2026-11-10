@@ -18,4 +18,8 @@ func init() {
 
 		return cwd
 	})
+	registerGoldenSkillSessions("codex", func(t *testing.T, home, cwd string) {
+		copyStore(t, filepath.Join(skillsFixtures, "codex"), filepath.Join(home, ".codex"),
+			map[string]string{"{{SID}}": "0199c3a1-0000-7000-8000-00000000000", "{{CWD}}": cwd})
+	})
 }

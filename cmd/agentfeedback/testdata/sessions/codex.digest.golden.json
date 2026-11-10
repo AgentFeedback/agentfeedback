@@ -34,7 +34,8 @@
       "retries": [],
       "denials": [],
       "flagged": [],
-      "final_excerpt": "Here are the files."
+      "final_excerpt": "Here are the files.",
+      "skills_used": []
     },
     {
       "ref": "codex:0199c3a1-0000-7000-8000-000000000001",
@@ -159,7 +160,8 @@
           "phrase": "again"
         }
       ],
-      "final_excerpt": "Done. The build passes now."
+      "final_excerpt": "Done. The build passes now.",
+      "skills_used": []
     },
     {
       "ref": "codex:0199c3a1-0000-7000-8000-000000000002_0199c3a1-0000-7000-8000-000000000008",
@@ -244,7 +246,52 @@
           "phrase": "broken"
         }
       ],
-      "final_excerpt": "Two tests fail; the push was declined."
+      "final_excerpt": "Two tests fail; the push was declined.",
+      "skills_used": []
+    },
+    {
+      "ref": "codex:0199c3a1-0000-7000-8000-000000000005",
+      "harness": "codex",
+      "session_id": "0199c3a1-0000-7000-8000-000000000005",
+      "project": "<CWD>",
+      "cwd": "<CWD>",
+      "start": "2026-10-09T08:00:00.000Z",
+      "end": "2026-10-09T08:00:03.000Z",
+      "model": "gpt-test-1",
+      "from_offset": 0,
+      "truncated": false,
+      "counts": {
+        "entries": 7,
+        "prompts": 1,
+        "tool_calls": 1,
+        "tool_errors": 0,
+        "interrupts": 0,
+        "denials": 0,
+        "unparsed": 0
+      },
+      "events": [
+        {
+          "span": "L583",
+          "ref": "codex:0199c3a1-0000-7000-8000-000000000005#L583",
+          "at": "2026-10-09T08:00:01.100Z",
+          "type": "prompt",
+          "summary": "Use $golden-review on the diff, then lint it."
+        }
+      ],
+      "retries": [],
+      "denials": [],
+      "flagged": [],
+      "final_excerpt": "Reviewed and linted.",
+      "skills_used": [
+        {
+          "name": "golden-review",
+          "span": "L735"
+        },
+        {
+          "name": "golden-lint",
+          "span": "call_s1"
+        }
+      ]
     }
   ],
   "errors": [],

@@ -97,7 +97,8 @@
           "phrase": "again"
         }
       ],
-      "final_excerpt": "Done. The build passes now."
+      "final_excerpt": "Done. The build passes now.",
+      "skills_used": []
     }
   ],
   "errors": [],

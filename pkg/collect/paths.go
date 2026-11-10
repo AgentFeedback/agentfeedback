@@ -58,6 +58,12 @@ func withinAny(p, base string) bool {
 	return false
 }
 
+// Within reports whether dir lies within base by the deny test's rule: dir
+// and base each as written and with symbolic links resolved, without case
+// where the filesystem usually compares so. Callers that select by
+// directory use it so they match exactly as [collect] does.
+func Within(dir, base string) bool { return withinAny(dir, base) }
+
 // resolvedWithin reports whether p, symlinks resolved (the cleaned literal
 // when resolution fails), lies within any form of base, comparing case
 // exactly. It is the opt-in test: a symlink into an allowed directory must

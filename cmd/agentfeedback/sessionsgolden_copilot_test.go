@@ -21,4 +21,8 @@ func init() {
 
 		return cwd
 	})
+	registerGoldenSkillSessions("copilot", func(t *testing.T, home, cwd string) {
+		copyStore(t, filepath.Join(skillsFixtures, "copilot"), filepath.Join(home, ".copilot"),
+			map[string]string{"{{SID}}": "golden-1", "{{CWD}}": cwd})
+	})
 }

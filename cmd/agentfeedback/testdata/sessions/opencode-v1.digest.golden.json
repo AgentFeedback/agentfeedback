@@ -154,7 +154,48 @@
           "phrase": "again"
         }
       ],
-      "final_excerpt": "TestParse still fails on empty input; the linter run was stopped."
+      "final_excerpt": "TestParse still fails on empty input; the linter run was stopped.",
+      "skills_used": []
+    },
+    {
+      "ref": "opencode-v1:ses_golden0001_skills",
+      "harness": "opencode-v1",
+      "session_id": "ses_golden0001_skills",
+      "project": "<CWD>",
+      "cwd": "<CWD>",
+      "start": "2026-10-09T07:00:01.000Z",
+      "end": "2026-10-09T07:00:03.000Z",
+      "model": "test-model-1",
+      "from_offset": 0,
+      "truncated": false,
+      "counts": {
+        "entries": 4,
+        "prompts": 1,
+        "tool_calls": 1,
+        "tool_errors": 0,
+        "interrupts": 0,
+        "denials": 0,
+        "unparsed": 0
+      },
+      "events": [
+        {
+          "span": "msg_s001",
+          "ref": "opencode-v1:ses_golden0001_skills#msg_s001",
+          "at": "2026-10-09T07:00:01.000Z",
+          "type": "prompt",
+          "summary": "Build it with the project skill."
+        }
+      ],
+      "retries": [],
+      "denials": [],
+      "flagged": [],
+      "final_excerpt": "Built.",
+      "skills_used": [
+        {
+          "name": "golden-build",
+          "span": "prt_s002"
+        }
+      ]
     }
   ],
   "errors": [],
