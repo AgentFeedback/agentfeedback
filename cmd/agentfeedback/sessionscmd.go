@@ -23,16 +23,17 @@ import (
 )
 
 const (
-	sessionsSynopsis       = "sessions list|digest|mark|status|push|skills [flags]"
-	sessionsListSynopsis   = "sessions list [--harness H] [--since T] [--unprocessed] [--project PATH]... [--json]"
-	sessionsDigestSynopsis = "sessions digest <harness:id>... | --unprocessed [--harness H] [--limit N] [--allow-unknown-project] [--json]"
-	sessionsMarkSynopsis   = "sessions mark <harness:id>... --outcome filed|nothing|skipped [--ref UID]... [--json]"
-	sessionsStatusSynopsis = "sessions status [--json] | sessions status --set-selection [--harness H]... [--since T] [--limit N] [--json]"
-	sessionsSkillsSynopsis = "sessions skills [--project PATH]... [--global] [--json]"
+	sessionsSynopsis           = "sessions list|digest|transcript|mark|status|push|skills [flags]"
+	sessionsListSynopsis       = "sessions list [--harness H] [--since T] [--unprocessed] [--project PATH]... [--json]"
+	sessionsDigestSynopsis     = "sessions digest <harness:id>... | --unprocessed [--harness H] [--limit N] [--allow-unknown-project] [--json]"
+	sessionsTranscriptSynopsis = "sessions transcript <harness:id>... [--allow-unknown-project] [--json]"
+	sessionsMarkSynopsis       = "sessions mark <harness:id>... --outcome filed|nothing|skipped [--ref UID]... [--json]"
+	sessionsStatusSynopsis     = "sessions status [--json] | sessions status --set-selection [--harness H]... [--since T] [--limit N] [--json]"
+	sessionsSkillsSynopsis     = "sessions skills [--project PATH]... [--global] [--json]"
 )
 
 // sessionsSubcommands are the subcommands of sessions, in help order.
-var sessionsSubcommands = []string{"list", "digest", "mark", "status", "push", "skills"}
+var sessionsSubcommands = []string{"list", "digest", "transcript", "mark", "status", "push", "skills"}
 
 // sessionsEnvFrom is the internal/sessions environment: the home directory,
 // the harnesses' store directories (each an absolute environment variable,
@@ -216,6 +217,20 @@ func (s *sessionsService) Digest(ctx context.Context, a mcp.SessionsDigestArgs) 
 	return json.Marshal(out)
 }
 
+// Transcript answers sessions_transcript: refs only, read-only, so the
+// database is not opened.
+func (s *sessionsService) Transcript(ctx context.Context, a mcp.SessionsTranscriptArgs) ([]byte, error) {
+	if err := checkRefs(a.Refs); err != nil {
+		return nil, mcp.InvalidArgument("refs", err.Error())
+	}
+	out, err := sessions.Transcript(ctx, s.env, sessions.TranscriptRequest{Refs: a.Refs})
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(out)
+}
+
 // markResult is what sessions mark prints with --json and the tool answers.
 type markResult struct {
 	Marked  []string `json:"marked"`
@@ -255,14 +270,16 @@ func runSessions(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	}
 	switch args[0] {
 	case "-h", "--help", "-help":
-		fmt.Fprintf(stderr, "usage: agentfeedback %s\n  %s\n  %s\n  %s\n  %s\n  %s\n  %s\n", sessionsSynopsis,
-			sessionsListSynopsis, sessionsDigestSynopsis, sessionsMarkSynopsis, sessionsStatusSynopsis, sessionsPushSynopsis, sessionsSkillsSynopsis)
+		fmt.Fprintf(stderr, "usage: agentfeedback %s\n  %s\n  %s\n  %s\n  %s\n  %s\n  %s\n  %s\n", sessionsSynopsis,
+			sessionsListSynopsis, sessionsDigestSynopsis, sessionsTranscriptSynopsis, sessionsMarkSynopsis, sessionsStatusSynopsis, sessionsPushSynopsis, sessionsSkillsSynopsis)
 
 		return flag.ErrHelp
 	case "list":
 		return runSessionsList(args[1:], stdout, stderr)
 	case "digest":
 		return runSessionsDigest(args[1:], stdout, stderr)
+	case "transcript":
+		return runSessionsTranscript(args[1:], stdout, stderr)
 	case "mark":
 		return runSessionsMark(args[1:], stdout, stderr)
 	case "status":
@@ -573,6 +590,128 @@ func printDigest(w io.Writer, out sessions.DigestOutput) error {
 	}
 	for _, ref := range out.Deferred {
 		fmt.Fprintf(&b, "\ndeferred (over the run cap; digest it in a later run): %s", ref)
+	}
+	if len(out.Deferred) > 0 {
+		b.WriteString("\n")
+	}
+	_, err := io.WriteString(w, b.String())
+
+	return err
+}
+
+// runSessionsTranscript prints the transcripts of the named sessions. It
+// reads the session logs and the config file only: no database is opened,
+// so no watermark or state changes.
+func runSessionsTranscript(args []string, stdout, stderr io.Writer) error {
+	fs := newFlagSet("sessions transcript")
+	allowUnknown := fs.Bool("allow-unknown-project", false, "also show sessions that record no working directory")
+	asJSON := fs.Bool("json", false, "print the transcripts as JSON")
+	fs.Usage = func() {
+		fmt.Fprintf(fs.Output(), "usage: agentfeedback %s\n", sessionsTranscriptSynopsis)
+		fs.PrintDefaults()
+	}
+	refs, err := parseInterleaved(fs, args, stderr)
+	if err != nil {
+		return errFlags("sessions transcript", err)
+	}
+	if len(refs) == 0 {
+		return errArgs("sessions transcript", sessionsTranscriptSynopsis)
+	}
+	if err := checkRefs(refs); err != nil {
+		return usageErr(err.Error(), "name a session as <harness>:<session id>, as sessions list prints it")
+	}
+	env, err := sessionsEnv(os.Getenv)
+	if err != nil {
+		return err
+	}
+	out, err := sessions.Transcript(context.Background(), env, sessions.TranscriptRequest{Refs: refs, AllowUnknownProject: *allowUnknown})
+	if err != nil {
+		return errSessions(err)
+	}
+	if *asJSON {
+		err = writeJSON(stdout, out)
+	} else {
+		err = printTranscript(stdout, out)
+	}
+	if err != nil {
+		return err
+	}
+	if !*asJSON {
+		for _, e := range out.Errors {
+			fmt.Fprintf(stderr, "agentfeedback sessions transcript: %s: %s: %s\n", e.Ref, e.State, e.Message)
+		}
+	}
+	// Refs were named and none could be shown: that is a failure.
+	if len(out.Sessions) == 0 && len(out.Errors) > 0 {
+		return exitStatus(1)
+	}
+
+	return nil
+}
+
+// printTranscript is the human form of transcripts: the notice first, then
+// each session's header, rules and entries.
+func printTranscript(w io.Writer, out sessions.TranscriptOutput) error {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s\n", out.Notice)
+	indent := func(s string) string { return "      " + strings.ReplaceAll(s, "\n", "\n      ") }
+	for _, st := range out.Sessions {
+		fmt.Fprintf(&b, "\n== %s  project %s  cwd %s\n", st.Ref, dash(st.Project), dash(st.Cwd))
+		fmt.Fprintf(&b, "   %s .. %s  model %s", dash(st.Start), dash(st.End), dash(st.Model))
+		if st.Truncated {
+			fmt.Fprintf(&b, "  (truncated: %d entries left out)", st.Omitted)
+		}
+		fmt.Fprintf(&b, "\n   prompts %d, tool calls %d, tool errors %d, interrupts %d, denials %d\n",
+			st.Counts.Prompts, st.Counts.ToolCalls, st.Counts.ToolErrors, st.Counts.Interrupts, st.Counts.Denials)
+		fmt.Fprintf(&b, "   rules: %s\n", st.RulesSource)
+		for _, in := range st.Instructions {
+			fmt.Fprintf(&b, "   instructions %s", dash(in.Path))
+			if in.Source != "" {
+				fmt.Fprintf(&b, " (%s)", in.Source)
+			}
+			if in.Truncated {
+				b.WriteString("  (truncated)")
+			}
+			fmt.Fprintf(&b, "\n%s\n", indent(in.Text))
+		}
+		if len(st.SkillsAvailable) > 0 {
+			fmt.Fprintf(&b, "   skills available: %s\n", strings.Join(st.SkillsAvailable, ", "))
+		}
+		for _, sk := range st.SkillsUsed {
+			fmt.Fprintf(&b, "   skill used: %s  #%s\n", sk.Name, sk.Span)
+		}
+		for _, e := range st.Entries {
+			if e.Type == sessions.EntryCut {
+				fmt.Fprintf(&b, "   ... %d entries left out ...\n", e.Omitted)
+
+				continue
+			}
+			fmt.Fprintf(&b, "   %s  %s", dash(e.At), e.Type)
+			if e.Tool != "" {
+				fmt.Fprintf(&b, "  %s", e.Tool)
+			}
+			if e.Edit {
+				b.WriteString("  (edit)")
+			}
+			if e.Status != "" {
+				fmt.Fprintf(&b, "  %s", e.Status)
+			}
+			if e.ExitCode != nil {
+				fmt.Fprintf(&b, "  exit %d", *e.ExitCode)
+			}
+			if len(e.Truncated) > 0 {
+				fmt.Fprintf(&b, "  (truncated: %s)", strings.Join(e.Truncated, ", "))
+			}
+			fmt.Fprintf(&b, "  #%s\n", e.Span)
+			for _, s := range []string{e.Text, e.Args, e.Result} {
+				if s != "" {
+					fmt.Fprintf(&b, "%s\n", indent(s))
+				}
+			}
+		}
+	}
+	for _, ref := range out.Deferred {
+		fmt.Fprintf(&b, "\ndeferred (over the run cap; name it in a later call): %s", ref)
 	}
 	if len(out.Deferred) > 0 {
 		b.WriteString("\n")

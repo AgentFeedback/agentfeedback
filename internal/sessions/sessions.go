@@ -107,6 +107,10 @@ type Env struct {
 	ctx context.Context
 	// captureOnly keeps reader metadata, not transcript text or tool bodies.
 	captureOnly bool
+	// rules is set by Transcript: a reader that keeps a session's rules
+	// apart from its log (OpenCode 2's instruction tables) reads them only
+	// then.
+	rules bool
 }
 
 func (e Env) now() time.Time {

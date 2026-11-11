@@ -206,6 +206,9 @@ type geminiParse struct {
 	// naming one.
 	skills map[*call]skillHit
 	order  []*call
+	// ctxID is the id of the first user message that is the session
+	// context, the one that carries the loaded memory files.
+	ctxID string
 }
 
 // parse reads the complete lines of r into a transcript; every entry gets
@@ -322,6 +325,10 @@ func (g *geminiParse) message(offset int64, m map[string]json.RawMessage) bool {
 	e.kind, e.text = kindOther, ""
 	switch typ {
 	case "user":
+		if strings.HasPrefix(text, geminiSessionCtx) && (g.ctxID == "" || g.ctxID == id) {
+			g.ctxID = id
+			g.memory(text)
+		}
 		if !onlyResponses && !strings.HasPrefix(text, geminiSessionCtx) && !geminiSlashCommand(text) && strings.TrimSpace(text) != "" {
 			e.kind, e.text = kindPrompt, text
 		}
@@ -344,6 +351,41 @@ func (g *geminiParse) message(offset int64, m map[string]json.RawMessage) bool {
 	}
 
 	return true
+}
+
+// Gemini CLI's markers of a memory file in the session context
+// (memoryDiscovery.ts concatenateInstructions) and of the extension
+// section that holds some of them (config.ts getSessionMemory).
+const (
+	geminiContextFrom  = "--- Context from: "
+	geminiContextEnd   = "--- End of Context from: "
+	geminiMarkerClose  = " ---"
+	geminiExtensionCtx = "<extension_context>"
+	geminiProjectCtx   = "<project_context>"
+)
+
+// memory records the memory files of the session context text: each
+// "--- Context from: <path> ---" block up to its matching end line, its
+// source "extension" or "project" by the section it lies in. Global memory
+// goes into the system instruction, which the log does not record.
+func (g *geminiParse) memory(text string) {
+	source, path := "", ""
+	var body []string
+	for line := range strings.SplitSeq(text, "\n") {
+		switch {
+		case path == "" && strings.TrimSpace(line) == geminiExtensionCtx:
+			source = "extension"
+		case path == "" && strings.TrimSpace(line) == geminiProjectCtx:
+			source = "project"
+		case path == "" && strings.HasPrefix(line, geminiContextFrom) && strings.HasSuffix(line, geminiMarkerClose):
+			path, body = strings.TrimSuffix(strings.TrimPrefix(line, geminiContextFrom), geminiMarkerClose), nil
+		case path != "" && line == geminiContextEnd+path+geminiMarkerClose:
+			g.t.addInstruction(source, path, strings.Join(body, "\n"))
+			path = ""
+		case path != "":
+			body = append(body, line)
+		}
+	}
 }
 
 // updateCall adds or updates the call rec of message id; the first terminal

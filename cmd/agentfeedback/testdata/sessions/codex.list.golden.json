@@ -85,7 +85,7 @@
       "start": "2026-10-09T08:00:00Z",
       "end": "2026-10-09T08:00:03Z",
       "counts": {
-        "entries": 7,
+        "entries": 9,
         "prompts": 1,
         "tool_calls": 1,
         "tool_errors": 0,
@@ -96,7 +96,7 @@
       "skills_used": [
         {
           "name": "golden-review",
-          "span": "L735"
+          "span": "L1851"
         },
         {
           "name": "golden-lint",

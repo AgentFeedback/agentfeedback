@@ -38,10 +38,10 @@
       "cwds": [
         "<CWD>"
       ],
-      "start": "2026-10-09T08:00:01Z",
-      "end": "2026-10-09T08:00:08Z",
+      "start": "2026-10-09T08:00:00.5Z",
+      "end": "2026-10-09T08:00:09Z",
       "counts": {
-        "entries": 8,
+        "entries": 11,
         "prompts": 3,
         "tool_calls": 2,
         "tool_errors": 0,

@@ -423,10 +423,14 @@ func (p *codexParse) line(offset int64, body []byte) bool {
 func (p *codexParse) responseItem(e *entry, offset int64, pl cxPayload) {
 	switch pl.Type {
 	case "message":
-		if pl.Role == "user" {
+		switch pl.Role {
+		case "user":
 			for _, m := range codexSkillBlock.FindAllStringSubmatch(joinTexts(pl.Content, "input_text"), -1) {
 				p.t.addSkillHit(m[1], e.span, offset)
 			}
+			p.agentsMD(pl.Content)
+		case "developer":
+			p.skillListing(pl.Content)
 		}
 		if pl.Role != "assistant" {
 			return
@@ -588,6 +592,71 @@ func (p *codexParse) addCall(e *entry, c *call) {
 	for _, s := range []string{c.command, in.Path} {
 		for _, m := range skillFilePath.FindAllStringSubmatch(s, -1) {
 			p.t.addSkillDir(m[1], e.span, e.offset)
+		}
+	}
+}
+
+// codexAgentsMD heads the user message Codex injects with the AGENTS.md
+// instructions of a directory: "# AGENTS.md instructions for <dir>", then
+// the text inside <INSTRUCTIONS>...</INSTRUCTIONS>. The files it joined are
+// not named.
+const (
+	codexAgentsMD       = "# AGENTS.md instructions"
+	codexInstructionsOn = "<INSTRUCTIONS>"
+	codexInstructionsBy = "</INSTRUCTIONS>"
+	codexSkillsOn       = "<skills_instructions>"
+)
+
+// agentsMD records the AGENTS.md instructions of a user message's
+// input_text items, by the directory the heading names.
+func (p *codexParse) agentsMD(raw json.RawMessage) {
+	var items []cxText
+	if json.Unmarshal(raw, &items) != nil {
+		return
+	}
+	for _, it := range items {
+		rest, ok := strings.CutPrefix(it.Text, codexAgentsMD)
+		if it.Type != "input_text" || !ok {
+			continue
+		}
+		head, body, ok := strings.Cut(rest, codexInstructionsOn)
+		if !ok {
+			continue
+		}
+		dir, _ := strings.CutPrefix(strings.TrimSpace(head), "for ")
+		body, _, _ = strings.Cut(body, codexInstructionsBy)
+		p.t.addInstruction("", strings.TrimSpace(dir), strings.Trim(body, "\n"))
+	}
+}
+
+// skillListing records the skills a developer message's
+// <skills_instructions> lists: the "- <name>: ..." lines under "###
+// Available skills" (a first listing) or "### Added or updated skills:" (a
+// later one), as openai/codex's ext/skills catalog renders them.
+func (p *codexParse) skillListing(raw json.RawMessage) {
+	var items []cxText
+	if json.Unmarshal(raw, &items) != nil {
+		return
+	}
+	for _, it := range items {
+		if it.Type != "input_text" || !strings.Contains(it.Text, codexSkillsOn) {
+			continue
+		}
+		listed := false
+		for line := range strings.SplitSeq(it.Text, "\n") {
+			if strings.HasPrefix(line, "#") {
+				h := strings.TrimSpace(strings.TrimLeft(line, "#"))
+				listed = h == "Available skills" || h == "Added or updated skills:"
+
+				continue
+			}
+			item, ok := strings.CutPrefix(line, "- ")
+			if !listed || !ok {
+				continue
+			}
+			if name, _, ok := strings.Cut(item, ": "); ok {
+				p.t.addSkillAvailable(name)
+			}
 		}
 	}
 }

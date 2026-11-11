@@ -168,12 +168,16 @@ them) are read only by `agentfeedback sessions`, the UI sessions page,
 here, and only the body built from it is sent), on demand and never written;
 the OpenCode (`opencode-v1` and `opencode-v2`)
 database is opened read-only, without creating any file beside it. The `[collect]`
-rules are applied per session before a log is opened, and a digest is
-bounded and scrubbed before it is shown. Only watermark and push-outcome
+rules are applied per session before a log is opened, and a digest or a
+transcript is bounded and scrubbed before it is shown. Only watermark and push-outcome
 metadata and what you file are stored in the data-directory database;
+`sessions transcript` and its stdio tool open no database and store nothing;
 transcripts are sent only by `sessions push` (manual or automatic), never spooled.
-A digest reaches the provider of the model that reads it
-([sessions.md](sessions.md#provider-boundary)).
+A digest reaches the provider of the model that reads it. A transcript
+shows that model, and so its provider, more of a session than a digest:
+every prompt, assistant text, tool argument and result, edit payloads and
+the instructions the session recorded; agentfeedback itself stores and
+sends none of it ([sessions.md](sessions.md#provider-boundary)).
 
 **Checkup report.** `agentfeedback report check` and `report render` read
 one report file (or stdin) and upload and store nothing; `check` writes

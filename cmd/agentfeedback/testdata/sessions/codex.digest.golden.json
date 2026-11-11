@@ -261,7 +261,7 @@
       "from_offset": 0,
       "truncated": false,
       "counts": {
-        "entries": 7,
+        "entries": 9,
         "prompts": 1,
         "tool_calls": 1,
         "tool_errors": 0,
@@ -271,8 +271,8 @@
       },
       "events": [
         {
-          "span": "L583",
-          "ref": "codex:0199c3a1-0000-7000-8000-000000000005#L583",
+          "span": "L1699",
+          "ref": "codex:0199c3a1-0000-7000-8000-000000000005#L1699",
           "at": "2026-10-09T08:00:01.100Z",
           "type": "prompt",
           "summary": "Use $golden-review on the diff, then lint it."
@@ -285,7 +285,7 @@
       "skills_used": [
         {
           "name": "golden-review",
-          "span": "L735"
+          "span": "L1851"
         },
         {
           "name": "golden-lint",

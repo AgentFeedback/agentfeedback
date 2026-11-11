@@ -154,6 +154,20 @@ type ccLine struct {
 	IsMeta        bool            `json:"isMeta"`
 	Message       *ccMessage      `json:"message"`
 	ToolUseResult json.RawMessage `json:"toolUseResult"`
+	Attachment    json.RawMessage `json:"attachment"`
+}
+
+// ccAttachment is an attachment line's payload: the instruction files
+// Claude Code loaded (type instructions) and the skills it listed to the
+// model (type skill_listing).
+type ccAttachment struct {
+	Type  string `json:"type"`
+	Files []struct {
+		Path    string `json:"path"`
+		Type    string `json:"type"`
+		Content string `json:"content"`
+	} `json:"files"`
+	Names []string `json:"names"`
 }
 
 type ccMessage struct {
@@ -244,6 +258,21 @@ func (t *transcript) addLine(offset int64, body []byte, calls map[string]*call) 
 	}
 
 	switch typ {
+	case "attachment":
+		var a ccAttachment
+		if json.Unmarshal(l.Attachment, &a) != nil {
+			break
+		}
+		switch a.Type {
+		case "instructions":
+			for _, f := range a.Files {
+				t.addInstruction(f.Type, f.Path, f.Content)
+			}
+		case "skill_listing":
+			for _, n := range a.Names {
+				t.addSkillAvailable(n)
+			}
+		}
 	case "assistant":
 		if l.Message == nil {
 			break

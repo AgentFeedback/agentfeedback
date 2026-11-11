@@ -225,6 +225,11 @@ command = "sessions digest"
 flags = ["--unprocessed", "--harness", "--limit", "--allow-unknown-project", "--json"]
 args = ["<harness:id>..."]
 
+[local.sessions_transcript]
+command = "sessions transcript"
+flags = ["--allow-unknown-project", "--json"]
+args = ["<harness:id>..."]
+
 [local.sessions_mark]
 command = "sessions mark"
 flags = ["--outcome", "--ref", "--json"]

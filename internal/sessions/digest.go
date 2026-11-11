@@ -258,8 +258,6 @@ func Digest(ctx context.Context, db *store.DB, env Env, req DigestRequest) (Dige
 			if err != nil {
 				return DigestOutput{}, err
 			}
-			ref = Ref(h, id)
-			r, _ := readerFor(h)
 			var row *store.SessionSeen
 			if err := db.Read(ctx, func(q store.Querier) error {
 				s, ok, err := store.GetSession(ctx, q, h, id)
@@ -271,30 +269,12 @@ func Digest(ctx context.Context, db *store.DB, env Env, req DigestRequest) (Dige
 			}); err != nil {
 				return DigestOutput{}, err
 			}
-			l, ok := listed[h]
-			if !ok {
-				l.cands, l.problems, l.err = r.candidates(env)
-				listed[h] = l
-			}
-			if state := refusedStore(l.err); state != "" {
-				out.Errors = append(out.Errors, DigestError{Ref: ref, State: state, Message: (&RefusedError{Ref: ref, State: state, Reason: l.err.Error()}).Error()})
+			ev, refused := readRef(env, listed, h, id, row)
+			if refused != nil {
+				out.Errors = append(out.Errors, *refused)
 
 				continue
 			}
-			c, ok := find(l.cands, id)
-			if !ok {
-				state, msg := StateAbsent, "no session file carries this session id"
-				if row != nil {
-					msg = "the session file is gone"
-					if st, reason := unlisted(l.problems, row.Path); st != StateAbsent {
-						state, msg = st, reason
-					}
-				}
-				out.Errors = append(out.Errors, DigestError{Ref: ref, State: state, Message: msg})
-
-				continue
-			}
-			ev := read(env, r, c, row, true)
 			if ev.state == StateProcessed {
 				// Asked for by name: digest the whole file again.
 				ev.from = 0
@@ -312,21 +292,8 @@ func Digest(ctx context.Context, db *store.DB, env Env, req DigestRequest) (Dige
 			return DigestOutput{}, err
 		}
 		ref := Ref(ev.r.harness(), ev.c.sessionID)
-		if !digestSupported(ev.r) {
-			out.Errors = append(out.Errors, DigestError{Ref: ref, State: StateUnsupportedFormat, Message: cursorDigestReason})
-			continue
-		}
-		switch ev.state {
-		case StateNew, StateChanged, StateProcessed:
-		case StateUnknownProject:
-			if req.AllowUnknownProject {
-				break
-			}
-			out.Errors = append(out.Errors, DigestError{Ref: ref, State: ev.state, Message: "the session records no working directory, so no project policy can be checked; allow unknown projects to digest it"})
-
-			continue
-		default:
-			out.Errors = append(out.Errors, DigestError{Ref: ref, State: ev.state, Message: (&RefusedError{Ref: ref, State: ev.state, Reason: ev.reason}).Error()})
+		if refused := refusal(ev, req.AllowUnknownProject); refused != nil {
+			out.Errors = append(out.Errors, *refused)
 
 			continue
 		}
@@ -346,10 +313,7 @@ func Digest(ctx context.Context, db *store.DB, env Env, req DigestRequest) (Dige
 			Mtime: ev.c.mtime.UnixNano(), Size: covered, Head: ev.tr.head, DigestedAt: now,
 		})
 	}
-	for i := range out.Errors {
-		out.Errors[i].Ref = scrubString(out.Errors[i].Ref)
-		out.Errors[i].Message = scrubString(out.Errors[i].Message)
-	}
+	scrubErrors(out.Errors)
 	if len(marks) > 0 {
 		if err := db.Write(ctx, func(q store.Querier) error {
 			for _, m := range marks {
@@ -365,6 +329,71 @@ func Digest(ctx context.Context, db *store.DB, env Env, req DigestRequest) (Dige
 	}
 
 	return out, nil
+}
+
+// readRef reads the session h:id names whole, as Digest and Transcript do
+// for a named session: its harness's candidates are listed once per run in
+// listed. row is the session's watermark row, nil when none; it words a
+// session no candidate carries ("the session file is gone", or unreadable
+// when a store problem hid its file). A store that could not be listed and
+// a session not found come back as the error to report; a read session is
+// returned whatever its state (refusal decides).
+func readRef(env Env, listed map[string]listing, h, id string, row *store.SessionSeen) (*evaluated, *DigestError) {
+	ref := Ref(h, id)
+	r, _ := readerFor(h)
+	l, ok := listed[h]
+	if !ok {
+		l.cands, l.problems, l.err = r.candidates(env)
+		listed[h] = l
+	}
+	if state := refusedStore(l.err); state != "" {
+		return nil, &DigestError{Ref: ref, State: state, Message: (&RefusedError{Ref: ref, State: state, Reason: l.err.Error()}).Error()}
+	}
+	c, ok := find(l.cands, id)
+	if !ok {
+		state, msg := StateAbsent, "no session file carries this session id"
+		if row != nil {
+			msg = "the session file is gone"
+			if st, reason := unlisted(l.problems, row.Path); st != StateAbsent {
+				state, msg = st, reason
+			}
+		}
+
+		return nil, &DigestError{Ref: ref, State: state, Message: msg}
+	}
+
+	return read(env, r, c, row, true), nil
+}
+
+// refusal is the error of a read session whose state forbids showing it:
+// a Cursor transcript (storage only), a refused state, or unknown-project
+// unless allowUnknown; nil when it may be shown.
+func refusal(ev *evaluated, allowUnknown bool) *DigestError {
+	ref := Ref(ev.r.harness(), ev.c.sessionID)
+	if !digestSupported(ev.r) {
+		return &DigestError{Ref: ref, State: StateUnsupportedFormat, Message: cursorDigestReason}
+	}
+	switch ev.state {
+	case StateNew, StateChanged, StateProcessed:
+	case StateUnknownProject:
+		if allowUnknown {
+			break
+		}
+
+		return &DigestError{Ref: ref, State: ev.state, Message: "the session records no working directory, so no project policy can be checked; allow unknown projects to digest it"}
+	default:
+		return &DigestError{Ref: ref, State: ev.state, Message: (&RefusedError{Ref: ref, State: ev.state, Reason: ev.reason}).Error()}
+	}
+
+	return nil
+}
+
+// scrubErrors scrubs each error's ref and message in place.
+func scrubErrors(errs []DigestError) {
+	for i := range errs {
+		errs[i].Ref = scrubString(errs[i].Ref)
+		errs[i].Message = scrubString(errs[i].Message)
+	}
 }
 
 func sortEvaluated(evs []*evaluated) {

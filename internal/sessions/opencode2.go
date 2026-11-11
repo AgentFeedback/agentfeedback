@@ -114,6 +114,14 @@ func (opencodeV2Reader) loadCapture(env Env, c candidate, raw io.Writer) (*trans
 		if err != nil {
 			return err
 		}
+		// Only a transcript shows the rules, and capture keeps no
+		// instruction text; the check runs before the transaction takes
+		// the only connection. Rules that cannot be read are not recorded:
+		// they never make the session unreadable.
+		instructions := false
+		if env.rules && !env.captureOnly && raw == nil {
+			instructions = hasInstructionsV2(ctx, db)
+		}
 		tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 		if err != nil {
 			return err
@@ -139,6 +147,9 @@ func (opencodeV2Reader) loadCapture(env Env, c candidate, raw io.Writer) (*trans
 		if err := t.layoutV2(ctx, tx, parts, raw); err != nil {
 			return err
 		}
+		if instructions && t.instructionsV2(ctx, tx) != nil {
+			t.instructions, t.skillsAvailable = nil, nil
+		}
 		t.summarise(true)
 
 		return tx.Commit()
@@ -148,6 +159,102 @@ func (opencodeV2Reader) loadCapture(env Env, c candidate, raw io.Writer) (*trans
 	}
 
 	return t, nil
+}
+
+// opencodeV2InstructionColumns are the tables and columns of OpenCode 2's
+// instruction state (checked with the 2.2.7 schema): per session, the
+// values of the instruction keys at the start of the current epoch and
+// now, each the hash of an instruction_blob value.
+var opencodeV2InstructionColumns = map[string][]string{
+	"instruction_state": {"session_id", "initial_values", "current_values"},
+	"instruction_blob":  {"hash", "value"},
+}
+
+// Instruction keys of OpenCode 2 and the blob value each hashes: the
+// instruction files ([{path, content}]) and the skill guidance ([{id,
+// name, description}]).
+const (
+	oc2KeyInstructions  = "core/instructions"
+	oc2KeySkillGuidance = "core/skill-guidance"
+)
+
+// hasInstructionsV2 reports whether the database has the instruction
+// tables with the columns read; a database without them, or one they
+// cannot be probed in, records no instructions.
+func hasInstructionsV2(ctx context.Context, db *sql.DB) bool {
+	tables := []string{"instruction_state", "instruction_blob"}
+	for _, table := range tables {
+		if ok, err := ocHasTable(ctx, db, table); err != nil || !ok {
+			return false
+		}
+	}
+
+	return checkColumns(ctx, db, tables, opencodeV2InstructionColumns) == nil
+}
+
+// instructionsV2 records the session's instruction files and skill
+// listing: those of its initial values, then those its current values add.
+// A value that does not decode is skipped as not recorded; on an error the
+// caller drops what was recorded.
+func (t *transcript) instructionsV2(ctx context.Context, tx *sql.Tx) error {
+	var initial, current string
+	err := tx.QueryRowContext(ctx, "SELECT initial_values, current_values FROM instruction_state WHERE session_id = ?", t.sessionID).Scan(&initial, &current)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	blob, err := tx.PrepareContext(ctx, "SELECT value FROM instruction_blob WHERE hash = ?")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = blob.Close() }()
+	value := func(hash string, v any) error {
+		if hash == "" {
+			return nil
+		}
+		var raw sql.NullString
+		if err := blob.QueryRowContext(ctx, hash).Scan(&raw); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil
+			}
+
+			return err
+		}
+		if raw.Valid {
+			_ = json.Unmarshal([]byte(raw.String), v)
+		}
+
+		return nil
+	}
+	for _, values := range []string{initial, current} {
+		var keys map[string]string
+		if json.Unmarshal([]byte(values), &keys) != nil {
+			continue
+		}
+		var files []struct {
+			Path    string `json:"path"`
+			Content string `json:"content"`
+		}
+		if err := value(keys[oc2KeyInstructions], &files); err != nil {
+			return err
+		}
+		for _, f := range files {
+			t.addInstruction("", f.Path, f.Content)
+		}
+		var skills []struct {
+			Name string `json:"name"`
+		}
+		if err := value(keys[oc2KeySkillGuidance], &skills); err != nil {
+			return err
+		}
+		for _, sk := range skills {
+			t.addSkillAvailable(sk.Name)
+		}
+	}
+
+	return nil
 }
 
 type oc2Item struct {

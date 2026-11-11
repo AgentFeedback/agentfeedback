@@ -155,7 +155,7 @@ func TestMcp_StdioOnLocalDatabase(t *testing.T) {
 		t.Errorf("server info %+v", init.ServerInfo)
 	}
 	tools, err := cs.ListTools(context.Background(), nil)
-	if err != nil || len(tools.Tools) != 9 {
+	if err != nil || len(tools.Tools) != 10 {
 		t.Fatalf("tools/list: %v, %+v", err, tools)
 	}
 	if st := toolText(t, cs, "sessions_list", map[string]any{}); st["stores"] == nil {
@@ -163,6 +163,9 @@ func TestMcp_StdioOnLocalDatabase(t *testing.T) {
 	}
 	if st := toolText(t, cs, "sessions_list", map[string]any{"projects": []any{"/nonexistent-af/p"}}); st["stores"] == nil {
 		t.Errorf("sessions_list projects: %+v", st)
+	}
+	if tr := toolText(t, cs, "sessions_transcript", map[string]any{"refs": []any{"claude-code:nope"}}); tr["notice"] == nil || len(tr["errors"].([]any)) != 1 {
+		t.Errorf("sessions_transcript: %+v", tr)
 	}
 	// The server's working directory is not the caller's.
 	res, err := cs.CallTool(context.Background(), &sdk.CallToolParams{Name: "sessions_list", Arguments: map[string]any{"projects": []any{"rel/p"}}})

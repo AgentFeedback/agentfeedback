@@ -152,7 +152,7 @@
       "from_offset": 0,
       "truncated": false,
       "counts": {
-        "entries": 3,
+        "entries": 4,
         "prompts": 1,
         "tool_calls": 1,
         "tool_errors": 0,

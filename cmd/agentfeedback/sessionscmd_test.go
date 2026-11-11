@@ -166,6 +166,71 @@ func TestSessions_ListDigestMarkStatus(t *testing.T) {
 	}
 }
 
+// TestSessions_Transcript: the transcript of a session in both forms, an
+// entry ref submit --context-from files from, usage and refusal exits, and
+// no database opened.
+func TestSessions_Transcript(t *testing.T) {
+	cfg := sessionsWorld(t)
+	cwd := filepath.Join(t.TempDir(), "proj")
+	putSession(t, cfg, "s1", cwd)
+	denied := filepath.Join(t.TempDir(), "secret")
+	putSession(t, cfg, "s2", denied)
+	writeClientConfig(t, "[collect]\ndeny_paths = ["+string(mustJSONString(denied))+"]\n")
+
+	r := runCLI(t, "", "sessions", "transcript", "claude-code:s1", "--json")
+	var out sessions.TranscriptOutput
+	decodeJSON(t, r.stdout, &out)
+	if r.code != 0 || out.Notice != sessions.TranscriptNotice || len(out.Sessions) != 1 || len(out.Errors) != 0 {
+		t.Fatalf("transcript --json: %+v", r)
+	}
+	var call sessions.TranscriptEntry
+	for _, e := range out.Sessions[0].Entries {
+		if e.Type == sessions.EntryToolCall {
+			call = e
+		}
+	}
+	if call.Ref != "claude-code:s1#a-2" || call.Args != "make deploy" || call.Status != "error" || call.ExitCode == nil || *call.ExitCode != 2 {
+		t.Fatalf("tool call entry: %+v", call)
+	}
+	if r := runCLI(t, "", "sessions", "transcript", "claude-code:s1"); r.code != 0 || !strings.HasPrefix(r.stdout, sessions.TranscriptNotice) || !strings.Contains(r.stdout, "#a-2") || !strings.Contains(r.stdout, "make deploy") {
+		t.Fatalf("transcript: %+v", r)
+	}
+	db, err := localDBPath(os.Getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(db); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("transcript opened the database: %v", err)
+	}
+
+	// An entry ref of a transcript is a --context-from ref.
+	stdin := `{"summary":"deploy failed","payload":{"category":"tooling","details":"d","suggested_fix":"f"}}`
+	r = runCLI(t, stdin, "submit", "friction", "--stdin", "--context-from", call.Ref, "--dry-run")
+	if r.code != 0 || !strings.Contains(r.stdout, sessions.Key("claude-code", "s1", "a-2", 1, sessions.DetectorVersion)) {
+		t.Fatalf("context-from a transcript entry: %+v", r)
+	}
+
+	// One refused among shown ones is reported; all refused is exit 1.
+	r = runCLI(t, "", "sessions", "transcript", "claude-code:s1", "claude-code:s2")
+	if r.code != 0 || !strings.Contains(r.stderr, "claude-code:s2: denied") {
+		t.Fatalf("one refused: %+v", r)
+	}
+	r = runCLI(t, "", "sessions", "transcript", "claude-code:s2", "--json")
+	decodeJSON(t, r.stdout, &out)
+	if r.code != 1 || len(out.Errors) != 1 || out.Errors[0].State != sessions.StateDenied {
+		t.Fatalf("all refused: %+v", r)
+	}
+	for _, args := range [][]string{
+		{"sessions", "transcript"},
+		{"sessions", "transcript", "amp:s1"},
+		{"sessions", "transcript", "claude-code:s1", "--unprocessed"},
+	} {
+		if r := runCLI(t, "", args...); r.code != 2 {
+			t.Errorf("%v: %+v", args, r)
+		}
+	}
+}
+
 // TestSessions_DeniedAndRemote: a denied session is listed unread and its
 // digest fails; with a server URL configured the commands still work on the
 // data-directory database and never contact the server.

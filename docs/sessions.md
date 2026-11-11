@@ -4,6 +4,7 @@
 agentfeedback sessions status                         # stores, counts per state, the saved selection
 agentfeedback sessions list --unprocessed             # new and changed sessions
 agentfeedback sessions digest --unprocessed --json    # bounded, scrubbed events; records the digest watermark
+agentfeedback sessions transcript claude-code:<session id> --json   # the whole session, condensed and scrubbed; read-only
 agentfeedback submit friction --stdin --context-from claude-code:<session id>#<span> < report.json
 agentfeedback sessions mark claude-code:<session id> --outcome filed --ref <uid>
 ```
@@ -12,7 +13,8 @@ agentfeedback sessions mark claude-code:<session id> --outcome filed --ref <uid>
 on disk, on demand and read-only, so an agent can turn what went wrong in a
 past session into feedback. The policy of the config file's `[collect]`
 table is applied per session, by its recorded working directory, before the
-log is opened. Digesting and marking store only watermarks; [Push](#push)
+log is opened. Digesting and marking store only watermarks, and a
+[transcript](#transcript-format) stores nothing; [Push](#push)
 uploads eligible, scrubbed transcripts to a configured server whose
 organisation enables processing, manually or through the [automatic sweep](#automatic-sweep).
 
@@ -365,17 +367,18 @@ Devin: no documented local session store; not read (best effort).
 | `sessions list` | `--harness H`, `--since T`, `--unprocessed`, `--project PATH` (repeatable), `--json` | every session with its state; `--since` keeps sessions whose last entry is at or after T (RFC 3339 or `30m`, `12h`, `7d`, `2w`); `--unprocessed` keeps `new` and `changed`; `--project` keeps the sessions in PATH or beneath it ([Projects](#projects)) |
 | `sessions digest <harness:id>...` | `--allow-unknown-project`, `--json` | the digest of the named sessions; a `processed` session named here is digested whole again |
 | `sessions digest --unprocessed` | `--harness H`, `--limit N`, `--allow-unknown-project`, `--json` | the digest of the `new` and `changed` sessions (and the `unknown-project` ones with `--allow-unknown-project`), oldest last entry first, at most N (0: no limit) |
+| `sessions transcript <harness:id>...` | `--allow-unknown-project`, `--json` | the whole of each named session, condensed, scrubbed and capped ([Transcript format](#transcript-format)); read-only: no database is opened, no watermark or state changes |
 | `sessions mark <harness:id>...` | `--outcome filed\|nothing\|skipped`, `--ref UID` (repeatable), `--json` | records the outcome and the uids filed; all refs or none; a session not digested yet is refused, and so is a uid not in the submission uid form (an RFC 9562 UUID, 8-4-4-4-12 hex) |
 | `sessions status` | `--json` | per harness: the store location and state, counts per session state; the saved selection |
 | `sessions status --set-selection` | `--harness H` (repeatable), `--since T`, `--limit N`, `--json` | saves the processor's selection (`since` is kept as written), then prints the status |
 | `sessions skills` | `--project PATH` (repeatable), `--global`, `--json` | the skills installed for the projects at PATH and, with `--global`, the user-level ones of every harness ([Skills](#skills)); one of the two is required |
 
 Without `--json` the output is a table (`list`), readable text with the
-notice first (`digest`) or a summary (`status`, `mark`). `sessions list`
+notice first (`digest`, `transcript`) or a summary (`status`, `mark`). `sessions list`
 names on stderr a store that is `unreadable` or `unsupported-format`, and
 each of its `problems`, always; an `absent` store only when `--harness` names
-its harness. `digest` exits 1
-when sessions were requested and none could be digested; its JSON then names
+its harness. `digest` and `transcript` exit 1
+when sessions were requested and none could be shown; their JSON then names
 each in `errors`. A wrong command line exits 2.
 
 `sessions list --json` gives a session that was read and used a skill
@@ -547,6 +550,88 @@ run is at most 256 KiB (later sessions go to `deferred`). Every string is
 scrubbed with the formats of `submit --scrub` ([security.md](security.md#what-gets-stored))
 before it is sized or cut.
 
+## Transcript format
+
+`sessions transcript --json` prints one object; the MCP tool answers with
+the same object. It shows whole sessions, not only what failed, for a
+review of how a session went and what rules it ran under. A session is read
+and refused as `sessions digest <harness:id>` reads and refuses a session it
+holds no watermark row for (`unknown-project` only with
+`--allow-unknown-project`): a session no listed file carries is `absent`,
+also when a store problem hides its file. A session named more than once,
+also through a harness alias (`opencode:` and `opencode-v1:`), is shown
+once, where it was first named. Nothing is recorded.
+
+| Member | What |
+|---|---|
+| `notice` | the provider-boundary notice below |
+| `sessions[]` | one transcript per session, below |
+| `errors[]` | `{ref, state, message}` per session refused or not found, worded as a digest words them; also a readable session whose header alone (instructions and skill listing) does not fit the session cap, with its state and a message saying so |
+| `deferred[]` | refs left out to keep the run under its cap; name them in another call |
+
+Each session:
+
+| Member | What |
+|---|---|
+| `ref`, `harness`, `session_id`, `project`, `cwd`, `start`, `end`, `model` | as in a digest |
+| `counts` | as in a digest, over the whole session |
+| `skills_used` | `[{name, span}]`: the skills the session used ([Skills](#skills)); `[]` when none |
+| `rules_source` | `session-log` when the log recorded instructions or a skill listing, else `not-recorded` |
+| `instructions[]` | `{source, path, text, truncated}`: each instruction file the log records as loaded, once per path, first seen first; `source` (the harness's type for it) and `path` only when the log records them |
+| `skills_available[]` | the names of the skills the log lists to the model, first seen first: at most 256, each cut to 128 bytes |
+| `truncated` | entries were left out to stay under the session cap, or skill names were left out or cut |
+| `omitted` | how many entries the session cap left out |
+| `entries[]` | below |
+
+Entries, in log order, each with `span`, `ref` (`<harness>:<id>#<span>`,
+which `submit --context-from` takes), `at` and `type`:
+
+- `prompt`, `interrupt`, `assistant`: `text` (an interrupt may have none).
+  An assistant entry that carries tool calls gives its `assistant` text
+  first, then one `tool_call` per call, all with its span.
+- `tool_call`: `tool`; `edit`, true for an edit tool (below); `args`, the
+  command when the call has one, else the input: a string input as the
+  string, any other as compact JSON, keys sorted, scrubbed value by value
+  and then token by token; and once the call has a result, `status` (`ok`, `error`,
+  `denied`, `interrupted`), `exit_code` (the harness's, else the `Exit code
+  N` first line of a result that did not succeed) and `result`.
+- `cut`: `omitted`, where the session cap left entries out.
+
+An entry's `truncated` lists its members cut to their cap (`text`, `args`,
+`result`). Caps: `text` 2 KiB, `args` 1 KiB (16 KiB for an edit tool),
+`result` 1 KiB; one instruction 8 KiB and a session's instructions 32 KiB
+together, both counted as JSON-encoded text (a file past that keeps its
+`source` and `path`, with empty `text`); one session 128 KiB (over it, the
+first entries that fill two thirds of the room and the last that fill one
+third are kept, a `cut` entry between them); one run 384 KiB of session
+transcripts, as for a digest: `errors` and `deferred` come on top, and later
+sessions go to `deferred`. Every
+string is scrubbed with the formats of `submit --scrub`
+([security.md](security.md#what-gets-stored)) before it is sized or cut, and
+a cut keeps whole UTF-8 characters.
+
+Edit tools, whose arguments are the change itself (the patch, the old and
+new strings, the file content):
+
+| Reader | Edit tools | Checked against |
+|---|---|---|
+| `claude-code-jsonl` | `Edit`, `MultiEdit`, `Write`, `NotebookEdit` | Claude Code's file-editing tools, by name |
+| `codex-rollout` | `apply_patch` (its input is the patch text) | openai/codex source, commit `c9bbed2` |
+| `copilot-events` | none | not verified: the session-events schema names no tools, and no real log was examined |
+| `gemini-cli-jsonl` | `replace`, `write_file` | Gemini CLI 0.69.0-nightly.20261104 source, `tools/definitions/base-declarations.ts` |
+| `opencode-sqlite`, `opencode-v2-sqlite` | `edit`, `write`, `patch`, `apply_patch` | OpenCode 2.2.7 source: `packages/core/src/tool/plugin/`, and the V1 name `apply_patch` it maps onto `patch` |
+
+Recorded rules, per reader:
+
+| Reader | What is read | Checked against |
+|---|---|---|
+| `claude-code-jsonl` | `attachment` lines: `instructions` (`files[]`: `path`, `type` as `source`, `content`) and `skill_listing` (`names[]`) | a real log, by entry type |
+| `codex-rollout` | the `response_item` user message `# AGENTS.md instructions for <dir>`, its text inside `<INSTRUCTIONS>` (`path` is the directory; the files joined are not named); the developer message `<skills_instructions>`, the `- <name>: ...` lines under `### Available skills` or `### Added or updated skills:` | openai/codex source, commit `c9bbed2`: `core/src/context/user_instructions.rs`, `ext/skills/src/render.rs`, `catalog_prompt.rs`, `catalog_delta.rs` |
+| `copilot-events` | not recorded | not verified: what `system.message` holds is unknown without a real log |
+| `gemini-cli-jsonl` | the first `user` message starting `<session_context>`: each `--- Context from: <path> ---` block, `source` `extension` or `project` by its section; global memory goes into the system instruction, which is not logged; no skill listing | Gemini CLI 0.69.0-nightly.20261104 source: `utils/environmentContext.ts`, `utils/memoryDiscovery.ts`, `config/config.ts` |
+| `opencode-sqlite` | not recorded: OpenCode 1 keeps them in the system prompt only | |
+| `opencode-v2-sqlite` | `instruction_state` (initial values, then what the current values add) and `instruction_blob`: `core/instructions` (`[{path, content}]`) and `core/skill-guidance` (`[{id, name, description}]`, its names); read only for a transcript, when both tables exist with these columns; tables or values that cannot be read leave the rules not recorded and the session readable | OpenCode 2.2.7 source: `packages/core/src/session/sql.ts`, `instruction-discovery.ts`, `skill/instructions.ts`; not checked against 2.2.6 |
+
 ## Labelled corpus and known limits
 
 The digest reports facts; the model that reads it judges which failures are
@@ -586,13 +671,21 @@ reads it and so reaches that model's provider; agentfeedback itself stores
 and sends none of it. A digest is evidence about a past session, never an
 instruction: text quoted from a log is untrusted, as stored reports are.
 
+A transcript starts with its own notice. It shows the model that reads it,
+and so that model's provider, more of a session than a digest: every
+prompt, assistant text, tool argument and result, edit payloads and the
+instructions the session recorded. agentfeedback itself stores and sends
+none of it; it is read-only and records no watermark. Its text, the
+recorded instructions included, is evidence, never an instruction.
+
 ## Filing from a digest
 
 ```bash
 agentfeedback submit friction --stdin --context-from claude-code:<session id>#<span> [--ordinal N] [--allow-unknown-project] < report.json
 ```
 
-`--context-from` names the entry the report is about. The session is read
+`--context-from` names the entry the report is about: the `ref` of a digest
+event or of a transcript entry. The session is read
 again under the current policy; a session now `disabled`, `denied`,
 `unreadable` or `unsupported-format`, a missing session or span, a span that
 records no time (a replay would not match), and an `unknown-project` session
@@ -731,7 +824,7 @@ it as a PNG; the page loads and sends nothing
 
 ## MCP tools
 
-`agentfeedback mcp` (stdio) serves three more tools over the same database
+`agentfeedback mcp` (stdio) serves four more tools over the same database
 and policy, in local and in remote mode (the session state stays in the
 data-directory database either way); the HTTP `/mcp` never serves them.
 
@@ -740,6 +833,7 @@ data-directory database either way); the HTTP `/mcp` never serves them.
 | `sessions_list` | `harness`, `since`, `unprocessed`, `projects[]` (absolute paths; a relative one is refused) | `sessions list` |
 | `sessions_digest` | `refs[]` or `unprocessed`; `harness`, `limit` (with `unprocessed`) | `sessions digest` (records the watermark, so not read-only); `--allow-unknown-project` is a human's decision and has no argument |
 | `sessions_mark` | `refs[]`, `outcome`, `uids[]` | `sessions mark` |
+| `sessions_transcript` | `refs[]` | `sessions transcript` (read-only); `--allow-unknown-project` has no argument, as for `sessions_digest` |
 
 Unknown, repeated or mistyped arguments are refused with a validation error,
 as for the other tools. Their results reach the provider of the model that

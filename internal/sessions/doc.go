@@ -85,6 +85,12 @@
 //     ref, or the unprocessed ones up to a limit); records the digest
 //     watermark of each digested session. Refused sessions come back as
 //     errors, sessions beyond MaxRunBytes as Deferred (no watermark).
+//   - Transcript: the condensed, scrubbed, capped view of whole named
+//     sessions (transcript_view.go) with the instructions and skill
+//     listing their logs record; it takes no database, so it records no
+//     watermark and changes no state. Sessions are read and refused as
+//     Digest reads a named session without a watermark row (readRef,
+//     refusal).
 //   - Mark: records an outcome (filed, nothing, skipped) and the uids of
 //     the submissions filed, copying the digest watermark; a session not
 //     digested yet is refused with store.ErrNotDigested.

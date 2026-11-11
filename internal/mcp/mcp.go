@@ -44,7 +44,7 @@ type Config struct {
 	// transport without the HTTP middleware uses it to attach a request id.
 	CallContext func(ctx context.Context) context.Context
 	// Sessions, when set, adds the session tools (sessions_list,
-	// sessions_digest, sessions_mark). Only the stdio transport sets it:
+	// sessions_digest, sessions_mark, sessions_transcript). Only the stdio transport sets it:
 	// they read the session logs of the machine the server runs on.
 	Sessions Sessions
 	// ContextFrom, when set, adds the [local] arguments context_from and

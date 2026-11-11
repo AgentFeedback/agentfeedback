@@ -44,13 +44,18 @@ type transcript struct {
 	entries      []entry
 	// skillHits are the skill uses the reader saw, in log order, before
 	// they are matched against the skill inventory.
-	skillHits   []skillHit
-	captureOnly bool // discard record content after classification
-	storageOnly bool // opaque complete lines, with no semantic entries
+	skillHits []skillHit
+	// instructions and skillsAvailable are the standing rules and the
+	// skill listing the session's log records as loaded, in first-seen
+	// order; capture keeps none, like text.
+	instructions    []recordedInstruction
+	skillsAvailable []string
+	captureOnly     bool // discard record content after classification
+	storageOnly     bool // opaque complete lines, with no semantic entries
 }
 
-// summarise fills total and lastModel and drops the entries and the
-// unparsed offsets: List and Status keep only the summary of a session.
+// summarise fills total and lastModel and, unless keep, drops the
+// entries, the unparsed offsets and the recorded rules: List and Status keep only the summary of a session.
 func (t *transcript) summarise(keep bool) {
 	if t.storageOnly {
 		t.total = Counts{Entries: t.parsed}
@@ -59,6 +64,7 @@ func (t *transcript) summarise(keep bool) {
 	t.total, t.lastModel = t.counts(0), t.model()
 	if !keep {
 		t.entries, t.badLines = nil, nil
+		t.instructions, t.skillsAvailable = nil, nil
 	}
 }
 
@@ -122,6 +128,34 @@ func (t *transcript) addSkillHit(name, span string, offset int64) {
 func (t *transcript) addSkillDir(dir, span string, offset int64) {
 	if dir != "" && !t.captureOnly {
 		t.skillHits = append(t.skillHits, skillHit{dir: dir, span: span, offset: offset})
+	}
+}
+
+// recordedInstruction is one instruction file the log records as loaded:
+// source is the harness's type for it ("" when it records none), path
+// the file or directory it names ("" when it names none).
+type recordedInstruction struct {
+	source, path, text string
+}
+
+// addInstruction records an instruction file once: by path, or by text
+// when the log names no path.
+func (t *transcript) addInstruction(source, path, text string) {
+	if t.captureOnly || strings.TrimSpace(text) == "" {
+		return
+	}
+	for _, in := range t.instructions {
+		if (path != "" && in.path == path) || (path == "" && in.path == "" && in.text == text) {
+			return
+		}
+	}
+	t.instructions = append(t.instructions, recordedInstruction{source: source, path: path, text: text})
+}
+
+// addSkillAvailable records a skill the log lists as available, once.
+func (t *transcript) addSkillAvailable(name string) {
+	if name = strings.TrimSpace(name); name != "" && !t.captureOnly && !slices.Contains(t.skillsAvailable, name) {
+		t.skillsAvailable = append(t.skillsAvailable, name)
 	}
 }
 

@@ -80,6 +80,15 @@ refs = { arg = "<harness:id>..." }
 outcome = { flag = "--outcome" }
 uids = { flag = "--ref" }
 
+[local.sessions_transcript]
+command = "sessions transcript"
+
+[local.sessions_transcript.arguments]
+refs = { arg = "<harness:id>..." }
+
+[local.sessions_transcript.cli_only]
+"--allow-unknown-project" = "a human decision: a session that records no working directory escapes every project rule, so the model that calls the tool cannot admit it"
+
 [operations.createSubmission]
 tool = "submit_feedback"
 

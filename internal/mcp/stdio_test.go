@@ -22,10 +22,11 @@ import (
 // fakeSessions is a session provider that records the decoded arguments
 // and answers with a fixed body, or with err.
 type fakeSessions struct {
-	list   []mcp.SessionsListArgs
-	digest []mcp.SessionsDigestArgs
-	mark   []mcp.SessionsMarkArgs
-	err    error
+	list       []mcp.SessionsListArgs
+	digest     []mcp.SessionsDigestArgs
+	mark       []mcp.SessionsMarkArgs
+	transcript []mcp.SessionsTranscriptArgs
+	err        error
 }
 
 func (f *fakeSessions) List(_ context.Context, a mcp.SessionsListArgs) ([]byte, error) {
@@ -41,6 +42,11 @@ func (f *fakeSessions) Digest(_ context.Context, a mcp.SessionsDigestArgs) ([]by
 func (f *fakeSessions) Mark(_ context.Context, a mcp.SessionsMarkArgs) ([]byte, error) {
 	f.mark = append(f.mark, a)
 	return []byte(`{"tool":"mark"}`), f.err
+}
+
+func (f *fakeSessions) Transcript(_ context.Context, a mcp.SessionsTranscriptArgs) ([]byte, error) {
+	f.transcript = append(f.transcript, a)
+	return []byte(`{"tool":"transcript"}`), f.err
 }
 
 // fakeContextFrom resolves context_from into a fixed key and records the
@@ -220,7 +226,7 @@ func TestStdio_SessionTools(t *testing.T) {
 				t.Errorf("%s description lacks %q", tool.Name, want)
 			}
 		}
-		if ro := tool.Annotations.ReadOnlyHint; ro != (tool.Name == mcp.ToolSessionsList) {
+		if ro := tool.Annotations.ReadOnlyHint; ro != (tool.Name == mcp.ToolSessionsList || tool.Name == mcp.ToolSessionsTranscript) {
 			t.Errorf("%s read-only hint %v", tool.Name, ro)
 		}
 	}
@@ -239,6 +245,12 @@ func TestStdio_SessionTools(t *testing.T) {
 	}
 	if b, isErr := call(t, cs, mcp.ToolSessionsMark, map[string]any{"refs": []any{"claude-code:a"}, "outcome": "filed", "uids": []any{"u1"}}); isErr {
 		t.Fatalf("mark: %s", b)
+	}
+	if b, isErr := call(t, cs, mcp.ToolSessionsTranscript, map[string]any{"refs": []any{"claude-code:a", "codex:b"}}); isErr || string(b) != `{"tool":"transcript"}` {
+		t.Fatalf("transcript: %v %s", isErr, b)
+	}
+	if want := []mcp.SessionsTranscriptArgs{{Refs: []string{"claude-code:a", "codex:b"}}}; !reflect.DeepEqual(f.transcript, want) {
+		t.Fatalf("decoded transcript %+v", f.transcript)
 	}
 	wantList := []mcp.SessionsListArgs{{Harness: "claude-code", Since: "7d", Unprocessed: true}, {Projects: []string{"/p/a", "/p/b"}}}
 	wantDigest := []mcp.SessionsDigestArgs{{Unprocessed: true, Harness: "claude-code", Limit: 3}, {Refs: []string{"claude-code:a"}}}
@@ -266,14 +278,17 @@ func TestStdio_SessionTools(t *testing.T) {
 		{mcp.ToolSessionsMark, map[string]any{"refs": []any{"claude-code:a"}}, "validation_error"},
 		{mcp.ToolSessionsMark, map[string]any{"outcome": "filed"}, "validation_error"},
 		{mcp.ToolSessionsMark, map[string]any{"refs": "claude-code:a", "outcome": "filed"}, "validation_error"},
+		{mcp.ToolSessionsTranscript, map[string]any{}, "validation_error"},
+		{mcp.ToolSessionsTranscript, map[string]any{"refs": "claude-code:a"}, "validation_error"},
+		{mcp.ToolSessionsTranscript, map[string]any{"refs": []any{"claude-code:a"}, "allow_unknown_project": true}, "validation_error"},
 	} {
 		b, isErr := call(t, cs, tt.tool, tt.args)
 		if !isErr || object(t, b)["error"] != tt.code {
 			t.Errorf("%s %v: %v %s", tt.tool, tt.args, isErr, b)
 		}
 	}
-	if len(f.list) != 2 || len(f.digest) != 2 || len(f.mark) != 1 {
-		t.Fatalf("a refused call reached the provider: %+v %+v %+v", f.list, f.digest, f.mark)
+	if len(f.list) != 2 || len(f.digest) != 2 || len(f.mark) != 1 || len(f.transcript) != 1 {
+		t.Fatalf("a refused call reached the provider: %+v %+v %+v %+v", f.list, f.digest, f.mark, f.transcript)
 	}
 
 	f.err = mcp.InvalidArgument("refs", "nope")

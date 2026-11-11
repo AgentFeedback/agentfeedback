@@ -154,8 +154,10 @@ func copyStore(t *testing.T, src, dst string, vars map[string]string) {
 	}
 }
 
-// TestSessionsGolden compares each reader's list and digest (or storage-only
-// capture preview) with fixtures, normalising home and working directory paths.
+// TestSessionsGolden compares each reader's list, digest (or storage-only
+// capture preview) and the transcript of every readable listed session
+// (Cursor's: its refusal) with fixtures, normalising home and working
+// directory paths.
 func TestSessionsGolden(t *testing.T) {
 	for _, h := range sessions.Harnesses() {
 		t.Run(h, func(t *testing.T) {
@@ -192,20 +194,45 @@ func TestSessionsGolden(t *testing.T) {
 				t.Setenv(envURL, srv.URL)
 				t.Setenv(envAPIKey, testKey)
 			}
+			var readable []string
 			for _, run := range []struct {
 				kind string
 				args []string
 			}{
 				{"list", []string{"sessions", "list", "--json", "--harness", h}},
 				{"digest", []string{"sessions", "digest", "--json", "--unprocessed", "--harness", h}},
+				{"transcript", []string{"sessions", "transcript", "--json"}},
 			} {
 				if h == "cursor" && run.kind == "digest" {
 					run.kind = "dry-run"
 					run.args = []string{"sessions", "push", "cursor:cli", "cursor:ide", "--since", "2020-01-01T00:00:00Z", "--dry-run", "--json"}
 				}
+				wantCode := 0
+				if run.kind == "transcript" {
+					if len(readable) == 0 {
+						t.Fatal("no readable session listed to show a transcript of")
+					}
+					run.args = append(run.args, readable...)
+					// Cursor transcripts are storage-only: every one is refused.
+					if h == "cursor" {
+						wantCode = 1
+					}
+				}
 				r := runCLI(t, "", run.args...)
-				if r.code != 0 {
+				if r.code != wantCode {
 					t.Fatalf("%v: %+v", run.args, r)
+				}
+				if run.kind == "list" {
+					var l sessions.Listing
+					if err := json.Unmarshal([]byte(r.stdout), &l); err != nil {
+						t.Fatal(err)
+					}
+					for _, s := range l.Sessions {
+						switch s.State {
+						case sessions.StateNew, sessions.StateChanged, sessions.StateProcessed, sessions.StateUnknownProject:
+							readable = append(readable, s.Ref)
+						}
+					}
 				}
 				if run.kind == "dry-run" {
 					var rows []map[string]any
