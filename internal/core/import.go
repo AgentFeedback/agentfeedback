@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -66,8 +67,10 @@ var recordMembers = map[string]bool{
 var requiredRecordMembers = []string{"id", "uid", "kind", "schema_version", "payload", "content_hash", "created_at"}
 
 // envelopeMembers are the record members rebuilt into a body for the decoder.
-var envelopeMembers = []string{"kind", "schema_version", "key", "summary", "machine", "model", "harness",
-	"project", "occurred_at", "context", "payload"}
+var envelopeMembers = []string{
+	"kind", "schema_version", "key", "summary", "machine", "model", "harness",
+	"project", "occurred_at", "context", "payload",
+}
 
 // uuidForm is an RFC 9562 UUID in 8-4-4-4-12 hex form: version 1 to 8 in
 // the third group's first digit, the RFC variant (8, 9, a or b) in the
@@ -92,8 +95,10 @@ func ValidUID(s string) bool { return uuidForm.MatchString(s) }
 // uid, created_at, occurred_at, the processing fields and redacted_at.
 func (s *Service) Import(ctx context.Context, body []byte) (ImportResult, error) {
 	if len(body) > ImportLimit {
-		return ImportResult{}, &Problem{Status: 413, Code: CodeRequestTooLarge,
-			Message: fmt.Sprintf("import body over %d bytes", ImportLimit)}
+		return ImportResult{}, &Problem{
+			Status: 413, Code: CodeRequestTooLarge,
+			Message: fmt.Sprintf("import body over %d bytes", ImportLimit),
+		}
 	}
 	recs, err := verifyImport(body)
 	if err != nil {
@@ -115,8 +120,10 @@ func (s *Service) Import(ctx context.Context, body []byte) (ImportResult, error)
 				if err == nil {
 					res.Skipped++
 					if existing.ContentHash != r.sub.ContentHash {
-						res.Conflicts = append(res.Conflicts, Conflict{Line: r.line, UID: r.sub.UID,
-							ExistingID: existing.ID, Reason: "key_mismatch"})
+						res.Conflicts = append(res.Conflicts, Conflict{
+							Line: r.line, UID: r.sub.UID,
+							ExistingID: existing.ID, Reason: "key_mismatch",
+						})
 					}
 					continue
 				}
@@ -152,8 +159,9 @@ var errDryRun = errors.New("dry run")
 
 // Restore reads export format 2 and stores its records keeping their ids: the
 // server-host restore path, never the API's import route. The body is
-// verified exactly as Import verifies it, with nothing written on failure,
-// but has no body limit (the file can be a whole database). In one write
+// verified as Import verifies it, additionally rejecting MaxInt64 source IDs
+// before writing: SQLite cannot allocate after that ID. There is no body limit
+// (the file can be a whole database). In one write
 // transaction, per record in file order: an existing uid is skipped, so a
 // re-run is a no-op; an id held by another uid is skipped and listed in
 // conflicts as id_taken; an existing (kind, key) under another uid is
@@ -163,7 +171,7 @@ var errDryRun = errors.New("dry run")
 // never handed out again. A dry run runs the same transaction and rolls it
 // back, so its counts are a real run's.
 func (s *Service) Restore(ctx context.Context, body []byte, dryRun bool) (ImportResult, error) {
-	recs, err := verifyImport(body)
+	recs, err := verifyRestore(body)
 	if err != nil {
 		return ImportResult{}, err
 	}
@@ -183,8 +191,10 @@ func (s *Service) Restore(ctx context.Context, body []byte, dryRun bool) (Import
 			_, err = store.GetByID(ctx, q, r.sub.ID)
 			if err == nil {
 				res.Skipped++
-				res.Conflicts = append(res.Conflicts, Conflict{Line: r.line, UID: r.sub.UID,
-					ExistingID: r.sub.ID, Reason: "id_taken"})
+				res.Conflicts = append(res.Conflicts, Conflict{
+					Line: r.line, UID: r.sub.UID,
+					ExistingID: r.sub.ID, Reason: "id_taken",
+				})
 				continue
 			}
 			if !errors.Is(err, store.ErrNotFound) {
@@ -195,8 +205,10 @@ func (s *Service) Restore(ctx context.Context, body []byte, dryRun bool) (Import
 				if err == nil {
 					res.Skipped++
 					if existing.ContentHash != r.sub.ContentHash {
-						res.Conflicts = append(res.Conflicts, Conflict{Line: r.line, UID: r.sub.UID,
-							ExistingID: existing.ID, Reason: "key_mismatch"})
+						res.Conflicts = append(res.Conflicts, Conflict{
+							Line: r.line, UID: r.sub.UID,
+							ExistingID: existing.ID, Reason: "key_mismatch",
+						})
 					}
 					continue
 				}
@@ -234,11 +246,25 @@ func (s *Service) Restore(ctx context.Context, body []byte, dryRun bool) (Import
 	return capImportWarnings(res), nil
 }
 
-// VerifyExport verifies an export (format 2) exactly as Import and Restore
-// do, writing nothing; a rejection is the same *Problem they return.
-func VerifyExport(body []byte) error {
-	_, err := verifyImport(body)
+// VerifyRestore validates an ID-preserving restore before opening its database.
+// A rejection is the same *Problem returned by Restore.
+func VerifyRestore(body []byte) error {
+	_, err := verifyRestore(body)
 	return err
+}
+
+func verifyRestore(body []byte) ([]importRecord, error) {
+	recs, err := verifyImport(body)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range recs {
+		if r.sub.ID == math.MaxInt64 {
+			return nil, lineProblem(r.line, "invalid_value", "/id",
+				"restore cannot preserve id %d: SQLite cannot allocate a subsequent ID", r.sub.ID)
+		}
+	}
+	return recs, nil
 }
 
 func lineProblem(line int, code, pointer, format string, args ...any) *Problem {
@@ -507,7 +533,9 @@ func capImportWarnings(res ImportResult) ImportResult {
 	first := res.Warnings[kept]
 	out := make([]ImportWarning, 0, kept+1)
 	out = append(out, res.Warnings[:kept]...)
-	res.Warnings = append(out, ImportWarning{Line: first.Line, Code: envelope.WarningsTruncated, Pointer: "",
-		Message: fmt.Sprintf("%d more warnings withheld; the first %d are listed in line order", withheld, kept)})
+	res.Warnings = append(out, ImportWarning{
+		Line: first.Line, Code: envelope.WarningsTruncated, Pointer: "",
+		Message: fmt.Sprintf("%d more warnings withheld; the first %d are listed in line order", withheld, kept),
+	})
 	return res
 }

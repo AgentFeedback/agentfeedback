@@ -1,0 +1,24 @@
+{
+  "steps": [
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "line": 3,
+        "code": "invalid_value",
+        "pointer": "/id"
+      },
+      "records": []
+    },
+    {
+      "error": {
+        "status": 400,
+        "error": "validation_error",
+        "line": 3,
+        "code": "invalid_value",
+        "pointer": "/id"
+      },
+      "records": []
+    }
+  ]
+}

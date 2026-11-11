@@ -200,3 +200,26 @@ func TestRestoreErr_OnlyVerificationIsRejected(t *testing.T) {
 		t.Fatalf("503: %v", err)
 	}
 }
+
+func TestImport_MaxIDRejectedBeforeOpeningDatabase(t *testing.T) {
+	for _, dry := range []bool{false, true} {
+		t.Run(map[bool]string{false: "restore", true: "dry-run"}[dry], func(t *testing.T) {
+			isolate(t)
+			dbPath := filepath.Join(t.TempDir(), "uncreated.db")
+			t.Setenv("DATABASE_PATH", dbPath)
+			args := []string{"import"}
+			if dry {
+				args = append(args, "--dry-run")
+			}
+			args = append(args, "../../conformance/import/restore-max-id/backup.ndjson")
+			r := runCLI(t, "", args...)
+			if r.code != 1 || r.stdout != "" || !strings.Contains(r.stderr, "line 3:") ||
+				!strings.Contains(r.stderr, "9223372036854775807") {
+				t.Fatalf("max-ID import: %+v", r)
+			}
+			if _, err := os.Stat(dbPath); !os.IsNotExist(err) {
+				t.Fatalf("rejected import created database: %v", err)
+			}
+		})
+	}
+}

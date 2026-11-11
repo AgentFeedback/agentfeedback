@@ -93,6 +93,7 @@ def _record(raw, line, schemas):
     if not tombstone and result.content_hash != hash_:
         raise Invalid(line, "invalid_value", "/content_hash")
     return {
+        "id": int(id_),
         "line": line,
         "identity": result.hash_input,
         "envelope": result.envelope,
@@ -125,7 +126,12 @@ def _verify(body, operation, schemas):
     digest = hashlib.sha256(b"".join(raw + b"\n" for raw in lines[1:-1])).hexdigest()
     if trailer.get("sha256") != digest:
         raise Invalid(len(lines), "invalid_value", "/sha256")
-    return [_record(raw, line, schemas) for line, raw in enumerate(lines[1:-1], 2)]
+    records = [_record(raw, line, schemas) for line, raw in enumerate(lines[1:-1], 2)]
+    if operation == "restore":
+        for record in records:
+            if record["id"] == 2**63 - 1:
+                raise Invalid(record["line"], "invalid_value", "/id")
+    return records
 
 
 def _input(d, step):

@@ -48,6 +48,7 @@
     "normalisation-warnings",
     "restore-conflicts-and-sequence",
     "restore-ids-and-dry-run",
+    "restore-max-id",
     "restore-no-api-size-cap",
     "retained-times-and-uid",
     "same-stream-uid",

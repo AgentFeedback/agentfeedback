@@ -45,7 +45,7 @@ func runImport(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return errImportRead(path, err)
 	}
 
-	if err := core.VerifyExport(body); err != nil {
+	if err := core.VerifyRestore(body); err != nil {
 		return restoreErr(path, err)
 	}
 

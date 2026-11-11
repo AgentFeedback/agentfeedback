@@ -1324,6 +1324,13 @@ file, so a restored id is never handed out again. A record whose `uid` is
 already stored is skipped whatever the two contain (a mark or redaction in
 the file does not reach the stored row), so running the same restore twice
 changes nothing.
+Restore rejects source ID `9223372036854775807` before any writes, including
+dry runs and records that would otherwise be skipped. Other positive int64
+IDs remain accepted, but headroom is finite: restoring `9223372036854775806`
+allows one subsequent distinct create at `9223372036854775807`; the next
+distinct create cannot allocate another ID. This safeguard does not repair
+an already exhausted database. HTTP import assigns fresh local IDs and does
+not apply this restore-only restriction.
 A record whose `id`, or whose `(kind, key)` with different content, belongs to
 another stored record is skipped and listed under `conflicts` (`id_taken`,
 `key_mismatch`); conflicts never fail the restore. It prints one JSON line

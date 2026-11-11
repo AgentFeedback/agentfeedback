@@ -1,0 +1,13 @@
+{
+  "steps": [
+    {
+      "operation": "restore",
+      "input": "backup.ndjson",
+      "dry_run": true
+    },
+    {
+      "operation": "restore",
+      "input": "backup.ndjson"
+    }
+  ]
+}

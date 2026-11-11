@@ -5,10 +5,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"regexp"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/agentfeedback/agentfeedback/v4/internal/store"
 )
 
 // reframe rebuilds an export body around the given record lines.
@@ -153,5 +156,82 @@ func TestRestoreRejectsWithoutWriting(t *testing.T) {
 	}
 	if n := rowCount(t, db); n != 0 {
 		t.Errorf("%d rows written", n)
+	}
+}
+
+func TestRestoreRejectsMaxIDBeforeWrites(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	src, _, _ := newTestService(t)
+	mustCreate(t, src, `{"kind":"friction","key":"limit","summary":"source"}`)
+	mustCreate(t, src, `{"summary":"valid earlier row"}`)
+	header, lines, _, _ := exportLines(t, src, ExportParams{})
+	body := reframe(header, withID(lines[1], 10), withID(lines[0], math.MaxInt64))
+	for _, existing := range []string{"none", "uid", "key", "id"} {
+		for _, dry := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/dry=%t", existing, dry), func(t *testing.T) {
+				dst, db, _ := newTestService(t)
+				switch existing {
+				case "uid":
+					if _, err := dst.Import(ctx, reframe(header, lines[0])); err != nil {
+						t.Fatal(err)
+					}
+				case "key":
+					mustCreate(t, dst, `{"kind":"friction","key":"limit","summary":"different"}`)
+				case "id":
+					mustCreate(t, dst, `{"summary":"occupied"}`)
+					if err := db.Write(ctx, func(q store.Querier) error {
+						_, err := q.ExecContext(ctx, "UPDATE submissions SET id = ? WHERE id = 1", int64(math.MaxInt64))
+						return err
+					}); err != nil {
+						t.Fatal(err)
+					}
+				}
+				sequence := func() int64 {
+					var n int64
+					if err := db.Read(ctx, func(q store.Querier) error {
+						return q.QueryRowContext(ctx, "SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name = 'submissions'), 0)").Scan(&n)
+					}); err != nil {
+						t.Fatal(err)
+					}
+					return n
+				}
+				beforeSeq := sequence()
+				_, before, _, _ := exportLines(t, dst, ExportParams{})
+				_, err := dst.Restore(ctx, body, dry)
+				p := asProblem(t, err)
+				if p.Code != CodeValidation || !strings.Contains(p.Message, "line 3:") ||
+					len(p.Details) != 1 || p.Details[0].Pointer != "/id" || p.Details[0].Code != "invalid_value" {
+					t.Fatalf("wrong rejection: %+v", p)
+				}
+				_, after, _, _ := exportLines(t, dst, ExportParams{})
+				if !slices.Equal(before, after) || sequence() != beforeSeq {
+					t.Fatal("rejected restore changed rows or sequence")
+				}
+			})
+		}
+	}
+}
+
+func TestRestoreNearMaxIDAndImportMaxID(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	src, _, _ := newTestService(t)
+	mustCreate(t, src, `{"summary":"source"}`)
+	header, lines, _, _ := exportLines(t, src, ExportParams{})
+	dst, _, _ := newTestService(t)
+	if _, err := dst.Restore(ctx, reframe(header, withID(lines[0], math.MaxInt64-1)), false); err != nil {
+		t.Fatal(err)
+	}
+	if got := mustCreate(t, dst, `{"summary":"last available"}`).Record.ID; got != math.MaxInt64 {
+		t.Fatalf("last ID = %d", got)
+	}
+	if _, err := dst.Create(ctx, []byte(`{"summary":"exhausted"}`)); err == nil {
+		t.Fatal("exhausted sequence accepted another distinct create")
+	}
+	fresh, _, _ := newTestService(t)
+	res, err := fresh.Import(ctx, reframe(header, withID(lines[0], math.MaxInt64)))
+	if err != nil || res.Imported != 1 || res.FirstID == nil || *res.FirstID != 1 {
+		t.Fatalf("HTTP import policy: %+v, %v", res, err)
 	}
 }
