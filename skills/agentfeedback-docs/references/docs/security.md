@@ -37,7 +37,11 @@ internet.
   (`inbox/` in the data directory, `0700`) follows the same rule: a file
   there is filed by the next command, so only that user may write it; the
   client never follows a symlink out of it and never reads a file over the
-  create limit.
+  create limit. The rooted `inbox/.cursor` and stable `.cursor.lock` files
+  contain scheduling progress and serialize ingestion, not report bodies.
+  They are created `0600`; cursor replacement is atomic and symlinked or
+  malformed state is refused. Producers publish a hidden temporary file
+  by rename and must never mutate it in place after publication.
 - `agentfeedback ui` serves read-only queue and local session-status pages on a
   loopback address only (`--addr` refuses any other). It is its own handler, never the
   API or the MCP handler: no `/api/v1` or `/mcp` route is reachable through

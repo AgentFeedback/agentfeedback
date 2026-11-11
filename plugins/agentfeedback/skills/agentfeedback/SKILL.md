@@ -180,7 +180,11 @@ of the minimum body plus the ones listed above (`kind`, `summary`,
 this report, as the PowerShell and Python lines do, so a second attempt
 never files a second report; without one, the file's name and bytes key
 it. Write a dot-named temporary file and rename it to `<name>.json`, so a
-half-written file is never read.
+half-written file is never read. Never modify a published file in place,
+even if its size and timestamp stay the same. The client durably remembers
+where it stopped: a retry ends that pass, but later invocations advance
+and wrap so healthy files in a stable inbox are eventually reached.
+Wrong credentials or URL still stop ingestion; fix the configuration.
 
 ```bash
 (umask 077; d="${XDG_DATA_HOME:-$HOME/.local/share}/agentfeedback/inbox"; k="$(date -u +%Y%m%dT%H%M%SZ)-$$"

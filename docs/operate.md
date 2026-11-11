@@ -212,17 +212,42 @@ watches the directory.
   in place, and the pass stops there. A file that is not one JSON object and
   was written in the last minute is left too, since a writer may still be
   writing it.
+- Candidates are sorted by name. Each completed or deadline-shortened pass
+  atomically saves its last visited name in `inbox/.cursor`; the next pass
+  starts after it and wraps, even if that file was removed. The first retry
+  still stops a pass, but advances this cursor: repeated invocations over a
+  stable finite inbox eventually reach healthy files behind a retrying one.
+  A wrong-key/URL Hold stops without advancing past that candidate. Files
+  are never rejected merely for retrying. This is not same-pass fairness
+  or a guarantee under indefinitely changing input.
+- `inbox/.cursor.lock` serializes passes, including cursor publication;
+  waiting for it honors the pass's cancellation or deadline. Healthy scheduler
+  metadata alone does not make an empty inbox perform database writes.
+  A crash before publication can replay a file through the existing keyed
+  deduplication; no pending file is deleted by scheduling. On Windows the
+  cursor file is synced before rename, but directory syncing is unavailable,
+  so power loss can replay an older cursor. Invalid or
+  unwritable scheduler state fails explicit `ingest` or is logged by the
+  start-up pass; fix the state or permissions before retrying.
+  To reset a corrupt cursor, stop concurrent client commands, remove only
+  `inbox/.cursor`, and retry; pending files remain and keyed deduplication
+  protects replay. Abandoned `.cursor-<uuid>` temporary files can also be
+  removed while commands are stopped. Never remove `.cursor.lock` while
+  a command might hold it.
 - Only regular files directly in `inbox/` whose names end in `.json` and do
   not start with `.` are read, so a writer writes `.<name>.tmp` and renames
-  it. A symlink or any other entry is never read: `ingest` names it on
+  it. Never mutate a published file in place, including a same-inode,
+  same-size rewrite with its timestamp preserved; such writes are unsupported.
+  A symlink or any other entry is never read: `ingest` names it on
   stderr, the client log records it, and it stays until removed. A file over
   the create limit is refused from its size, unread. Every file operation
   stays inside the inbox directory, and a file replaced under the same name
   while it was being delivered is left for the next pass, not moved.
 - The writer creates `inbox/` `0700`; the client creates `done/` and
-  `rejected/` `0700` and writes `.reason` files `0600`. `doctor` reports
-  looser modes, as for the rest of the data directory. The inbox, like the
-  database, belongs to the one OS user who owns the data directory.
+  `rejected/` `0700` and writes `.reason` and scheduler files `0600`.
+  `doctor` reports looser modes on these directories, not their individual
+  files. The inbox, like the database, belongs to the one OS user who owns
+  the data directory.
 
 ### Web UI
 

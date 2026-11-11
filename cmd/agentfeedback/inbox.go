@@ -48,9 +48,9 @@ type inboxReport struct {
 }
 
 // ingestInbox delivers the inbox, ${data}/inbox/*.json, one envelope per
-// file, through c: the create path of every other submission. It reads the
-// directory once and never watches it. Dot-prefixed names and names not
-// ending in .json are not candidates (a writer's temporary file). Per file:
+// file, through c: the create path of every other submission. It snapshots
+// names once, then locks and orders them after the durable cursor.
+// Dot-prefixed names and names not ending in .json are not candidates.
 //
 //	accepted (created or duplicate)          moved to done/<id>-<name>
 //	refused for good, over the create cap,   moved to rejected/<name> with
@@ -68,21 +68,54 @@ type inboxReport struct {
 // after the check is caught here and never read). A file over the create
 // cap is refused from its size, unread. A file is moved only while its name
 // still holds the file that was read, by identity, size and modification
-// time: one replaced or rewritten under the same name meanwhile stays for
-// the next pass. Each body gets context.origin "inbox" and, when it has
-// no key, a key derived from the file name and bytes, so two passes racing
-// over one file, or a pass that stopped between the create and the move,
-// end in a duplicate, never a second row. note receives one line per file
+// time: a detectable replacement stays for the next pass. In-place mutation
+// after publication is unsupported. Each body gets context.origin "inbox"
+// and, when it has no key, a key derived from the file name and bytes, so a
+// pass that stopped between the create and the move ends in a duplicate,
+// never a second row. note receives one line per file
 // named; every outcome and every file that is left is also logged to the
 // client log. The pass stops early, leaving the rest, when ctx is done.
-func ingestInbox(ctx context.Context, c *client.Client, data string, note func(string)) (inboxReport, error) {
-	var rep inboxReport
+func ingestInbox(ctx context.Context, c *client.Client, data string, note func(string)) (rep inboxReport, resultErr error) {
 	dir := client.InboxDir(data)
 	root, names, err := openInbox(dir)
 	if err != nil || root == nil {
 		return rep, err
 	}
 	defer func() { _ = root.Close() }()
+	if len(names) == 0 {
+		return rep, inboxSchedulerError(root)
+	}
+	lock, err := lockInbox(ctx, root)
+	if err != nil {
+		if ctx.Err() != nil {
+			rep.Pending = len(names)
+			return rep, nil
+		}
+		return rep, fmt.Errorf("inbox scheduler: %w", err)
+	}
+	defer func() { _ = lock.Close() }()
+	// A concurrent pass may have moved candidates while we waited for its lock.
+	info, err := os.Lstat(dir)
+	if err != nil {
+		return rep, err
+	}
+	names, err = inboxNames(root, info, dir)
+	if err != nil {
+		return rep, err
+	}
+	cursor, err := readInboxCursor(root)
+	if err != nil {
+		return rep, err
+	}
+	orderInbox(names, cursor)
+	last := cursor
+	defer func() {
+		if last != cursor {
+			if err := writeInboxCursor(root, last); err != nil {
+				resultErr = errors.Join(resultErr, fmt.Errorf("inbox scheduler: cannot save progress: %w", err))
+			}
+		}
+	}()
 	logLeft := func(msg string) {
 		note(msg)
 		c.Log(client.Outcome{Outcome: client.OutcomeError, Reason: "inbox: " + msg})
@@ -114,6 +147,8 @@ func ingestInbox(ctx context.Context, c *client.Client, data string, note func(s
 
 			break
 		}
+		previous := last
+		last = name
 		body, info, why, err := readInboxFile(root, name)
 		switch {
 		case errors.Is(err, fs.ErrNotExist):
@@ -162,6 +197,7 @@ func ingestInbox(ctx context.Context, c *client.Client, data string, note func(s
 			rep.Pending += len(names) - i
 			what := "the destination did not take it now"
 			if d.Hold {
+				last = previous
 				what = "the destination refused the setup; run agentfeedback doctor"
 			}
 			note(fmt.Sprintf("%s (%s); %d file(s) left in %s for the next pass", what, d.Outcome.Reason, len(names)-i, dir))
@@ -254,14 +290,14 @@ func inboxNames(root *os.Root, info fs.FileInfo, dir string) ([]string, error) {
 }
 
 // inboxHasEntries reports whether the inbox under data holds any name a
-// pass considers, a symlink included; any error counts as yes.
+// pass considers or invalid scheduler metadata; any error counts as yes.
 func inboxHasEntries(data string) bool {
 	root, names, err := openInbox(client.InboxDir(data))
-	if root != nil {
-		_ = root.Close()
+	if root == nil {
+		return err != nil
 	}
-
-	return err != nil || len(names) > 0
+	defer func() { _ = root.Close() }()
+	return err != nil || len(names) > 0 || inboxSchedulerError(root) != nil
 }
 
 // inboxHasCandidates reports whether the inbox under data holds a regular
@@ -273,6 +309,9 @@ func inboxHasCandidates(data string) bool {
 		return err != nil
 	}
 	defer func() { _ = root.Close() }()
+	if inboxSchedulerError(root) != nil {
+		return true
+	}
 	for _, n := range names {
 		if info, err := root.Lstat(n); err == nil && info.Mode().IsRegular() {
 			return true
@@ -280,6 +319,25 @@ func inboxHasCandidates(data string) bool {
 	}
 
 	return false
+}
+
+// Invalid metadata is surfaced even when the last candidate has disappeared,
+// but healthy persistent metadata must not turn an empty flush into a write.
+func inboxSchedulerError(root *os.Root) error {
+	if _, err := readInboxCursor(root); err != nil {
+		return err
+	}
+	info, err := root.Lstat(inboxLock)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inbox scheduler: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("inbox scheduler lock is not a regular file")
+	}
+	return nil
 }
 
 // errInboxTooLarge marks a file over the create cap; it is not read past
