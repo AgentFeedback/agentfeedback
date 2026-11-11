@@ -507,10 +507,17 @@ curl -sS -X PATCH "$AGENT_FEEDBACK_URL/api/v1/submissions/44" \
   `unverifiable`. `resolution` is at most 2000 bytes, blank is 400. `ref`
   and `processed_by` are at most 200 bytes. A `ref` that points at another
   submission holds that row's `uid`, never its `id`.
-- Marking sets `processed_at` if unset. Re-marking with a different
-  `verdict`, `resolution` or `ref` replaces them and keeps the original
-  `processed_at`. `processed=false` clears all five processing fields.
-  Redacted rows can be marked.
+- Marking sets `processed_at` if unset. On both routes, omitted `verdict`,
+  `resolution`, `ref` and `processed_by` retain their stored values, even
+  when verdict changes. Each supplied field replaces only itself; the
+  original `processed_at` is preserved. An empty re-mark leaves the mark
+  unchanged. Blank `verdict`, `ref` or `processed_by` clears that field;
+  blank `resolution` and `null` fields are 400. `processed=false` clears
+  all five processing fields. Redacted rows can be marked.
+- For example, after marking `fixed` with a resolution and `processed_by`,
+  batch re-marking
+  `{"ids":[44],"verdict":"duplicate","ref":"x"}` intentionally keeps the
+  old resolution and `processed_by` while replacing the verdict and ref.
 
 ### Mark a batch
 

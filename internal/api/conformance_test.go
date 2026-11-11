@@ -262,6 +262,72 @@ func TestConformance(t *testing.T) {
 	c.call(req(a, "POST", "/api/v1/submissions/processed", `{"ids":[]}`, true), 400)
 	c.call(req(a, "POST", "/api/v1/submissions/processed", strings.Repeat(" ", envelope.BodyLimit+1), true), 413)
 
+	// Both mark routes preserve omitted fields, including across verdict changes.
+	for _, batch := range []bool{false, true} {
+		mark := func(fields map[string]any, status int) map[string]any {
+			method, path := "PATCH", fmt.Sprintf("/api/v1/submissions/%d", id1)
+			if batch {
+				method, path = "POST", "/api/v1/submissions/processed"
+				fields["ids"] = []int64{id1}
+			}
+			body, err := json.Marshal(fields)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return obj(c.call(req(a, method, path, string(body), true), status))
+		}
+		mark(map[string]any{"verdict": "fixed", "resolution": "retained decision", "ref": "old", "processed_by": "reviewer"}, 200)
+		original := obj(c.call(req(a, "GET", fmt.Sprintf("/api/v1/submissions/%d", id1), "", true), 200))
+		want := map[string]any{"processed_at": original["processed_at"], "verdict": "fixed", "resolution": "retained decision", "ref": "old", "processed_by": "reviewer"}
+		if want["processed_at"] == nil || want["processed_at"] == "" {
+			t.Fatal("initial mark has no processed_at")
+		}
+		assertMark := func() {
+			t.Helper()
+			got := obj(c.call(req(a, "GET", fmt.Sprintf("/api/v1/submissions/%d", id1), "", true), 200))
+			for key, value := range want {
+				if got[key] != value {
+					t.Fatalf("batch=%v %s=%v, want %v", batch, key, got[key], value)
+				}
+			}
+		}
+		mark(map[string]any{"verdict": "duplicate"}, 200)
+		want["verdict"] = "duplicate"
+		assertMark()
+		noOp := mark(map[string]any{}, 200)
+		assertMark()
+		if batch {
+			unchanged := noOp["unchanged"].([]any)
+			if len(noOp["updated"].([]any)) != 0 || len(unchanged) != 1 || unchanged[0] != float64(id1) {
+				t.Fatalf("empty batch re-mark: %v", noOp)
+			}
+		}
+		mark(map[string]any{"verdict": "fixed"}, 200)
+		changed := mark(map[string]any{"verdict": "duplicate", "ref": "x"}, 200)
+		want["ref"] = "x"
+		assertMark()
+		if batch {
+			updated := changed["updated"].([]any)
+			if len(updated) != 1 || updated[0] != float64(id1) || len(changed["unchanged"].([]any)) != 0 {
+				t.Fatalf("changed batch re-mark: %v", changed)
+			}
+		}
+		for _, fields := range []map[string]any{{"resolution": " "}, {"resolution": nil}, {"verdict": nil}, {"ref": nil}, {"processed_by": nil}, {"processed": nil}} {
+			mark(fields, 400)
+			assertMark()
+		}
+		for _, field := range []string{"verdict", "ref", "processed_by"} {
+			mark(map[string]any{field: " "}, 200)
+			want[field] = nil
+			assertMark()
+		}
+		mark(map[string]any{"processed": false}, 200)
+		for key := range want {
+			want[key] = nil
+		}
+		assertMark()
+	}
+
 	// redact
 	c.call(req(a, "DELETE", "/api/v1/submissions/2", "", true), 200)
 	c.call(req(a, "DELETE", "/api/v1/submissions/2", "", true), 200)

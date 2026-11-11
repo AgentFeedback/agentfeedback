@@ -238,11 +238,14 @@ paths:
       summary: Set the processing mark of one submission
       description: >-
         Validated strictly (400 `validation_error`). Marking sets
-        `processed_at` if unset and stores the given fields; re-marking with a
-        different `verdict`/`resolution`/`ref` replaces them and keeps the
-        original `processed_at`; `processed=false` clears all five processing
-        fields. Redacted rows can still be marked. No content field is
-        writable. Returns the record; 404 when absent.
+        `processed_at` if unset. Omitted `verdict`, `resolution`, `ref` and
+        `processed_by` retain stored values, even when verdict changes.
+        Each supplied field replaces only itself; re-marking preserves the
+        original `processed_at`, and an empty re-mark leaves state intact.
+        Blank `verdict`, `ref` or `processed_by` clears only that field;
+        blank `resolution` and null fields are invalid. `processed=false`
+        clears all five processing fields. Redacted rows can still be marked.
+        No content field is writable. Returns the record; 404 when absent.
       requestBody:
         required: true
         content:
@@ -307,9 +310,16 @@ paths:
       summary: Set the processing mark of a batch
       description: >-
         Same fields and rules as the per-row mark, plus `ids` (1–500 positive
-        integers, duplicates collapsed). Returns a classification of the ids
-        into `updated`, `unchanged` and `not_found`. Validated strictly (400
-        `validation_error`).
+        integers, duplicates collapsed). Omitted mark fields retain stored
+        values even when verdict changes; supplied fields replace only
+        themselves and preserve the original `processed_at`. For example,
+        re-marking a fixed row that has a resolution and processed_by as duplicate
+        with a new ref retains its old resolution and processed_by.
+        Blank verdict/ref/processed_by clears
+        only that field; blank resolution and null fields are invalid.
+        `processed=false` clears all five processing fields. Returns a
+        classification of the ids into `updated`, `unchanged` and `not_found`;
+        an empty re-mark is unchanged. Validated strictly (400 `validation_error`).
       requestBody:
         required: true
         content:
@@ -1290,7 +1300,11 @@ components:
       additionalProperties: false
       description: >-
         `verdict`, `resolution`, `ref` and `processed_by` are allowed only with
-        `processed=true`.
+        `processed=true`. Omitted fields retain stored values, even when
+        verdict changes; each supplied field replaces only itself. Re-marking
+        preserves the original `processed_at`; an empty re-mark is unchanged.
+        Blank verdict/ref/processed_by clears only that field; blank resolution
+        and null fields are invalid. `processed=false` clears all five fields.
       properties:
         processed: {type: boolean, default: true, description: Default `true` when absent; `null` is 400.}
         verdict:
@@ -1307,7 +1321,10 @@ components:
       type: object
       additionalProperties: false
       required: [ids]
-      description: A ProcessingMark plus `ids`.
+      description: >-
+        A ProcessingMark plus `ids`, with the same omission-retention,
+        supplied-field replacement, timestamp-preservation, blank-clearing
+        and processed=false reset rules.
       properties:
         ids:
           type: array

@@ -195,11 +195,15 @@ s=$(req listSubmissions "${X[@]}" "$BASE/api/v1/submissions?before_id=5&after_id
 chk "list before_id with after_id -> 400" 400 "$s" "$(problem validation_error)"
 
 # --- processing marks -------------------------------------------------------
-s=$(req markSubmission -X PATCH "${X[@]}" "${JSON[@]}" -d '{"processed":true,"verdict":"fixed","resolution":"e2e","processed_by":"e2e"}' "$BASE/api/v1/submissions/$id2")
+s=$(req markSubmission -X PATCH "${X[@]}" "${JSON[@]}" -d '{"processed":true,"verdict":"fixed","resolution":"e2e","ref":"old","processed_by":"e2e"}' "$BASE/api/v1/submissions/$id2")
 pa=$(jq -r '.processed_at // empty' "$BODY")
 chk "mark one -> 200 with processed_at and verdict" 200 "$s" "$(j '.verdict=="fixed" and .resolution=="e2e" and (.processed_at|type)=="string"')"
 s=$(req markSubmission -X PATCH "${X[@]}" "${JSON[@]}" -d '{"verdict":"duplicate"}' "$BASE/api/v1/submissions/$id2")
-chk "re-mark replaces verdict, keeps processed_at" 200 "$s" "$(j --arg p "$pa" '.verdict=="duplicate" and .processed_at==$p')"
+chk "verdict-only re-mark retains other fields and processed_at" 200 "$s" \
+  "$(j --arg p "$pa" '.verdict=="duplicate" and .resolution=="e2e" and .ref=="old" and .processed_by=="e2e" and .processed_at==$p')"
+s=$(req markSubmission -X PATCH "${X[@]}" "${JSON[@]}" -d '{}' "$BASE/api/v1/submissions/$id2")
+chk "empty single re-mark retains the full mark" 200 "$s" \
+  "$(j --arg p "$pa" '.verdict=="duplicate" and .resolution=="e2e" and .ref=="old" and .processed_by=="e2e" and .processed_at==$p')"
 s=$(req markSubmission -X PATCH "${X[@]}" "${JSON[@]}" -d '{"processed":false}' "$BASE/api/v1/submissions/$id2")
 chk "processed=false clears the mark (undo)" 200 "$s" \
   "$(j '[has("processed_at","verdict","resolution","ref","processed_by")]|any|not')"
@@ -217,6 +221,29 @@ chk "batch mark classifies ids, duplicates collapsed" 200 "$s" \
   "$(j --argjson a "$id1" --argjson b "$id2" '.processed==true and .verdict=="fixed" and (.updated|sort)==([$a,$b]|sort) and .unchanged==[] and .not_found==[999999999]')"
 s=$(req markSubmissions "${X[@]}" "${JSON[@]}" -d "{\"ids\":[$id1],\"processed\":true,\"verdict\":\"fixed\"}" "$BASE/api/v1/submissions/processed")
 chk "batch re-mark with same fields -> unchanged" 200 "$s" "$(j --argjson a "$id1" '.updated==[] and .unchanged==[$a]')"
+s=$(req markSubmissions "${X[@]}" "${JSON[@]}" -d "{\"ids\":[$id1],\"resolution\":\"retained decision\",\"ref\":\"old\",\"processed_by\":\"reviewer\"}" "$BASE/api/v1/submissions/processed")
+chk "batch supplies retained decision" 200 "$s" "$(j --argjson a "$id1" '.updated==[$a] and .unchanged==[]')"
+s=$(req getSubmission "${X[@]}" "$BASE/api/v1/submissions/$id1")
+pa=$(jq -r '.processed_at // empty' "$BODY")
+chk "batch seed has the full mark" 200 "$s" \
+  "$(j '.verdict=="fixed" and .resolution=="retained decision" and .ref=="old" and .processed_by=="reviewer" and (.processed_at|type)=="string"')"
+s=$(req markSubmissions "${X[@]}" "${JSON[@]}" -d "{\"ids\":[$id1],\"verdict\":\"duplicate\"}" "$BASE/api/v1/submissions/processed")
+chk "batch verdict-only change is updated" 200 "$s" "$(j --argjson a "$id1" '.updated==[$a] and .unchanged==[]')"
+s=$(req getSubmission "${X[@]}" "$BASE/api/v1/submissions/$id1")
+chk "batch verdict-only change retains omitted fields and timestamp" 200 "$s" \
+  "$(j --arg p "$pa" '.verdict=="duplicate" and .resolution=="retained decision" and .ref=="old" and .processed_by=="reviewer" and .processed_at==$p')"
+s=$(req markSubmissions "${X[@]}" "${JSON[@]}" -d "{\"ids\":[$id1],\"verdict\":\"fixed\"}" "$BASE/api/v1/submissions/processed")
+chk "batch restores fixed before combined verdict and ref change" 200 "$s" "$(j --argjson a "$id1" '.updated==[$a] and .unchanged==[]')"
+s=$(req markSubmissions "${X[@]}" "${JSON[@]}" -d "{\"ids\":[$id1],\"verdict\":\"duplicate\",\"ref\":\"x\"}" "$BASE/api/v1/submissions/processed")
+chk "batch new ref is updated" 200 "$s" "$(j --argjson a "$id1" '.updated==[$a] and .unchanged==[]')"
+s=$(req getSubmission "${X[@]}" "$BASE/api/v1/submissions/$id1")
+chk "duplicate with new ref retains the old resolution and processor" 200 "$s" \
+  "$(j --arg p "$pa" '.verdict=="duplicate" and .resolution=="retained decision" and .ref=="x" and .processed_by=="reviewer" and .processed_at==$p')"
+s=$(req markSubmissions "${X[@]}" "${JSON[@]}" -d "{\"ids\":[$id1]}" "$BASE/api/v1/submissions/processed")
+chk "empty batch re-mark is unchanged" 200 "$s" "$(j --argjson a "$id1" '.updated==[] and .unchanged==[$a]')"
+s=$(req getSubmission "${X[@]}" "$BASE/api/v1/submissions/$id1")
+chk "empty batch re-mark retains the full mark" 200 "$s" \
+  "$(j --arg p "$pa" '.verdict=="duplicate" and .resolution=="retained decision" and .ref=="x" and .processed_by=="reviewer" and .processed_at==$p')"
 s=$(req markSubmissions "${X[@]}" "${JSON[@]}" -d "{\"ids\":[$id1,$id2],\"processed\":false}" "$BASE/api/v1/submissions/processed")
 chk "batch undo (processed=false)" 200 "$s" "$(j '.processed==false and (.updated|length)==2')"
 s=$(req markSubmissions "${X[@]}" "${JSON[@]}" -d '{"ids":[],"processed":true}' "$BASE/api/v1/submissions/processed")
