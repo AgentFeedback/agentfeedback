@@ -9,7 +9,7 @@
 # procedure, recovery included.
 set -euo pipefail
 
-goreleaser_version=2.19.0
+goreleaser_min_version=2.19.0
 repo=AgentFeedback/agentfeedback
 origin_re='github\.com[:/]AgentFeedback/agentfeedback(\.git)?/?$'
 install_sh=skills/agentfeedback/scripts/install.sh
@@ -118,8 +118,16 @@ docker buildx version >/dev/null || die "docker with buildx is required for the 
 docker login ghcr.io </dev/null >/dev/null 2>&1 ||
     die "docker has no working login for ghcr.io; run docker login ghcr.io with a token that can write packages"
 have=$(goreleaser --version | awk '$1 == "GitVersion:" { print $2 }')
-[ "$have" = "$goreleaser_version" ] ||
-    die "GoReleaser $goreleaser_version is pinned, found '${have:-unknown}'; install that version"
+# New stable 2.x versions still pass the configuration and full build gates.
+# Reject prereleases and unknown major versions rather than assuming compatibility.
+IFS=. read -r min_major min_minor min_patch <<< "$goreleaser_min_version"
+if ! [[ $have =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] ||
+    ! (( BASH_REMATCH[1] == min_major &&
+         (BASH_REMATCH[2] > min_minor ||
+          (BASH_REMATCH[2] == min_minor && BASH_REMATCH[3] >= min_patch)) )); then
+    die "GoReleaser must be stable ${min_major}.x >= $goreleaser_min_version, found '${have:-unknown}'"
+fi
+echo "release: using GoReleaser $have (use this exact version to reproduce the archives)"
 [ -f "$install_sh" ] || die "$install_sh is missing; every release publishes it as an asset"
 
 # Tags go to origin and the release to $repo (and .goreleaser.yaml's

@@ -17,12 +17,9 @@ GitHub release or pushes an image (the steps below, recovery included) only
 when a maintainer asks for that version.
 
 Maintainers need Git, the tools `just ci-full` needs ([develop.md](develop.md)),
-GoReleaser 2.19.0 exactly (the `v2.19.0` archive from
-github.com/goreleaser/goreleaser/releases, or `brew install goreleaser` while
-2.19.0 is Homebrew's version; `just release` refuses any other version,
-because the archives are only reproducible with the same one; an earlier
-release is reproducible with the version `scripts/release.sh` pins at its
-tag), Docker with buildx logged in to `ghcr.io` (push access to the
+stable GoReleaser 2.x at version 2.19.0 or newer (`brew install goreleaser`
+or the matching archive from github.com/goreleaser/goreleaser/releases),
+Docker with buildx logged in to `ghcr.io` (push access to the
 `agentfeedback/agentfeedback` package), able to build and run `linux/amd64`
 and `linux/arm64` images (on a machine of the other architecture, QEMU
 emulation: `docker run --privileged --rm tonistiigi/binfmt --install all`;
@@ -31,6 +28,13 @@ container (the playbook gate runs systemd in one), `curl`, and an
 authenticated GitHub CLI (`gh`) with write access to the repository and its
 tags. There is no hosted CI: every
 check runs on the releasing machine.
+
+The release preflight rejects older GoReleaser versions, prereleases and
+unknown major versions. Supported versions still have to pass `goreleaser
+check` and the full build and image smoke gates. Archives are reproducible
+only with the same GoReleaser version: record the actual version in the
+release notes and use it for reproduction or recovery. For older releases
+without that note, use the version pinned by `scripts/release.sh` at the tag.
 
 ### Tags
 
@@ -71,7 +75,8 @@ flags.
 ### Cutting a release
 
 1. Update the stable version link in `README.md` (stable releases only) and
-   add notes to this file. Set `version` in `flake.nix` to the tag without
+   add notes to this file, including the actual `goreleaser --version`. Set
+   `version` in `flake.nix` to the tag without
    its `v` prefix; the release preflight rejects a mismatch. Nix source
    archives do not contain Git tags, so they need this explicit version.
    Promoting an RC to stable requires a new commit updating this value;
@@ -79,9 +84,10 @@ flags.
 2. Run `just ci`, commit, push `main`.
 3. Write the release notes to a file outside the checkout or under the
    gitignored `.private/`. Start with a short summary, then describe the
-   user-visible changes, compatibility and upgrade steps. Do not repeat the
-   release title in the body. Use absolute links to documents at the release
-   tag so older notes keep pointing to the matching documentation.
+   user-visible changes, compatibility and upgrade steps. Record the exact
+   GoReleaser version used for the build, matching the notes in this file.
+   Do not repeat the release title in the body. Use absolute links to documents
+   at the release tag so older notes keep pointing to the matching documentation.
 4. Run the preflight, then publish:
 
    ```bash
@@ -144,8 +150,9 @@ macOS). Releases before 4.0.0 carry no assets; only the source tag exists.
 
 ### Reproducing a release
 
-Two builds of the same tag produce identical binaries and identical
-archives. Check it after a release, from a clean checkout of the tag:
+Two builds of the same tag with the same GoReleaser version produce identical
+binaries and archives. Install the version recorded in that release's notes
+(or pinned by its tagged release script), then check from a clean checkout:
 
 ```bash
 git checkout vX.Y.Z
@@ -171,7 +178,8 @@ force-move or delete the published tag:
 
 - **No release, or a draft** (GoReleaser failed before publishing, the
   image push included; it runs before the release is created): on a
-  clean checkout of the tagged commit, rerun GoReleaser with the same title.
+  clean checkout of the tagged commit, rerun GoReleaser with the same title
+  and the exact GoReleaser version used for the original build.
   It finds the draft by its name, `vX.Y.Z — <title>`, keeps its notes and
   replaces any asset already uploaded with its byte-identical rebuild, and
   pushes the image tags again. Use the name template from the tagged
@@ -212,6 +220,35 @@ that version. Rewrite relative document links as absolute URLs under
 version; corrections to release prose need no new tag. For prose-only repairs,
 use `gh release edit <tag> --repo AgentFeedback/agentfeedback --title '<tag> — <title>' --notes-file /path/to/notes.md`;
 leave tags, assets, pre-release status and the latest release unchanged.
+
+## v4.5.0 — Skill checkup and reliability fixes
+
+Compatible with 4.x clients and servers; the HTTP API stays `1.0`.
+No new server configuration is required. Upgrade the binary or deploy the
+`4.5.0` image; refresh installed skills from the upgraded binary to use the
+checkup workflow.
+
+- **Skill checkups:** the triage skill guides evidence-backed checkups,
+  including instruction-gap findings. `report check` and `report render`
+  validate and render checkup reports with their grade.
+- **Session evidence:** project filtering, skill inventory and `skills_used`;
+  `sessions transcript` and its stdio MCP tool expose transcript evidence.
+  Session readers also support omp local journals.
+- **Restore safety:** reject the maximum signed 64-bit source ID before
+  writes, including dry runs and skipped records, so imports cannot exhaust
+  SQLite's ID sequence. Other positive int64 IDs remain accepted;
+  near-maximum IDs still leave finite allocation headroom.
+- **Inbox fairness:** persist a round-robin cursor across passes, with
+  cancellable locking and preserved retry behavior.
+- **Submission routing:** `--local` and `--server URL` work before or after
+  the kind, including review imports. Repeated options retain command-line
+  order; kind-specific flags remain after the kind.
+- **Search and deduplication:** handle decoded strings containing embedded
+  NUL characters and bound keyless deduplication by request time.
+  API documentation clarifies retention of omitted processing-mark fields.
+- **Release tooling:** accept stable GoReleaser 2.x from 2.19.0 onward,
+  retaining configuration, build and publication checks. This release uses
+  **GoReleaser 2.20.1**; use that exact version to reproduce its archives.
 
 ## v4.4.0 — Session capture and Cloud onboarding
 

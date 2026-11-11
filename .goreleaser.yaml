@@ -1,5 +1,5 @@
 # GoReleaser configuration for the release step. Run it through `just release`
-# (scripts/release.sh), which pins the GoReleaser version and the Go toolchain;
+# (scripts/release.sh), which checks GoReleaser compatibility and pins the Go toolchain;
 # docs/releases.md describes the flow and the asset names.
 version: 2
 
