@@ -111,6 +111,55 @@ versions are immutable; a package defect requires a new release. Rerun a
 failed smoke job after checking registry availability; smoke checks do not
 roll back an existing release or move dist-tags.
 
+### PyPI publishing
+
+The `pypi` job in the same publish-only workflow verifies the six release
+archives against `SHA256SUMS`, then builds six binary wheels without compiling
+Go. `pypa/gh-action-pypi-publish` uploads only wheels with OIDC; there is no
+source distribution or pure-Python fallback. Reruns skip existing files.
+These checks establish asset integrity, not independent authenticity: checksums
+come from the same unsigned release as the archives.
+
+`pip install agentfeedback-cli` installs the `agentfeedback` console script.
+`pipx run --spec agentfeedback-cli==X.Y.Z agentfeedback version` runs a pinned
+version. Both execute the binary inside the wheel, never a command found on
+`PATH` or downloaded
+at runtime. Tags `vX.Y.Z-rc.N` map to PEP 440 `X.Y.ZrcN`; the binary itself
+still reports `X.Y.Z-rc.N`. The `pypi-smoke` job checks that exact version
+through pipx on Ubuntu, macOS and Windows after publication.
+Use `--spec` because the distribution is `agentfeedback-cli` but its executable
+is `agentfeedback`.
+
+Every wheel has Python/ABI tags `py3-none` and requires Python 3.8 or later:
+
+| Release target | Wheel platform tag |
+|---|---|
+| Linux amd64 | `manylinux_2_17_x86_64.musllinux_1_2_x86_64` |
+| Linux arm64 | `manylinux_2_17_aarch64.musllinux_1_2_aarch64` |
+| macOS amd64 | `macosx_13_0_x86_64` |
+| macOS arm64 | `macosx_13_0_arm64` |
+| Windows amd64 | `win_amd64` |
+| Windows arm64 | `win_arm64` |
+
+Linux wheels carry both glibc and musl tags because release binaries use
+`CGO_ENABLED=0` and do not depend on either libc. macOS 13 is the minimum
+supported by [Go 1.27](https://go.dev/doc/go1.27#darwin). These are
+[platform compatibility tags](https://packaging.python.org/en/latest/specifications/platform-compatibility-tags/),
+not Python extension ABI tags. Unsupported platforms find no matching wheel
+and fail without building anything.
+
+Before publishing, configure the existing `agentfeedback-cli` project's
+PyPI Publishing settings: GitHub owner `AgentFeedback`, repository
+`agentfeedback`, workflow `publish.yml`, environment blank. Never store a
+PyPI token in repository secrets. See
+[PyPI trusted publishers](https://docs.pypi.org/trusted-publishers/adding-a-publisher/).
+After the first binary-wheel release succeeds, yank the legacy `0.0.1`
+release (both its universal wheel and sdist), with reason “Superseded by
+platform binary wheels; unsupported platforms must not fall back to the
+legacy launcher.” Otherwise pip can select that old compatible release on
+an unsupported platform. Yanking preserves explicitly pinned historical
+installs without allowing an unpinned fallback.
+
 ### Cutting a release
 
 1. Update the stable version link in `README.md` (stable releases only) and

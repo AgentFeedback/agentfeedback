@@ -88,10 +88,10 @@ AgentFeedback. A package of that name anywhere else, including the unrelated
 | Go module | `github.com/agentfeedback/agentfeedback/v4`, built with `go install` ([`docs/operate.md`](docs/operate.md#build-from-source)) | from release 4.0.0 |
 | Homebrew | tap `agentfeedback/tap` (repository `AgentFeedback/homebrew-tap`) | planned |
 | npm | [`@agentfeedback/cli`](https://www.npmjs.com/package/@agentfeedback/cli), the `@agentfeedback` scope | embedded binaries via the [package publishing workflow](docs/releases.md#npm-publishing) |
-| PyPI | [`agentfeedback-cli`](https://pypi.org/project/agentfeedback-cli/) | launcher `0.0.x`; the binary is planned |
+| PyPI | [`agentfeedback-cli`](https://pypi.org/project/agentfeedback-cli/) | platform binary wheels via the [package publishing workflow](docs/releases.md#pypi-publishing) |
 | RubyGems | [`agentfeedback`](https://rubygems.org/gems/agentfeedback) | launcher `0.0.x`; the binary is planned |
 
-The old npm `0.0.x` and the PyPI and RubyGems packages at `0.0.x`
+The old npm and PyPI `0.0.x` releases and RubyGems package at `0.0.x`
 are only a launcher: their `agentfeedback` command runs an `agentfeedback`
 binary already on `PATH` and otherwise prints the link to
 [`AGENT-INSTALL.md` step 2.1](AGENT-INSTALL.md#step-21-the-binary).
