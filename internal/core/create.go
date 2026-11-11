@@ -40,8 +40,9 @@ func (c CreateResult) MarshalJSON() ([]byte, error) {
 // write transaction. A keyed body whose (kind, key) exists returns that row
 // when the content hash matches and is 409 replay_mismatch otherwise. A
 // keyless body returns the newest unprocessed row with the same hash created
-// within DedupeWindow. Anything else is inserted with a new UUIDv7 and
-// created_at = now. A body Decode rejects is a Problem with its status.
+// in the inclusive interval [now-DedupeWindow, now]. Anything else is inserted
+// with a new UUIDv7 and created_at = now. A body Decode rejects is a Problem
+// with its status.
 func (s *Service) Create(ctx context.Context, body []byte) (CreateResult, error) {
 	var scrubbed scrub.Counts
 	if s.config.ScrubIngest {
@@ -66,21 +67,25 @@ func (s *Service) Create(ctx context.Context, body []byte) (CreateResult, error)
 	}
 	sub.ContentHash = env.ContentHash()
 
-	now := s.nowMicros()
 	result := CreateResult{Warnings: warnings, Scrubbed: scrubbed}
 	err = s.write(ctx, func(q store.Querier) error {
+		// Capture after acquiring the write lock so a concurrent create that
+		// committed while this request waited cannot look future-dated.
+		now := s.nowMicros()
 		var existing store.Submission
 		var err error
 		if sub.Key != "" {
 			existing, err = store.GetByKey(ctx, q, sub.Kind, sub.Key)
 			if err == nil && existing.ContentHash != sub.ContentHash {
 				msg := fmt.Sprintf("key %q already names submission %d with different content", sub.Key, existing.ID)
-				return &Problem{Status: 409, Code: CodeReplayMismatch,
+				return &Problem{
+					Status: 409, Code: CodeReplayMismatch,
 					Message: fmt.Sprintf("key %q was already used with different content", sub.Key),
-					Details: []Detail{{Code: "key_reused", Pointer: "/key", Message: msg, ExistingID: existing.ID}}}
+					Details: []Detail{{Code: "key_reused", Pointer: "/key", Message: msg, ExistingID: existing.ID}},
+				}
 			}
 		} else {
-			existing, err = store.GetRecentByHash(ctx, q, sub.ContentHash, now-DedupeWindow.Microseconds())
+			existing, err = store.GetRecentByHash(ctx, q, sub.ContentHash, now-DedupeWindow.Microseconds(), now)
 		}
 		switch {
 		case err == nil:

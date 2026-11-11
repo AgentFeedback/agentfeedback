@@ -170,7 +170,7 @@ const (
 	whereByID         = `id = ?`
 	whereByUID        = `uid = ?`
 	whereByKey        = `kind = ? AND key = ?`
-	whereRecentByHash = `content_hash = ? AND created_at >= ? AND processed_at IS NULL
+	whereRecentByHash = `content_hash = ? AND created_at >= ? AND created_at <= ? AND processed_at IS NULL
 		ORDER BY created_at DESC, id DESC LIMIT 1`
 )
 
@@ -190,10 +190,10 @@ func GetByKey(ctx context.Context, q Querier, kind, key string) (Submission, err
 }
 
 // GetRecentByHash is the keyless dedupe lookup: the newest row with the given
-// content hash, created at or after since, that has not been processed.
+// content hash, created inclusively between since and until, that is unprocessed.
 // Processed rows are skipped so a recurring problem files again after triage.
-func GetRecentByHash(ctx context.Context, q Querier, hash string, since int64) (Submission, error) {
-	return getOne(ctx, q, "hash", whereRecentByHash, hash, since)
+func GetRecentByHash(ctx context.Context, q Querier, hash string, since, until int64) (Submission, error) {
+	return getOne(ctx, q, "hash", whereRecentByHash, hash, since, until)
 }
 
 // ListFilter selects rows for a list, a count, the stats and their groups.
@@ -276,10 +276,17 @@ func (f ListFilter) where() (*whereBuilder, error) {
 	for _, c := range []struct {
 		column, value string
 	}{
-		{"kind", f.Kind}, {"key", f.Key}, {"machine", f.Machine}, {"model", f.Model},
-		{"project", f.Project}, {"harness", f.Harness}, {"category", f.Category},
+		{"kind", f.Kind},
+		{"key", f.Key},
+		{"machine", f.Machine},
+		{"model", f.Model},
+		{"project", f.Project},
+		{"harness", f.Harness},
+		{"category", f.Category},
 		{"origin", f.Origin},
-		{"fix_status", f.FixStatus}, {"verdict", f.Verdict}, {"content_hash", f.ContentHash},
+		{"fix_status", f.FixStatus},
+		{"verdict", f.Verdict},
+		{"content_hash", f.ContentHash},
 	} {
 		if c.value != "" {
 			w.add(c.column+" = ?", c.value)

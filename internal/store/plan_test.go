@@ -94,7 +94,7 @@ func TestQueryPlans(t *testing.T) {
 	add("get by id", "rowid", true, lookup(whereByID, one))
 	add("get by uid", "sqlite_autoindex_submissions_1", true, lookup(whereByUID, "u"))
 	add("keyed dedupe", "ux_submissions_key", true, lookup(whereByKey, "friction", "k"))
-	add("keyless window", "ix_submissions_hash_created", true, lookup(whereRecentByHash, "h", one))
+	add("keyless window", "ix_submissions_hash_created", true, lookup(whereRecentByHash, "h", one, two))
 	// Lists by one filter and their pages.
 	add("list by project", "ix_submissions_project", true, mustList(ListFilter{Project: "p"}, Page{Limit: 50}))
 	add("list by project before_id", "ix_submissions_project", true, mustList(ListFilter{Project: "p"}, Page{Limit: 50, BeforeID: &two}))

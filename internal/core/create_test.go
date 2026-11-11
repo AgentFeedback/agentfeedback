@@ -59,6 +59,42 @@ func TestCreateIdentity(t *testing.T) {
 	}
 }
 
+func TestCreateImportedDedupeWindow(t *testing.T) {
+	t.Parallel()
+	const body = `{"kind":"note","summary":"imported window","payload":{"value":"same"}}`
+	for _, tc := range []struct {
+		name    string
+		age     time.Duration
+		created bool
+	}{
+		{"lower inclusive", DedupeWindow, false},
+		{"upper inclusive", 0, false},
+		{"too old", DedupeWindow + time.Microsecond, true},
+		{"future", -time.Microsecond, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			src, _, clock := newTestService(t)
+			clock.advance(-tc.age)
+			original := mustCreate(t, src, body).Record
+			_, _, _, stream := exportLines(t, src, ExportParams{})
+			dst, _, _ := newTestService(t)
+			if result, err := dst.Import(context.Background(), stream); err != nil || result.Imported != 1 {
+				t.Fatalf("import: %+v, %v", result, err)
+			}
+			_, rows, _, _ := exportLines(t, dst, ExportParams{})
+			_, want, _, _ := exportLines(t, src, ExportParams{})
+			if len(rows) != 1 || rows[0] != want[0] {
+				t.Fatalf("import changed record: got %v, want %v", rows, want)
+			}
+			got := mustCreate(t, dst, body)
+			if got.Created != tc.created || (!got.Created && got.Record.UID != original.UID) ||
+				(got.Created && got.Record.UID == original.UID) {
+				t.Fatalf("create: created=%v record=%+v", got.Created, got.Record)
+			}
+		})
+	}
+}
+
 func TestCreateUIDError(t *testing.T) {
 	t.Parallel()
 	_, db, _ := newTestService(t)
@@ -81,6 +117,7 @@ func TestCreateConcurrent(t *testing.T) {
 		`{"kind":"friction","summary":"concurrent keyless","payload":{"details":"x"}}`,
 	} {
 		s, db, _ := newTestService(t)
+		s.now = time.Now
 		const n = 16
 		ids := make([]int64, n)
 		errs := make([]error, n)

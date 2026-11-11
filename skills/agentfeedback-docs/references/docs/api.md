@@ -179,6 +179,11 @@ new record: a recurring problem files again after triage. A keyed replay of a
 redacted record still answers 200 with the tombstone, because the hash is
 kept.
 
+The keyless interval is inclusive: `now - 24h <= created_at <= now`, using
+one captured request clock for both bounds. The newest eligible unprocessed
+record wins. Imported timestamps are preserved, including future timestamps;
+future records cannot match until they enter this interval.
+
 **Warnings.** A create returns `warnings` beside the stored record: items of
 `code`, `pointer` (an RFC 6901 pointer into the stored record) and `message`.
 Warnings are never stored and never reject. The closed list of codes, one

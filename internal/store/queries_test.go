@@ -275,7 +275,7 @@ func TestRecentByHashWindow(t *testing.T) {
 		var s Submission
 		err := db.Read(ctx, func(q Querier) error {
 			var err error
-			s, err = GetRecentByHash(ctx, q, hash, since)
+			s, err = GetRecentByHash(ctx, q, hash, since, base)
 
 			return err
 		})
@@ -289,6 +289,7 @@ func TestRecentByHashWindow(t *testing.T) {
 
 	// A newer open row wins over the older one.
 	newer := mustInsert(t, db, sub("u-open-newer", base-30*60*second))
+	mustInsert(t, db, sub("u-future", base+1))
 	if got, err = lookup("same-hash"); err != nil || got.ID != newer {
 		t.Fatalf("want the newest open row (%d), got %d, %v", newer, got.ID, err)
 	}
