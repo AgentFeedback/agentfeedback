@@ -1090,27 +1090,26 @@ func TestQSearchesFromEveryReaderConnection(t *testing.T) {
 	}
 }
 
-func TestQStopsAtAnEmbeddedNul(t *testing.T) {
+func TestQSearchesThroughEmbeddedNul(t *testing.T) {
 	t.Parallel()
-
-	// Pins the documented limit of qClause: text before a NUL is searched,
-	// text after it is not. If this starts failing on the "after" cases the
-	// driver has changed how it passes TEXT arguments and the comment on
-	// qClause can go.
 	db := openTest(t)
 	s := newSub("u-nul")
-	s.Summary = "head\x00Tail of the summary"
-	s.Payload = json.RawMessage(`{"details":"before\u0000Needle after"}`)
-	mustInsert(t, db, s)
+	s.Summary = "head\x00Tail ÉCOLE"
+	s.Payload = json.RawMessage(`{"nested":[{"details":"before\u0000Needle KELVIN after"}],"keyonly":12345,"flag":true}`)
+	id := mustInsert(t, db, s)
+	other := newSub("u-unrelated")
+	other.Summary = "unrelated"
+	other.Payload = json.RawMessage(`{"other":"unrelated"}`)
+	mustInsert(t, db, other)
 
-	for _, needle := range []string{"head", "before"} {
-		if got := listIDs(t, db, ListFilter{Q: needle}, Page{Limit: 10}); len(got) != 1 {
-			t.Fatalf("q=%q: %v, want the row", needle, got)
+	for _, needle := range []string{"head", "before", "tail école", "needle kelvin after", "d\x00t", "e\x00n"} {
+		if got := listIDs(t, db, ListFilter{Q: needle}, Page{Limit: 10}); !reflect.DeepEqual(got, []int64{id}) {
+			t.Fatalf("q=%q: %v, want [%d]", needle, got, id)
 		}
 	}
-	for _, needle := range []string{"needle after", "tail of the summary"} {
+	for _, needle := range []string{`\u0000`, "keyonly", "12345", "true", "missing"} {
 		if got := listIDs(t, db, ListFilter{Q: needle}, Page{Limit: 10}); len(got) != 0 {
-			t.Fatalf("q=%q: %v, the text after a NUL is documented as unsearchable", needle, got)
+			t.Fatalf("q=%q: %v, want no matches", needle, got)
 		}
 	}
 }

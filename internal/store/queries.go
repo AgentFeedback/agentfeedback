@@ -231,12 +231,10 @@ const (
 // depth, after the simple lower-case mapping on both sides. Keys, numbers and
 // booleans are not searched, and escaped text is matched in its decoded form.
 // It has no index by design; another filter in the same request narrows the
-// rows it scans. Known limit: the driver hands TEXT arguments to Go functions
-// as C strings, so text after an embedded NUL (a decoded \u0000) is not
-// searched; SQLite's own replace() stops at the NUL too, so it cannot be
-// masked in SQL.
-const qClause = `(instr(` + lowerFunc + `(summary), ?) > 0 OR EXISTS (
-		SELECT 1 FROM json_tree(payload) WHERE type = 'text' AND instr(` + lowerFunc + `(value), ?) > 0))`
+// rows it scans. BLOB inputs preserve embedded NUL bytes through the driver's
+// scalar-function boundary; TEXT inputs are passed as truncated C strings.
+const qClause = `(instr(` + lowerFunc + `(CAST(summary AS BLOB)), ?) > 0 OR EXISTS (
+		SELECT 1 FROM json_tree(payload) WHERE type = 'text' AND instr(` + lowerFunc + `(CAST(value AS BLOB)), ?) > 0))`
 
 type whereBuilder struct {
 	clauses []string

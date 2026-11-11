@@ -236,6 +236,18 @@ func TestConformance(t *testing.T) {
 	c.call(req(a, "GET", "/api/v1/submissions?limit=0", "", true), 400)
 	c.call(req(a, "GET", "/api/v1/submissions?nope=1", "", true), 400)
 
+	// Search decoded strings past NUL through the public route.
+	nul := obj(c.call(req(a, "POST", "/api/v1/submissions",
+		`{"kind":"note","summary":"prefix\u0000SummarySuffixÉ","payload":{"nested":[{"text":"before\u0000PayloadSuffixK"}]}}`, true), 201))
+	nulID := nul["submission"].(map[string]any)["id"]
+	for _, q := range []string{"summarysuffix%C3%A9", "payloadsuffixk", "x%00s", "e%00p"} {
+		found := obj(c.call(req(a, "GET", "/api/v1/submissions?q="+q, "", true), 200))
+		rows := found["submissions"].([]any)
+		if found["total"] != float64(1) || len(rows) != 1 || rows[0].(map[string]any)["id"] != nulID {
+			t.Fatalf("NUL search q=%s: %v", q, found)
+		}
+	}
+
 	// get, 404, 400
 	c.call(req(a, "GET", fmt.Sprintf("/api/v1/submissions/%d", id1), "", true), 200)
 	c.call(req(a, "GET", "/api/v1/submissions/999999", "", true), 404)

@@ -365,8 +365,10 @@ curl -sS -H "Authorization: Bearer $AGENT_FEEDBACK_API_KEY" \
   `redacted` (default: both), `content_hash`, `since` and `until` (RFC 3339,
   inclusive) on the timestamp `on` names (`created_at`, the default, or
   `occurred_at`), and `q`: a case-insensitive substring over `summary` and
-  every string value in `payload`, at most 200 bytes. Exact semantics per
-  parameter are in [openapi.yaml](openapi.yaml).
+  every decoded string value in `payload` at any depth, at most 200 bytes.
+  Matching uses simple Unicode lowercase, including text after or across
+  embedded U+0000; keys, numbers and booleans are excluded. Exact semantics
+  per parameter are in [openapi.yaml](openapi.yaml).
 - **Strict query.** An unknown parameter name, an empty value or a repeated
   singleton parameter is 400 `validation_error` naming the parameter.
 - **Rows** are the record minus `payload`; `include=payload` adds it.

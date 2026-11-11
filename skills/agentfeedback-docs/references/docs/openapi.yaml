@@ -988,9 +988,10 @@ components:
       in: query
       description: >-
         Case-insensitive substring over `summary` and every string value in
-        `payload` at any depth (keys, numbers and booleans are not searched;
-        case folds by the simple Unicode lower-case mapping); unranked; at
-        most 200 bytes.
+        `payload` at any depth, decoded in full including after or across
+        embedded U+0000 (keys, numbers and booleans are not searched; case
+        folds by the simple Unicode lower-case mapping); unranked; at most
+        200 bytes.
       schema: {type: string}
 
   responses:
