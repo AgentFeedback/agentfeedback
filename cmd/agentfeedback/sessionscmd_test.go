@@ -479,10 +479,12 @@ func TestSessionsEnvOf(t *testing.T) {
 	set := map[string]string{
 		"CLAUDE_CONFIG_DIR": abs("claude"), "CODEX_HOME": abs("codex"), "COPILOT_HOME": abs("copilot"),
 		"GEMINI_CLI_HOME": abs("gemini"), "XDG_DATA_HOME": abs("data"), "OPENCODE_DB": "rel/opencode.db",
+		"PI_CODING_AGENT_DIR": abs("omp"),
 	}
 	got := sessionsEnvOf(func(k string) string { return set[k] }, home, fileConfig{})
 	if got.Home != home || got.ClaudeConfigDir != abs("claude") || got.CodexHome != abs("codex") || got.CopilotHome != abs("copilot") ||
-		got.GeminiDir != filepath.Join(abs("gemini"), ".gemini") || got.DataHome != abs("data") || got.OpenCodeDB != "rel/opencode.db" {
+		got.GeminiDir != filepath.Join(abs("gemini"), ".gemini") || got.DataHome != abs("data") || got.OpenCodeDB != "rel/opencode.db" ||
+		got.OMPSessionsDir != filepath.Join(abs("omp"), "sessions") {
 		t.Fatalf("absolute: %+v", got)
 	}
 	if d := got.SkillDirs; len(d) == 0 || d[0].Harness != "claude-code" || len(d[0].Home) != 1 || d[0].Home[0] != filepath.Join(abs("claude"), "skills") {
@@ -496,7 +498,7 @@ func TestSessionsEnvOf(t *testing.T) {
 	got = sessionsEnvOf(func(k string) string { return set[k] }, home, fileConfig{})
 	if got.ClaudeConfigDir != filepath.Join(home, ".claude") || got.CodexHome != filepath.Join(home, ".codex") ||
 		got.CopilotHome != filepath.Join(home, ".copilot") || got.GeminiDir != filepath.Join(home, ".gemini") ||
-		got.DataHome != filepath.Join(home, ".local", "share") {
+		got.DataHome != filepath.Join(home, ".local", "share") || got.OMPSessionsDir != filepath.Join(home, ".omp", "agent", "sessions") {
 		t.Fatalf("relative: %+v", got)
 	}
 	got = sessionsEnvOf(func(string) string { return "" }, home, fileConfig{})

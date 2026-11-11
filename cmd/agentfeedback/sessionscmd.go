@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -64,13 +65,20 @@ func sessionsEnvOf(getenv func(string) string, home string, file fileConfig) ses
 		gemini = filepath.Join(d, ".gemini")
 	}
 
+	ompSessions := filepath.Join(home, ".omp", "agent", "sessions")
+	if agentDir := getenv("PI_CODING_AGENT_DIR"); filepath.IsAbs(agentDir) {
+		ompSessions = filepath.Join(agentDir, "sessions")
+	} else if dataHome := getenv("XDG_DATA_HOME"); runtime.GOOS == "linux" && filepath.IsAbs(dataHome) {
+		ompSessions = filepath.Join(dataHome, "omp", "sessions")
+	}
 	return sessions.Env{
 		Home: home, ClaudeConfigDir: dir("CLAUDE_CONFIG_DIR", ".claude"),
 		CodexHome: dir("CODEX_HOME", ".codex"), CopilotHome: dir("COPILOT_HOME", ".copilot"), GeminiDir: gemini,
 		DataHome: dir("XDG_DATA_HOME", ".local", "share"), OpenCodeDB: getenv("OPENCODE_DB"),
-		CacheDir:  filepath.Join(dir("XDG_CACHE_HOME", ".cache"), "agentfeedback"),
-		SkillDirs: harness.SkillLocations(harness.Env{Home: home, Getenv: getenv}),
-		Policy:    file.Collect, Now: nowFunc,
+		OMPSessionsDir: ompSessions,
+		CacheDir:       filepath.Join(dir("XDG_CACHE_HOME", ".cache"), "agentfeedback"),
+		SkillDirs:      harness.SkillLocations(harness.Env{Home: home, Getenv: getenv}),
+		Policy:         file.Collect, Now: nowFunc,
 	}
 }
 

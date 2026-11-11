@@ -1,0 +1,3 @@
+{"type":"session","version":3,"id":"{{SID}}-skills","timestamp":"2026-10-09T08:00:00.000Z","cwd":"{{CWD}}"}
+{"type":"custom_message","id":"skill-1","parentId":null,"timestamp":"2026-10-09T08:00:01.000Z","customType":"skill-prompt","content":"Expanded synthetic review instructions.","display":true,"attribution":"user","details":{"name":"golden-review","args":"Review the change.","prompt":"/skill:golden-review Review the change."}}
+{"type":"message","id":"skill-2","parentId":"skill-1","timestamp":"2026-10-09T08:00:02.000Z","message":{"role":"assistant","provider":"openai-codex","model":"gpt-5.3-codex","content":[{"type":"text","text":"Reviewed the change."}],"stopReason":"stop","timestamp":1791532802000}}

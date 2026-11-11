@@ -553,6 +553,11 @@ def store_gemini(work):
     copy_store(STORES / "gemini-cli", work / "home/.gemini", {"{{SID}}": "c0ffee01", "{{CWD}}": golden_proj(work)})
 
 
+def store_omp(work):
+    copy_store(STORES.parent / "omp" / "project", work / "home/.omp/agent/sessions/project",
+               {"{{SID}}": "c0ffee01", "{{CWD}}": golden_proj(work)})
+
+
 def store_opencode(work, fixture="opencode"):
     cwd = golden_proj(work)
     data = work / "home/.local/share/opencode"
@@ -568,7 +573,7 @@ def store_opencode(work, fixture="opencode"):
 
 
 SESSION_STORES = {"claude-code": store_claude, "codex": store_codex, "copilot": store_copilot,
-                  "gemini-cli": store_gemini, "opencode-v1": store_opencode,
+                  "gemini-cli": store_gemini, "omp": store_omp, "opencode-v1": store_opencode,
                   "opencode-v2": lambda work: store_opencode(work, "opencode-v2")}
 
 
@@ -579,6 +584,7 @@ def session_env(work, url=None):
         del env["AGENT_FEEDBACK_URL"], env["AGENT_FEEDBACK_API_KEY"]
     env["CLAUDE_CONFIG_DIR"] = str(work / "home/.claude")
     env["XDG_DATA_HOME"] = str(work / "home/.local/share")
+    env["PI_CODING_AGENT_DIR"] = str(work / "home/.omp/agent")
     return env
 
 

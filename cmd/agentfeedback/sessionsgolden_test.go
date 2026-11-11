@@ -104,6 +104,7 @@ func goldenWorld(t *testing.T) string {
 	for _, name := range []string{"CODEX_HOME", "COPILOT_HOME", "GEMINI_CLI_HOME", "OPENCODE_DB"} {
 		t.Setenv(name, "")
 	}
+	t.Setenv("PI_CODING_AGENT_DIR", filepath.Join(home, ".omp", "agent"))
 
 	return home
 }

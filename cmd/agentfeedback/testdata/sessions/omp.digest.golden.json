@@ -1,0 +1,99 @@
+{
+  "notice": "This digest is shown to the model that reads it and so reaches that model's provider; agentfeedback itself stores and sends none of it.",
+  "detector_version": "1",
+  "sessions": [
+    {
+      "ref": "omp:c0ffee01",
+      "harness": "omp",
+      "session_id": "c0ffee01",
+      "project": "<CWD>",
+      "cwd": "<CWD>",
+      "start": "2026-10-08T07:00:00.000Z",
+      "end": "2026-10-08T07:00:10.000Z",
+      "model": "gpt-5.3-codex",
+      "from_offset": 0,
+      "truncated": false,
+      "counts": {
+        "entries": 7,
+        "prompts": 1,
+        "tool_calls": 1,
+        "tool_errors": 1,
+        "interrupts": 1,
+        "denials": 0,
+        "unparsed": 0
+      },
+      "events": [
+        {
+          "span": "u-1",
+          "ref": "omp:c0ffee01#u-1",
+          "at": "2026-10-08T07:00:01.000Z",
+          "type": "prompt",
+          "summary": "The deploy is still failing"
+        },
+        {
+          "span": "a-2",
+          "ref": "omp:c0ffee01#a-2",
+          "at": "2026-10-08T07:00:05.000Z",
+          "type": "tool_call",
+          "tool": "bash",
+          "args_digest": "c28716624ab4",
+          "status": "error",
+          "exit_code": 2,
+          "error_class": "exit",
+          "excerpt": "Exit code 2\nboom"
+        }
+      ],
+      "retries": [],
+      "denials": [],
+      "flagged": [
+        {
+          "span": "u-1",
+          "phrase": "still failing"
+        }
+      ],
+      "skills_used": []
+    },
+    {
+      "ref": "omp:c0ffee01-skills",
+      "harness": "omp",
+      "session_id": "c0ffee01-skills",
+      "project": "<CWD>",
+      "cwd": "<CWD>",
+      "start": "2026-10-09T08:00:00.000Z",
+      "end": "2026-10-09T08:00:02.000Z",
+      "model": "gpt-5.3-codex",
+      "from_offset": 0,
+      "truncated": false,
+      "counts": {
+        "entries": 2,
+        "prompts": 1,
+        "tool_calls": 0,
+        "tool_errors": 0,
+        "interrupts": 0,
+        "denials": 0,
+        "unparsed": 0
+      },
+      "events": [
+        {
+          "span": "skill-1",
+          "ref": "omp:c0ffee01-skills#skill-1",
+          "at": "2026-10-09T08:00:01.000Z",
+          "type": "prompt",
+          "summary": "/skill:golden-review Review the change."
+        }
+      ],
+      "retries": [],
+      "denials": [],
+      "flagged": [],
+      "final_excerpt": "Reviewed the change.",
+      "skills_used": [
+        {
+          "name": "golden-review",
+          "span": "skill-1"
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "deferred": []
+}

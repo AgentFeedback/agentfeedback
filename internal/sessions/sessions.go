@@ -85,6 +85,8 @@ type Env struct {
 	// GeminiDir is an absolute $GEMINI_CLI_HOME joined with ".gemini", else
 	// Home/.gemini.
 	GeminiDir string
+	// OMPSessionsDir is the absolute omp session root, else Home/.omp/agent/sessions.
+	OMPSessionsDir string
 	// DataHome is an absolute $XDG_DATA_HOME, else Home/.local/share.
 	DataHome string
 	// OpenCodeDB is $OPENCODE_DB as set, "" when unset.
@@ -174,7 +176,7 @@ var errUnsupported = errors.New("unsupported session store format")
 
 // readerOrder is the listing order of the readers, by harness; a harness
 // whose reader is not registered is skipped.
-var readerOrder = []string{"claude-code", "codex", "copilot", "cursor", "gemini-cli", "opencode-v1", "opencode-v2"}
+var readerOrder = []string{"claude-code", "codex", "copilot", "cursor", "gemini-cli", "omp", "opencode-v1", "opencode-v2"}
 
 // registered are the readers register added, by harness.
 var registered = map[string]reader{}
@@ -304,6 +306,8 @@ type candidate struct {
 	// cursor is the hook-index snapshot; capture must revalidate it before
 	// reopening the transcript.
 	cursor *cursorIndex
+	// omp is the header snapshot read during omp discovery.
+	omp *ompMeta
 }
 
 // gateCwd applies the user policy to the working directory the store's

@@ -173,6 +173,11 @@ transcript is bounded and scrubbed before it is shown. Only watermark and push-o
 metadata and what you file are stored in the data-directory database;
 `sessions transcript` and its stdio tool open no database and store nothing;
 transcripts are sent only by `sessions push` (manual or automatic), never spooled.
+The local omp reader reads only bounded header metadata before checking its
+recorded directories against collection policy; it revalidates that metadata
+before reading the body. It refuses symlinks and nonregular files, does not
+follow child transcripts or external artifacts, and does not enable hosted
+capture ([omp format and limits](sessions.md#oh-my-pi-omp)).
 A digest reaches the provider of the model that reads it. A transcript
 shows that model, and so its provider, more of a session than a digest:
 every prompt, assistant text, tool argument and result, edit payloads and

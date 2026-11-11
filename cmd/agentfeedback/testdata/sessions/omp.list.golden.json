@@ -1,0 +1,61 @@
+{
+  "stores": [
+    {
+      "harness": "omp",
+      "location": "<HOME>/.omp/agent/sessions",
+      "state": "present"
+    }
+  ],
+  "sessions": [
+    {
+      "ref": "omp:c0ffee01",
+      "harness": "omp",
+      "session_id": "c0ffee01",
+      "path": "<HOME>/.omp/agent/sessions/project/c0ffee01.jsonl",
+      "project": "<CWD>",
+      "cwds": [
+        "<CWD>"
+      ],
+      "start": "2026-10-08T07:00:00Z",
+      "end": "2026-10-08T07:00:10Z",
+      "counts": {
+        "entries": 7,
+        "prompts": 1,
+        "tool_calls": 1,
+        "tool_errors": 1,
+        "interrupts": 1,
+        "denials": 0,
+        "unparsed": 0
+      },
+      "state": "new"
+    },
+    {
+      "ref": "omp:c0ffee01-skills",
+      "harness": "omp",
+      "session_id": "c0ffee01-skills",
+      "path": "<HOME>/.omp/agent/sessions/project/c0ffee01-skills.jsonl",
+      "project": "<CWD>",
+      "cwds": [
+        "<CWD>"
+      ],
+      "start": "2026-10-09T08:00:00Z",
+      "end": "2026-10-09T08:00:02Z",
+      "counts": {
+        "entries": 2,
+        "prompts": 1,
+        "tool_calls": 0,
+        "tool_errors": 0,
+        "interrupts": 0,
+        "denials": 0,
+        "unparsed": 0
+      },
+      "skills_used": [
+        {
+          "name": "golden-review",
+          "span": "skill-1"
+        }
+      ],
+      "state": "new"
+    }
+  ]
+}

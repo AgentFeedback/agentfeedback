@@ -135,6 +135,7 @@ text, credentials or session identifiers.
 | `codex` | `codex-rollout` | `<codex home>/sessions/YYYY/MM/DD/rollout-*.jsonl` and `<codex home>/archived_sessions/rollout-*.jsonl` (`$CODEX_HOME`, else `~/.codex`) | the `session_meta` first line, read alone, before; `turn_context`, after |
 | `copilot` | `copilot-events` | `<copilot home>/session-state/<session id>/events.jsonl` (`$COPILOT_HOME`, else `~/.copilot`) | `workspace.yaml` beside the log, before; `session.start` and `session.context_changed`, after |
 | `gemini-cli` | `gemini-cli-jsonl` | `<gemini dir>/tmp/<project>/chats/session-*.jsonl` (`$GEMINI_CLI_HOME/.gemini`, else `~/.gemini`) | `<project>/.project_root`, before; the metadata line's `directories`, which the log records only for sub-agents and `/dir add`, after |
+| `omp` | `omp-jsonl` | `<agent dir>/sessions/<project>/*.jsonl` (`$PI_CODING_AGENT_DIR`, else Linux `$XDG_DATA_HOME/omp`, else `~/.omp/agent`) | the bounded session header's `cwd` and `additionalDirectories`, read alone before the body |
 | `opencode-v1` | `opencode-sqlite` | `$OPENCODE_DB` (a relative one under `<data home>/opencode`), else `opencode.db` and `opencode-*.db` in `<data home>/opencode` (`$XDG_DATA_HOME`, else `~/.local/share`) | the session row's `directory`, before; each assistant message's `path.cwd`, after |
 | `opencode-v2` | `opencode-v2-sqlite` | the same databases, read only when they have a `session_v2` table | the session row's `directory`, before |
 
@@ -184,6 +185,56 @@ digest adds `#<span>`, the reader's id of the log entry that carries it
   digest reads it from an `Exit code N` first line.
 - Not read: subdirectories of a project directory, sub-agent transcripts
   among them. The encoding turns every byte outside `[A-Za-z0-9]` into `-`.
+
+### Oh My Pi (omp)
+
+`omp:<header id>` identifies the harness, independently of its model/provider:
+Codex running inside omp is still `omp`, not `codex`. Discovery reads the
+header, not the filename, for identity. The reader supports version-1 through
+version-3 JSONL journals, including a leading fixed-width title slot.
+Missing versions use omp's legacy version-1 interpretation. Its format evidence is
+the [upstream source at `f2ee6ba9`](https://github.com/can1357/oh-my-pi/tree/f2ee6ba9b3e00b379c7c12b9d99ef6369fd08f3f/packages/coding-agent/src/session);
+verification uses synthetic fixtures, not private transcripts.
+
+The default store is `~/.omp/agent/sessions`; on Linux, an absolute
+`XDG_DATA_HOME` selects `$XDG_DATA_HOME/omp/sessions`. An absolute
+`PI_CODING_AGENT_DIR` takes precedence. For an alternate omp profile or custom
+configuration root, set it to the directory containing `sessions`; profile
+and configuration-root variables are not interpreted by this reader.
+Discovery does not follow custom-session breadcrumbs or descend into child
+transcript directories. Subagent journals are not independent sessions in
+the local inventory.
+
+- Prompts require explicit `attribution: "user"` and must not be synthetic.
+  For user-attributed `skill-prompt` invocations, only the authored prompt
+  from skill details is counted, not the expanded skill instructions.
+  Other custom notices, injected instructions, continuation messages,
+  agent-attributed messages and un-attributed legacy messages are not counted.
+  Zero prompts can mean missing attribution, not an absence of human work.
+- The reader includes retained journal branches, not only the active model
+  context. Parent links and active-leaf markers do not filter historical work.
+  Compaction and branch summaries are not new prompts; removed history cannot
+  be recovered. Entry ids provide `--context-from` spans; legacy entries
+  without ids use byte offsets, which can change when the journal is rewritten.
+- Tool calls and results are paired by call id and journal ancestry. A replay
+  on another retained branch is a separate execution, attributed to its
+  result entry; a duplicate result on the same branch is refused.
+  Failures and interruptions use structured harness records and recognized
+  harness-generated interruption messages. A missing result is not evidence
+  of success.
+- Complete journal revisions are fingerprinted: rewrites, including
+  same-size edits, invalidate processed progress. A changed revision is
+  digested in full rather than treating it as an append-only tail.
+  Stable span-based filing keys still deduplicate repeated findings.
+- Collection policy and repository vetoes apply before reading the body;
+  header metadata is revalidated when the body is opened. Symlinks and
+  nonregular sources are refused. Digests retain the shared bounds and
+  scrubbing, and local status/marking use the shared session database.
+
+This reader is local only: it does not enable `sessions push` or automatic
+hosted capture. Session attribution is not proof of which instructions were
+historically installed; a study requiring that provenance must establish it
+separately.
 
 ### Codex
 

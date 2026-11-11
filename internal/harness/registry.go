@@ -573,7 +573,7 @@ var registry = []Adapter{
 			Deliver: "tool_result",
 		},
 		MCP:      MCP{File: homePath(".omp", "agent", "mcp.json"), Path: []string{"mcpServers"}, EnvRef: "${AGENT_FEEDBACK_API_KEY}"},
-		Sessions: Sessions{Locations: []string{"~/.omp/agent/sessions"}, Reader: "none", NoReader: "no reader yet", Verified: documented()},
+		Sessions: Sessions{Locations: []string{"~/.omp/agent/sessions"}, Reader: "omp-jsonl", Verified: Verified{Level: LevelFixtureTested, Date: "2026-11-11", Note: "synthetic journals against upstream f2ee6ba9"}},
 		Verified: Verified{Level: LevelDocumented, Date: verifiedDate, Note: "omp 18.8.0 is installed on the delivery machine but lists neither MCP servers nor skills outside a model session"},
 		hook: func(p *plan, o Options) ([]Item, []string) {
 			return []Item{fileItem(KindPluginFile, RoleHook, filepath.Join(p.env.Home, ".omp", "agent", "extensions", "agentfeedback.ts"), ompExtension(o.Binary, p.env.SpawnErrorPath("omp")))}, nil
