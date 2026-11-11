@@ -62,6 +62,19 @@ four cases not filed, the edit rule), and its Phase 3 routes a cluster
 through it; model-struggles.md links to it and no longer says "clearer
 guidance", and no other playbook carries any of those sentences.
 
+skill-checkup.md has its own command fixture, not the queue runner. Every
+bash block runs once per digest-capable fixture harness in server and local
+mode. Its MCP tool blocks run over real stdio in both modes; its report JSON
+example is validated and rendered separately, and every documented rubric
+label is accepted by the binary. A fake local opener prevents GUI launches.
+The runner preserves seeded digest/mark watermarks and saved selection,
+checks same-event ordinal identity and replay, and checks checkout instructions
+after every pre-approval command. Sampling and labels remain model decisions:
+the one-session input explicitly simulates user approval to relax the skill
+cap, and its unsupported judgments stay unjudged. Separate synthetic filing
+and proposal inputs exercise commands and landing, not model findings; done
+runs only after simulated closing approval and an actual fixture-main commit.
+
 Placeholders of the session start and the MCP-only route:
 
   <harness>               the harness under test
@@ -77,6 +90,7 @@ Placeholders of the session start and the MCP-only route:
   <detector-version>      the digest's detector_version
   <summary>               a fixed summary naming <harness>
   <details>               a fixed details text naming <event-ref>
+  <ordinal>               1; a second synthetic finding at the same event uses 2
   <session-harness>       the session's harness
   <session-model>         the session's model
   <session-project>       the last path element of the session's project
@@ -109,14 +123,14 @@ BIN = ROOT / "bin/agentfeedback"
 KEY = "playbook-check-key"
 TARGET_KEY = "playbook-target-key"
 PAGES = ("close-the-loop.md", "export-handoff.md", "fix-it-session.md",
-         "model-struggles.md", "recurring-by-project.md", "weekly-digest.md")
+         "model-struggles.md", "recurring-by-project.md", "weekly-digest.md", "skill-checkup.md")
 SECTIONS = ("Purpose", "Commands", "Reading the output", "What to do with it")
 PLACEHOLDERS = {"project", "model", "text", "id", "duplicate-id", "uid", "commit", "checkout",
                 "previous-triage-date", "resolution", "skill-dir", "file", "increment-file",
                 "db", "target-url", "remote", "harness", "since", "limit", "session-refs",
                 "session-ref", "event-ref", "report-file", "filed-uid", "detector-version", "summary",
                 "session-harness", "session-model", "session-project", "event-at", "session-id",
-                "details", "filed-id"}
+                "details", "filed-id", "checkup-file", "ordinal"}
 REMOTE = "git@example.invalid:check/repository.git"
 OPTIONAL_TOOL = re.compile(r"(?:^|[;&|(]|\$\(|\b(?:then|do|xargs|sudo|command|exec)\s)\s*(gh|slack|linear|jira)\b")
 PLACEHOLDER = re.compile(r"<([a-z][a-z0-9-]*)>")
@@ -148,6 +162,19 @@ START_ORDER = (("list --open", re.compile(r"^agentfeedback list --open\b")),
                ("submit friction --context-from", re.compile(r"^agentfeedback submit friction .*--context-from")),
                ("get", re.compile(r"^agentfeedback get\b")),
                ("sessions mark", re.compile(r"^agentfeedback sessions mark\b")))
+CHECKUP_PAGE = "playbooks/skill-checkup.md"
+CHECKUP_COMMANDS = (
+    "agentfeedback sessions skills --project '<checkout>' --global --json",
+    "agentfeedback sessions list --project '<checkout>' --since <since> --json",
+    "agentfeedback sessions transcript <session-refs> --json",
+    "agentfeedback submit friction --stdin --context-from '<event-ref>' --ordinal <ordinal> < <report-file>",
+    "agentfeedback get <filed-id> --json",
+    "agentfeedback report check <checkup-file> --json",
+    "agentfeedback report render <checkup-file> --open",
+    "agentfeedback done <filed-id> --verdict fixed --ref <commit> --resolution '<resolution>'",
+)
+CHECKUP_TOOLS = ("sessions_list", "sessions_transcript", "submit_feedback")
+RUBRICS = ("efficiency", "code_quality", "procedure_compliance", "verbosity")
 
 
 def bash_blocks(text):
@@ -169,6 +196,8 @@ def structure_problems(name, text, playbook=True):
                     problems.append(f"{name}: unknown placeholder <{token}>: {line}")
     if name == "playbooks/fix-it-session.md":
         problems += session_problems(name, text)
+    if name == CHECKUP_PAGE:
+        problems += checkup_problems(name, text)
     return problems
 
 
@@ -511,9 +540,9 @@ def store_claude(work):
                {"{{SID}}": "golden-1", "{{CWD}}": cwd, "{{CWD_ENC}}": encode_cwd(cwd)})
 
 
-def store_codex(work):
+def store_codex(work, cwd="/nonexistent-af/golden-proj"):
     copy_store(STORES / "codex", work / "home/.codex",
-               {"{{SID}}": "0199c3a1-0000-7000-8000-00000000000", "{{CWD}}": "/nonexistent-af/golden-proj"})
+               {"{{SID}}": "0199c3a1-0000-7000-8000-00000000000", "{{CWD}}": cwd})
 
 
 def store_copilot(work):
@@ -823,6 +852,413 @@ def run_mcp_route(name, text, harness):
         shutil.rmtree(work, ignore_errors=True)
 
 
+def checkup_json(text):
+    """Separate executable MCP examples from the report document."""
+    calls, reports = [], []
+    for block in json_blocks(text):
+        item = json.loads(PLACEHOLDER.sub("x", block))
+        if isinstance(item, dict) and set(item) == {"tool", "arguments"}:
+            calls.append(block)
+        elif isinstance(item, dict) and "version" in item:
+            reports.append(json.loads(block))
+        else:
+            raise ValueError(f"unrecognised checkup JSON block: {block}")
+    return calls, reports
+
+
+def documented_labels(text):
+    labels = {}
+    for line in text.splitlines():
+        tokens = re.findall(r"`([a-z_]+)`", line)
+        if line.startswith("|") and tokens and tokens[0] in RUBRICS:
+            labels[tokens[0]] = tokens[1:]
+    return labels
+
+
+def checkup_problems(name, text):
+    problems = []
+    blocks = bash_blocks(text)
+    if tuple(block.strip() for block in blocks) != CHECKUP_COMMANDS or any(
+            len(block.strip().splitlines()) != 1 for block in blocks):
+        problems.append(f"{name}: bash blocks must each be one shared-contract command, in order")
+    try:
+        calls, reports = checkup_json(text)
+        tools = tuple(json.loads(PLACEHOLDER.sub("x", block))["tool"] for block in calls)
+        if tools != CHECKUP_TOOLS:
+            problems.append(f"{name}: MCP tools {tools}, want {CHECKUP_TOOLS}")
+        if len(reports) != 1:
+            problems.append(f"{name}: expected one report JSON example, found {len(reports)}")
+        for block in calls:
+            for token in PLACEHOLDER.findall(block):
+                if token not in PLACEHOLDERS:
+                    problems.append(f"{name}: unknown MCP placeholder <{token}>")
+    except (ValueError, TypeError) as err:
+        problems.append(f"{name}: {err}")
+    if re.search(r"agentfeedback sessions (?:digest|mark|status --set-selection)", "\n".join(blocks)):
+        problems.append(f"{name}: checkup must not change digest, marks or saved selection")
+    labels = documented_labels(text)
+    schema = json.loads((ROOT / "schemas/checkup-report.v1.json").read_text())
+    for rubric in RUBRICS:
+        want = set(schema["$defs"][rubric]["properties"]["label"]["enum"])
+        got = labels.get(rubric, [])
+        if set(got) != want or len(got) != len(want):
+            problems.append(f"{name}: {rubric} labels {got}, want {sorted(want)}")
+    return problems
+
+
+def session_state(env):
+    """All digest/processed watermarks and saved selection, not just public state names."""
+    db = Path(env["XDG_DATA_HOME"]) / "agentfeedback/agentfeedback.db"
+    if not db.exists():
+        return {"sessions_seen": [], "triage_state": []}
+    with contextlib.closing(sqlite3.connect(f"file:{db}?mode=ro", uri=True)) as conn:
+        conn.row_factory = sqlite3.Row
+        return {table: [dict(row) for row in conn.execute(f"SELECT * FROM {table} ORDER BY 1, 2")]
+                for table in ("sessions_seen", "triage_state")}
+
+
+def fake_opener(env, work):
+    marker = work / "opened-report"
+    env["CHECKUP_OPEN_LOG"] = str(marker)
+    for name in ("xdg-open", "open"):
+        opener = work / "bin" / name
+        opener.write_text('#!/bin/sh\nprintf "%s\\n" "$1" > "$CHECKUP_OPEN_LOG.tmp"\n'
+                          'mv "$CHECKUP_OPEN_LOG.tmp" "$CHECKUP_OPEN_LOG"\n')
+        opener.chmod(0o700)
+    return marker
+
+
+def rendered_report(out, env, marker):
+    path = Path(out.strip().splitlines()[-1])
+    cache = Path(env["XDG_CACHE_HOME"]) / "agentfeedback/reports"
+    if not path.is_file() or path.parent != cache or path.stat().st_mode & 0o777 != 0o600:
+        raise RuntimeError(f"render did not create an owner-only cached report: {path}")
+    html = path.read_text()
+    if "<html" not in html.lower() or "agentfeedback" not in html.lower():
+        raise RuntimeError(f"rendered report is not an AgentFeedback HTML page: {path}")
+    deadline = time.monotonic() + 3
+    while not marker.exists() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    if not marker.exists() or marker.read_text().strip() != str(path):
+        raise RuntimeError("report --open did not invoke the fake opener with its rendered path")
+    marker.unlink()
+
+
+def run_checkup_reports(text, local=False):
+    """Validate/render the literal example and exercise every documented label with the binary."""
+    work = Path(tempfile.mkdtemp(prefix="triage-playbooks-"))
+    server = None
+    label = f"{CHECKUP_PAGE} report example/labels ({'local' if local else 'server'} mode)"
+    try:
+        if not local:
+            server = Server(work, "source", KEY)
+        env = session_env(work, server.url if server else None)
+        marker = fake_opener(env, work)
+        _, reports = checkup_json(text)
+        report = reports[0]
+        path = work / "example.json"
+        path.write_text(json.dumps(report))
+        checked = json.loads(run([BIN, "report", "check", path, "--json"], env, work))
+        if checked.get("valid") is not True or not checked.get("scores"):
+            raise RuntimeError(f"example did not validate: {checked}")
+        rendered_report(run([BIN, "report", "render", path, "--open"], env, work), env, marker)
+        for rubric, choices in documented_labels(text).items():
+            for choice in choices:
+                trial = json.loads(json.dumps(report))
+                if not trial["sessions"]:
+                    raise RuntimeError("report example must demonstrate a labelled session")
+                for session in trial["sessions"]:
+                    session["labels"][rubric] = {"label": choice, "reason": f"Documented {rubric} label {choice}."}
+                path.write_text(json.dumps(trial))
+                checked = json.loads(run([BIN, "report", "check", path, "--json"], env, work))
+                if checked.get("valid") is not True:
+                    raise RuntimeError(f"documented {rubric}/{choice} did not validate: {checked}")
+        print(f"PASS  {label}")
+        return True
+    except (RuntimeError, ValueError, KeyError, IndexError) as err:
+        print(f"FAIL  {label}: {err}")
+        return False
+    finally:
+        if server:
+            server.stop()
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def checkup_fixture(work, env, harness):
+    """Reuse golden stores, adding a real checkout and project/global skill inventory."""
+    if harness == "codex":
+        checkout = Path(golden_proj(work))
+        store_codex(work, str(checkout))
+    else:
+        SESSION_STORES[harness](work)
+        checkout = work / "golden-proj"
+    for root, name in ((checkout / ".claude/skills", "checkup-project"),
+                       (checkout / ".agents/skills", "checkup-project"),
+                       (work / "home/.claude/skills", "checkup-global")):
+        skill = root / name / "SKILL.md"
+        skill.parent.mkdir(parents=True, exist_ok=True)
+        skill.write_text(f"---\nname: {name}\ndescription: Checkup fixture skill.\n---\n")
+    (checkout / "AGENTS.md").write_text("Run the documented targeted checks before committing.\n")
+    git = ["git", "-C", str(checkout), "-c", "user.name=check", "-c", "user.email=check@example.invalid"]
+    run([*git, "init", "-q", "-b", "main"], env, work)
+    run([*git, "add", "."], env, work)
+    run([*git, "commit", "-q", "-m", "fixture: initial instructions"], env, work)
+    listing = json.loads(run([BIN, "sessions", "list", "--json"], env, work))
+    candidates = [s for s in listing["sessions"] if s["harness"] == harness and s["state"] in ("new", "changed")]
+    candidates.sort(key=lambda s: s["end"], reverse=True)
+    if not candidates:
+        raise RuntimeError(f"no readable {harness} fixture session")
+    # A pre-existing digest and mark make the no-watermark-change assertion meaningful.
+    ref = candidates[0]["ref"]
+    run([BIN, "sessions", "digest", ref, "--json"], env, work)
+    run([BIN, "sessions", "mark", ref, "--outcome", "nothing", "--json"], env, work)
+    run([BIN, "sessions", "status", "--set-selection", "--harness", harness,
+         "--since", SINCE, "--limit", "1", "--json"], env, work)
+    return checkout, git
+
+
+def checkout_instructions(checkout):
+    """Snapshot the real checkout's instruction/skill markdown, never cached proposals."""
+    return {path.relative_to(checkout): path.read_bytes() for path in checkout.rglob("*.md")}
+
+
+def read_checkup_transcript(out, values):
+    if out.get("errors") or out.get("deferred") or not out.get("notice"):
+        raise RuntimeError(f"transcript did not return a complete disclosed sample: {out}")
+    sessions = out.get("sessions", [])
+    if len(sessions) != 1 or sessions[0]["ref"] != values["session-ref"]:
+        raise RuntimeError("transcript did not return the selected session")
+    session = sessions[0]
+    events = [e for e in session["entries"] if e["type"] == "tool_call" and e.get("status") == "error"]
+    if not events:
+        raise RuntimeError("transcript has no failed tool-call evidence")
+    values.update({"event-ref": events[0]["ref"], "session-id": session["session_id"],
+                   "rules-source": "session-log" if session["rules_source"] == "session-log" else "current-files",
+                   "skills-used": [skill["name"] for skill in session["skills_used"]]})
+    # A tool error alone does not establish an avoidable detour or an instruction gap.
+    values["details"] = (f"Synthetic filing input anchored to {values['event-ref']}, which records a failed tool call; "
+                         "this exercises filing and approval mechanics, not a model finding.")
+
+
+def checkup_report(values, listing, inventory):
+    used = values["skills-used"]
+    return {
+        "version": 1, "generated_at": "2026-11-11T00:00:00Z",
+        "scope": {"projects": [values["checkout"]], "harnesses": [values["harness"]],
+                  "since": SINCE, "sessions_scanned": len(listing["sessions"]), "sessions_sampled": 1},
+        "skills": {"found": [{"name": skill["name"], "harness": harness, "scope": skill["scope"]}
+                             for skill in inventory["skills"] for harness in skill["harnesses"]],
+                   "used": [{"name": name, "sessions": 1} for name in used]},
+        "sessions": [{"ref": values["session-ref"], "rules_source": values["rules-source"],
+                      "skills_used": used,
+                      "labels": {rubric: {"label": "insufficient_evidence",
+                                          "reason": f"{values['event-ref']}: a tool error alone does not establish "
+                                          f"a supported {rubric} judgment."}
+                                 for rubric in RUBRICS}}],
+        "top_findings": [],
+        "suggestions": [],
+    }
+
+
+def checkup_identity(env, work, harness, values, mcp=None):
+    """Two synthetic findings at one event retain ordinal identity across CLI/MCP."""
+    first = get(env, work, values["filed-id"])
+    context = first.get("context") or {}
+    if not str(first.get("key", "")).startswith("session-scan-") or context.get("origin") != "session-scan":
+        raise RuntimeError(f"filing has no session-scan identity: {first}")
+    if first.get("harness") != harness or context.get("session_id") != values["session-id"]:
+        raise RuntimeError("filing identity does not match the sampled session")
+    reports = [
+        {"summary": values["summary"], "payload": {"category": "tooling", "details": values["details"]}},
+        {"summary": values["summary"] + " (second synthetic input)",
+         "payload": {"category": "tooling", "details": values["details"] + " Distinct content for ordinal two."}},
+    ]
+    second_result = json.loads(run(
+        [BIN, "submit", "friction", "--stdin", "--context-from", values["event-ref"], "--ordinal", "2"],
+        env, work, json.dumps(reports[1])).splitlines()[-1])
+    second = get(env, work, second_result["id"])
+    if first["uid"] != values["filed-uid"] or first["uid"] == second["uid"] or first["key"] == second["key"]:
+        raise RuntimeError("distinct same-event ordinals did not retain distinct filing identities")
+    if second.get("harness") != harness or (second.get("context") or {}).get("session_id") != values["session-id"]:
+        raise RuntimeError("second ordinal changed the sampled session identity")
+    own_mcp = mcp is None
+    try:
+        if own_mcp:
+            mcp = Stdio(env, work)
+            initialized = mcp.call("initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
+                                                 "clientInfo": {"name": "triage-playbooks-ordinal", "version": "1"}})
+            if "error" in initialized:
+                raise RuntimeError(f"ordinal replay initialize: {initialized['error']}")
+            mcp.send({"jsonrpc": "2.0", "method": "notifications/initialized"})
+        for ordinal, report, expected in zip((1, 2), reports, (first, second)):
+            replay = json.loads(run(
+                [BIN, "submit", "friction", "--stdin", "--context-from", values["event-ref"], "--ordinal", str(ordinal)],
+                env, work, json.dumps(report)).splitlines()[-1])
+            if replay.get("outcome") != "duplicate" or str(replay.get("id")) != str(expected["id"]):
+                raise RuntimeError(f"same-event ordinal {ordinal} CLI replay changed identity: {replay}")
+            response = mcp.call("tools/call", {"name": "submit_feedback",
+                                             "arguments": {"kind": "friction", **report,
+                                                           "context_from": values["event-ref"], "ordinal": ordinal}})
+            if "error" in response or response.get("result", {}).get("isError"):
+                raise RuntimeError(f"same-event ordinal {ordinal} MCP replay failed: {response}")
+            row = (response["result"].get("structuredContent") or {}).get("submission", {})
+            if row.get("uid") != expected["uid"] or str(row.get("id")) != str(expected["id"]):
+                raise RuntimeError(f"same-event ordinal {ordinal} MCP replay changed identity: {response}")
+        rows = json.loads(run([BIN, "list", "--kind", "friction", "--json"], env, work))["submissions"]
+        if len(rows) != 2 or {row["uid"] for row in rows} != {first["uid"], second["uid"]}:
+            raise RuntimeError("same-event ordinal replay did not leave exactly two distinct synthetic filings")
+    finally:
+        if own_mcp and mcp:
+            mcp.stop()
+
+
+def run_checkup(name, text, harness, local=False, mcp_route=False):
+    """Exercise commands with synthetic inputs, not model sampling or rubric decisions."""
+    work = Path(tempfile.mkdtemp(prefix="triage-playbooks-"))
+    server, mcp, steps = None, None, []
+    label = f"{name} ({harness}, {'MCP' if mcp_route else 'CLI'}, {'local' if local else 'server'} mode)"
+    try:
+        if not local:
+            server = Server(work, "source", KEY)
+        env = session_env(work, server.url if server else None)
+        checkout, git = checkup_fixture(work, env, harness)
+        marker = fake_opener(env, work)
+        before = session_state(env)
+        if not any(row["digested_at"] and row["processed_at"] for row in before["sessions_seen"]):
+            raise RuntimeError("checkup fixture did not seed digest and processed session marks")
+        if not any(row["key"] == "selection" and json.loads(row["value"]) for row in before["triage_state"]):
+            raise RuntimeError("checkup fixture did not seed a non-empty saved selection")
+        instructions = checkout_instructions(checkout)
+        approved = False
+        steps.append(("synthetic user approval",
+                      "Approve the golden one-session command fixture; relax the one-third skill-bearing cap "
+                      "to allow one skill-bearing session. This is not a test of the model's sampling decisions."))
+        cache = work / "cache/agentfeedback"
+        cache.mkdir(parents=True, exist_ok=True)
+        values = {"harness": harness, "checkout": str(checkout), "since": SINCE,
+                  "ordinal": "1", "summary": f"{harness} synthetic checkup filing input",
+                  "details": "Synthetic filing input; no model finding is claimed.",
+                  "resolution": "Approved fixture proposal landed on fixture main.",
+                  "report-file": str(cache / "friction.json"), "checkup-file": str(cache / "checkup.json")}
+        listing, inventory = None, {"skills": []}
+        if mcp_route:
+            mcp = Stdio(env, work)
+            initialized = mcp.call("initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
+                                                 "clientInfo": {"name": "triage-playbooks-checkup", "version": "1"}})
+            if "error" in initialized:
+                raise RuntimeError(f"initialize: {initialized['error']}")
+            mcp.send({"jsonrpc": "2.0", "method": "notifications/initialized"})
+            lines, _ = checkup_json(text)
+        else:
+            lines = start_lines(text)
+        for line in lines:
+            if not mcp_route and line.startswith("agentfeedback submit friction"):
+                Path(values["report-file"]).write_text(json.dumps(
+                    {"summary": values["summary"], "payload": {"category": "tooling", "details": values["details"]}}))
+            if not mcp_route and line.startswith("agentfeedback report check"):
+                report = checkup_report(values, listing, inventory)
+                Path(values["checkup-file"]).write_text(json.dumps(report))
+                # Independent synthetic proposal input, deliberately absent from the unjudged report.
+                (cache / "proposed-AGENTS.md").write_text("Run the documented targeted checks, then commit.\n")
+                (cache / "proposed.diff").write_text(
+                    "--- a/AGENTS.md\n+++ b/AGENTS.md\n@@ -1 +1 @@\n"
+                    "-Run the documented targeted checks before committing.\n"
+                    "+Run the documented targeted checks, then commit.\n")
+            if not mcp_route and line.startswith("agentfeedback done"):
+                checkup_identity(env, work, harness, values)
+                row = get(env, work, values["filed-id"])
+                if row.get("processed_at") or row.get("verdict"):
+                    raise RuntimeError("finding was closed before closing approval and landing")
+                if checkout_instructions(checkout) != instructions or session_state(env) != before:
+                    raise RuntimeError("checkup changed instructions or watermarks before closing approval")
+                steps.append(("synthetic closing approval", "Approve the synthetic cached proposal and land it on fixture main."))
+                approved = True
+                proposal = cache / "proposed-AGENTS.md"
+                if not proposal.is_file() or not (cache / "proposed.diff").is_file():
+                    raise RuntimeError("fixture closure has no cached proposal and diff to approve")
+                (checkout / "AGENTS.md").write_text(proposal.read_text())
+                run([*git, "add", "AGENTS.md"], env, work)
+                run([*git, "commit", "-q", "-m", "fixture: approved checkup proposal"], env, work)
+                values["commit"] = run([*git, "rev-parse", "HEAD"], env, work).strip()
+            command = fill(line, values, escape=mcp_route)
+            if mcp_route:
+                call = json.loads(command)
+                response = mcp.call("tools/call", {"name": call["tool"], "arguments": call["arguments"]})
+                steps.append((command, json.dumps(response)))
+                if "error" in response or response.get("result", {}).get("isError"):
+                    raise RuntimeError(f"{call['tool']} failed")
+                out = response["result"].get("structuredContent")
+                if out is None:
+                    raise RuntimeError(f"{call['tool']}: no structuredContent")
+                action = call["tool"]
+            else:
+                raw = run(["bash", "-euo", "pipefail", "-c", command], env, work)
+                steps.append((command, raw))
+                action = next((action for prefix, action in (
+                    ("agentfeedback sessions skills", "sessions_skills"), ("agentfeedback sessions list", "sessions_list"),
+                    ("agentfeedback sessions transcript", "sessions_transcript"), ("agentfeedback submit friction", "submit_feedback"),
+                    ("agentfeedback get", "get"), ("agentfeedback report check", "check"),
+                    ("agentfeedback report render", "render"), ("agentfeedback done", "done")) if line.startswith(prefix)), None)
+                out = None if action in ("render", "done") else json.loads(raw.strip().splitlines()[-1] if action == "submit_feedback" else raw)
+            if action == "sessions_skills":
+                inventory = out
+                if {skill["scope"] for skill in out["skills"]} != {"project", "global"}:
+                    raise RuntimeError(f"inventory lacks project/global fixture skills: {out}")
+            elif action == "sessions_list":
+                listing = out
+                sampled = [s for s in out["sessions"] if s["harness"] == harness and s["state"] in ("new", "changed", "processed")]
+                sampled.sort(key=lambda s: s["end"], reverse=True)
+                if not sampled:
+                    raise RuntimeError("project-filtered listing has no readable fixture session")
+                values["session-ref"] = sampled[0]["ref"]
+                values["session-refs"] = shlex.quote(values["session-ref"])
+            elif action == "sessions_transcript":
+                read_checkup_transcript(out, values)
+            elif action == "submit_feedback":
+                row = out.get("submission", {}) if mcp_route else out
+                if row.get("id") is None:
+                    raise RuntimeError(f"filing returned no id: {out}")
+                values["filed-id"] = str(row["id"])
+                if mcp_route:
+                    values["filed-uid"] = row["uid"]
+            elif action == "get":
+                values["filed-uid"] = out["uid"]
+                if out.get("processed_at") or out.get("verdict"):
+                    raise RuntimeError("new finding was already closed")
+            elif action == "check":
+                if (out.get("valid") is not True or out.get("scores", {}).get("grade") != "n/a"
+                        or out.get("scores", {}).get("score") is not None
+                        or any(rubric["judged"] != 0 for rubric in out["scores"]["rubrics"])):
+                    raise RuntimeError(f"binary did not preserve the fixture's unjudged report: {out}")
+            elif action == "render":
+                rendered_report(raw, env, marker)
+            elif action == "done":
+                row = get(env, work, values["filed-id"])
+                if row.get("verdict") != "fixed" or row.get("ref") != values["commit"] or not row.get("processed_at"):
+                    raise RuntimeError("closure did not record the approved landed fixture commit")
+            if not approved and checkout_instructions(checkout) != instructions:
+                raise RuntimeError(f"{action} changed checkout instructions before closing approval")
+            if session_state(env) != before:
+                raise RuntimeError(f"{action} changed digest/processed watermarks or saved selection")
+        if mcp_route:
+            checkup_identity(env, work, harness, values, mcp=mcp)
+        if session_state(env) != before:
+            raise RuntimeError("filing/replay changed watermarks or selection")
+        if mcp_route and (checkout_instructions(checkout) != instructions or get(env, work, values["filed-id"]).get("verdict")):
+            raise RuntimeError("MCP-only checkup changed instructions or closed a finding without approval")
+        print(f"PASS  {label}")
+        return True
+    except (RuntimeError, ValueError, KeyError, IndexError, subprocess.TimeoutExpired) as err:
+        print(f"FAIL  {label}: {err}" + "".join(f"\n--- command\n{command}\n--- result\n{out}" for command, out in steps))
+        return False
+    finally:
+        if mcp:
+            mcp.stop()
+        if server:
+            server.stop()
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def main():
     if not BIN.is_file():
         print(f"triage-playbooks: {BIN} is missing: run just check")
@@ -844,13 +1280,15 @@ def main():
         return 1
     print(f"PASS  structure of {len(texts)} playbooks, SKILL.md and reference/clustering.md")
     session = "playbooks/fix-it-session.md"
-    queue_part = dict(texts, **{session: split_session(texts[session])[1]})
+    queue_part = {name: text for name, text in texts.items() if name != CHECKUP_PAGE}
+    queue_part[session] = split_session(texts[session])[1]
     ok = True
     for local in (False, True):
         ok = all([run_page(name, text, local=local) for name, text in [("SKILL.md", skill), *queue_part.items()]]) and ok
         ok = run_page("reference/clustering.md", clustering,
                       prelude="DIGEST=$(agentfeedback digest --kind friction)\n",
                       postlude="\nprintf '%s\\n' \"$DIGEST\" > digest-dir\n", local=local) and ok
+        ok = run_checkup_reports(texts[CHECKUP_PAGE], local=local) and ok
     harnesses = session_harnesses()
     # Storage-only capture has no semantic digest for this triage workflow.
     storage_only = {"cursor"}
@@ -865,6 +1303,9 @@ def main():
         ok = run_session_start(session, texts[session], harness) and ok
         ok = run_session_start(session, texts[session], harness, local=True) and ok
         ok = run_mcp_route(session, texts[session], harness) and ok
+        for local in (False, True):
+            ok = run_checkup(CHECKUP_PAGE, texts[CHECKUP_PAGE], harness, local=local) and ok
+            ok = run_checkup(CHECKUP_PAGE, texts[CHECKUP_PAGE], harness, local=local, mcp_route=True) and ok
     return 0 if ok else 1
 
 

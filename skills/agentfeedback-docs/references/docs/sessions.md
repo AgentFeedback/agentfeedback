@@ -744,6 +744,34 @@ Schema 2020-12, with a full example). The agent records a label and a
 reason per rubric and session; the binary computes every number. Both
 commands take `-` for stdin. The report is never sent or stored.
 
+The explicitly invoked triage skill's seventh playbook,
+`skills/agentfeedback-triage/playbooks/skill-checkup.md`, orchestrates this
+without a new API. One opening interview defaults to this repository, project
+and global skills, 45 days and up to 12 sessions, and discloses that sampled
+transcripts, including edits, reach the model provider before they are read.
+It inventories skills, lists candidates and samples newest-first with at most
+one third from any one skill. Shortages and samples below three require an
+explicit explanation of the cap; scope or cap changes need approval, not a
+silent widening.
+
+Each rubric gets a one-to-three-sentence reason citing observed spans and what
+would have prevented the failure, or what supported success. Missing or cut
+evidence is explicit, not a fabricated pass. Procedure compliance uses logged
+rules and skill listings first; only `not-recorded` permits current-file
+fallback, identified as `current-files` with its historical limitation. Code
+quality needs visible edits. Only failing labels yield findings; instruction
+changes follow the triage skill's existing instruction bar. Zero findings is
+valid: never manufacture three for the page or card.
+
+Before the closing question, full proposed files and unified diffs live only
+in the cache alongside the report JSON. The opening scope interview does not
+authorize edits: apply only proposals selected at closing, and close a filed
+friction only after its fix actually lands. Checkups use transcripts, not
+digest or mark, so they record no watermark and change no session marks.
+Grades and labels are not persisted in the database. Without a shell, MCP
+cannot inventory skills, check/render reports or produce those cache files;
+disclose the limitation and do not invent tools or a grade.
+
 Members (no others are allowed at any level):
 
 | Member | What |
