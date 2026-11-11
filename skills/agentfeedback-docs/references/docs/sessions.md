@@ -546,7 +546,9 @@ Each session:
 Caps: a summary is at most 160 bytes, an excerpt 240; one session's digest is
 at most 64 KiB (the events completed first that fit are kept, listed in log
 order, `truncated` set, and the watermark stops at the first one left out); one
-run is at most 256 KiB (later sessions go to `deferred`). Every string is
+run is at most 256 KiB of session digests: `errors` and `deferred` come on
+top, and a session whose digest does not fit in what is left goes to
+`deferred` while a smaller later one may still be included. Every string is
 scrubbed with the formats of `submit --scrub` ([security.md](security.md#what-gets-stored))
 before it is sized or cut.
 
@@ -604,8 +606,8 @@ together, both counted as JSON-encoded text (a file past that keeps its
 `source` and `path`, with empty `text`); one session 128 KiB (over it, the
 first entries that fill two thirds of the room and the last that fill one
 third are kept, a `cut` entry between them); one run 384 KiB of session
-transcripts, as for a digest: `errors` and `deferred` come on top, and later
-sessions go to `deferred`. Every
+transcripts, as for a digest: `errors` and `deferred` come on top, and a
+session that does not fit goes to `deferred`. Every
 string is scrubbed with the formats of `submit --scrub`
 ([security.md](security.md#what-gets-stored)) before it is sized or cut, and
 a cut keeps whole UTF-8 characters.
