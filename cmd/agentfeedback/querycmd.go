@@ -100,7 +100,7 @@ func parseInterleaved(fs *flag.FlagSet, args []string, stderr io.Writer) ([]stri
 			return nil, err
 		}
 		rest := fs.Args()
-		if n := len(args) - len(rest); n > 0 && args[n-1] == "--" {
+		if flagsTerminated(fs, args[:len(args)-len(rest)]) {
 			return append(pos, rest...), nil
 		}
 		if len(rest) == 0 {
@@ -109,6 +109,25 @@ func parseInterleaved(fs *flag.FlagSet, args []string, stderr io.Writer) ([]stri
 		pos = append(pos, rest[0])
 		args = rest[1:]
 	}
+}
+
+// flagsTerminated examines only tokens consumed by a successful flag parse.
+// A string flag may consume "--" as its value, not as a terminator.
+func flagsTerminated(fs *flag.FlagSet, consumed []string) bool {
+	for i := 0; i < len(consumed); i++ {
+		arg := consumed[i]
+		if arg == "--" {
+			return true
+		}
+		if strings.Contains(arg, "=") {
+			continue
+		}
+		f := fs.Lookup(strings.TrimLeft(arg, "-"))
+		if b, ok := f.Value.(interface{ IsBoolFlag() bool }); !ok || !b.IsBoolFlag() {
+			i++
+		}
+	}
+	return false
 }
 
 // parseIDs reads positive submission ids.

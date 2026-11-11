@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -25,7 +24,7 @@ import (
 )
 
 const (
-	submitSynopsis = "submit friction --summary S [flags] | submit <kind> [--stdin] [--scrub] [--context-from <harness>:<id>#<span> [--ordinal N] [--allow-unknown-project]] [flags] | submit review <run_dir> [--include-outputs] | submit review --sweep [<base>...] [--local | --server URL]"
+	submitSynopsis = "submit [--local | --server URL] friction --summary S [flags] | submit [--local | --server URL] <kind> [--stdin] [--scrub] [--context-from <harness>:<id>#<span> [--ordinal N] [--allow-unknown-project]] [flags] | submit [--local | --server URL] review <run_dir> [--include-outputs] | submit [--local | --server URL] review --sweep [<base>...]; mode flags also work after the kind"
 	flushSynopsis  = "flush [--hook] [--local | --server URL]"
 	// occurredLayout is occurred_at: UTC with microseconds.
 	occurredLayout = "2006-01-02T15:04:05.000000Z"
@@ -404,22 +403,36 @@ func finish(name string, o client.Outcome, stdout io.Writer) error {
 
 // runSubmit dispatches submit friction, submit review and submit <kind>.
 func runSubmit(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
-	if len(args) == 0 {
+	pos := args
+	terminated := false
+	if len(args) != 0 && strings.HasPrefix(args[0], "-") {
+		fs := newFlagSet("submit")
+		addModeFlags(fs)
+		fs.Usage = func() {
+			fmt.Fprintf(fs.Output(), "usage: agentfeedback %s\n", submitSynopsis)
+		}
+		if err := parseFlags(fs, args, stderr); err != nil {
+			return errFlags("submit", err)
+		}
+		pos = fs.Args()
+		terminated = flagsTerminated(fs, args[:len(args)-len(pos)])
+	}
+	if len(pos) == 0 {
 		return errArgs("submit", submitSynopsis)
 	}
-	if args[0] == "-h" || args[0] == "--help" || args[0] == "-help" {
-		fmt.Fprintf(stderr, "usage: agentfeedback %s\n", submitSynopsis)
-
-		return flag.ErrHelp
-	}
-	if strings.HasPrefix(args[0], "-") {
-		return errArgs("submit", submitSynopsis)
-	}
-	kind, rest := args[0], args[1:]
+	kind, rest := pos[0], pos[1:]
 	if schema.Token(kind) == "" {
 		return errSubmitKind(kind)
 	}
-	if schema.Token(kind) == "review" && !hasBoolFlag(rest, "stdin") {
+	prefix := len(args) - len(pos)
+	fromStdin := !terminated && hasBoolFlag(rest, "stdin")
+	if prefix != 0 {
+		// Reparse original tokens in order so later assignments still win.
+		rest = make([]string, 0, len(args)-1)
+		rest = append(rest, args[:prefix]...)
+		rest = append(rest, pos[1:]...)
+	}
+	if schema.Token(kind) == "review" && !fromStdin {
 		return runReview(rest, stdout, stderr)
 	}
 

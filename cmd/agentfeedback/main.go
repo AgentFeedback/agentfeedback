@@ -49,7 +49,7 @@ var commands = []command{
 	{"import", "import [--dry-run] <export.ndjson>: restore an export (format 2) into the database, keeping ids", runImport},
 	{"backup", "backup <dest.db>: write a consistent copy of the database", runBackup},
 	{"doctor", "check the client setup: the mode (local database or server), the connection and the versions; doctor --e2e [--json]: submit, list and mark one install-check row", runDoctor},
-	{"submit", "submit friction --summary S [...] | submit <kind> --stdin [...] | submit review <run_dir> [--include-outputs] | submit review --sweep [<base>...]; --dry-run sends nothing, --scrub redacts known secret formats in the body's string values: file a submission, the outcome is the last line", runSubmit},
+	{"submit", submitSynopsis + "; --dry-run sends nothing, --scrub redacts known secret formats in the body's string values: file a submission, the outcome is the last line", runSubmit},
 	{"flush", "flush [--hook]: send the spooled submissions that are due and print the counts; --hook (what older installs wired) prints nothing, stops within 4.5 s, always exits 0 and in local mode does nothing", runFlush},
 	{"hook", hookSynopsis + ": run as a harness hook on the event's payload from stdin: count tool failures per session, print a short note when they pile up, send the spool at the end of a turn", runHook},
 	{"ingest", ingestSynopsis + ": submit the envelope files in the inbox (every local-mode command that opens the database but doctor and sessions does this first) and print the counts", runIngest},

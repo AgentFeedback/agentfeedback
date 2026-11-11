@@ -102,6 +102,14 @@ Several processes may use the database at once (SQLite in WAL mode: commands,
 hooks, `ui`, a local `serve`); keep the data directory on a local filesystem,
 never on a network share, where SQLite's locking does not hold.
 
+For `submit`, mode flags work before or after the kind, including custom
+kinds and both review forms: `submit --local friction --summary "..."` and
+`submit friction --local --summary "..."` select the same destination.
+`--server URL` and `--server=URL` work in either position. Repeated options
+keep command-line order (the last value wins); effective `--local` and
+`--server` together remain an error. Kind-specific flags stay after the
+kind, and `--` ends option parsing.
+
 A local write that fails (the database busy past its 5 s timeout, a full
 disk) is spooled like a failed send to a server: outcome `spooled`, exit 0,
 and the next client command that runs the start-up pass (every
