@@ -309,6 +309,32 @@ version; corrections to release prose need no new tag. For prose-only repairs,
 use `gh release edit <tag> --repo AgentFeedback/agentfeedback --title '<tag> — <title>' --notes-file /path/to/notes.md`;
 leave tags, assets, pre-release status and the latest release unchanged.
 
+## v4.6.0 — npm and PyPI binary distribution
+
+Compatible with 4.x clients and servers; the HTTP API stays `1.0`.
+No server configuration or database migration is required.
+
+- **npm:** `npm install -g @agentfeedback/cli` installs an embedded native binary
+  through an exact-version optional platform package.
+  `npx @agentfeedback/cli@4.6.0 version` runs this release. There is no install-time
+  binary download, and launcher signals reach the native process.
+- **PyPI:** `pip install agentfeedback-cli` installs a platform binary wheel and
+  the `agentfeedback` console script. Use
+  `pipx run --spec agentfeedback-cli==4.6.0 agentfeedback version` for an isolated
+  invocation. Wheels require Python 3.8+ and cover Linux, macOS 13+ and Windows,
+  each on amd64 and arm64. There is no source distribution or pure-Python fallback.
+- **Publication:** the publish-only workflow repackages checksum-verified release
+  archives without rebuilding Go and uses npm/PyPI OIDC trusted publishing.
+  Registry smoke jobs run on Ubuntu, macOS and Windows. See
+  [npm publishing](#npm-publishing) and [PyPI publishing](#pypi-publishing) for
+  platform tags, prerelease mapping and recovery.
+- **Upgrade:** replace old `0.0.x` launcher installations with the binary packages.
+  Yank the legacy PyPI `0.0.1` release after successful wheel publication to
+  prevent unsupported platforms from selecting the old launcher.
+  GitHub-release and container installation paths are unchanged.
+- **Release tooling:** built with **GoReleaser 2.20.1**; use that exact version to
+  reproduce the release archives.
+
 ## v4.5.0 — Skill checkup and reliability fixes
 
 Compatible with 4.x clients and servers; the HTTP API stays `1.0`.
