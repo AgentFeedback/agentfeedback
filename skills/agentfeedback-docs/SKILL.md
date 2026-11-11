@@ -29,6 +29,7 @@ The reference docs, JSON Schemas, OpenAPI document and install playbooks of Agen
 - [references/docs/releases.md](references/docs/releases.md): Releases
 - [references/docs/security.md](references/docs/security.md): Security
 - [references/docs/sessions.md](references/docs/sessions.md): Session logs
+- [references/schemas/checkup-report.v1.json](references/schemas/checkup-report.v1.json): JSON Schema: AgentFeedback checkup report
 - [references/schemas/envelope.v1.json](references/schemas/envelope.v1.json): JSON Schema: AgentFeedback submission envelope
 - [references/schemas/integrations.v1.json](references/schemas/integrations.v1.json): JSON Schema: AgentFeedback integrations list
 - [references/schemas/kinds/friction.v1.json](references/schemas/kinds/friction.v1.json): JSON Schema: Friction: what slowed an agent down

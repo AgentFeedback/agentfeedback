@@ -636,6 +636,99 @@ validation error on `context_from` with the CLI's message. In remote mode
 the body is built on this machine and forwarded to the server's
 `submit_feedback`; the HTTP `/mcp` never takes these arguments.
 
+## Checkup report
+
+```bash
+agentfeedback report check report.json [--json]          # validate; print the grade the binary computes
+agentfeedback report render report.json [--out FILE] [--open]   # validate, then write one HTML page; prints its path
+```
+
+An agent that judged a sample of sessions writes a checkup report: one JSON
+file, [`checkup-report.v1.json`](../schemas/checkup-report.v1.json) (JSON
+Schema 2020-12, with a full example). The agent records a label and a
+reason per rubric and session; the binary computes every number. Both
+commands take `-` for stdin. The report is never sent or stored.
+
+Members (no others are allowed at any level):
+
+| Member | What |
+|---|---|
+| `version` | `1` |
+| `generated_at` | RFC 3339 date-time the report was written |
+| `scope` | `projects[]`, `harnesses[]`, `since` (as given to `sessions list --since`, `""` for none), `sessions_scanned`, `sessions_sampled` |
+| `skills` | `found[]`: `{name, harness, scope}` (`scope` `project` or `global`), from `sessions skills`; `used[]`: `{name, sessions}` |
+| `sessions[]` | per sampled session: `ref` (`<harness>:<id>`), `rules_source`, `skills_used[]` (the names in the session's `skills_used`), `labels` with exactly `efficiency`, `code_quality`, `procedure_compliance` and `verbosity`, each `{label, reason}` |
+| `top_findings[]` | at most 3: `{text, refs[]}` |
+| `suggestions[]` | `{surface, change, evidence[], filed_uid?, diff?}`; `diff` is a unified diff, shown and never applied; `filed_uid` the uid of a submission filed for it |
+
+Beyond the schema, `check` requires the counts to agree with the
+sessions listed: `scope.sessions_sampled` equals the number of `sessions`,
+and each `skills.used` entry names a skill some session's `skills_used`
+names, with `sessions` the number of sessions that name it. Counts may be
+spelled as any integral JSON number (`3`, `3.0`, `3e0`).
+
+`rules_source` is `session-log` when the rules were read from what the
+session itself loaded, `current-files` when from the instruction files as
+they are now (which may have changed since the session). `reason` is
+required and non-blank for every label, `insufficient_evidence` included.
+
+Labels and their scores:
+
+| Rubric | Weight | Labels |
+|---|---|---|
+| `efficiency` | 0.30 | `efficient` 1, `minor_detours` 0.67, `major_detours` 0.33, `unproductive` 0 |
+| `code_quality` | 0.25 | `sound` 1, `minor_issues` 0.5, `unsound` 0 |
+| `procedure_compliance` | 0.25 | `followed` 1, `minor_lapse` 0.5, `breached` 0 |
+| `verbosity` | 0.20 | `proportionate` 1, `uneven` 0.5, `disproportionate` 0 |
+
+Every rubric also takes `insufficient_evidence`, which is left out of its
+mean. The grade:
+
+- A rubric's score is the mean label score over its sessions not labelled
+  `insufficient_evidence`. A rubric with no such session drops out, and the
+  remaining weights are rescaled to sum to 1. No curve.
+- The overall score is the weighted sum, rounded to four decimals, then
+  lettered: A at 0.90 or more, B at 0.80, C at 0.70, D at 0.60, F below.
+- When every rubric dropped out (every label `insufficient_evidence`, or no
+  session), the grade is `n/a` and the score null, not F.
+- Coverage (sessions with a non-empty `skills_used` out of the sessions in
+  the report) and the unused skills (`skills.found` names no session's
+  `skills_used` names) are shown beside the grade and never move it.
+
+`report check` prints the grade, a table per rubric (score, effective
+weight, sessions judged and `insufficient_evidence`), the coverage, the
+used skills with their session counts and the unused skills. An invalid report prints one line per problem on stderr,
+`<JSON pointer>: <message>`, sorted by pointer (a missing or unexpected
+member is named at its own pointer), and exits 2. `--json` prints
+`{valid, problems: [{pointer, message}], scores}` on stdout instead
+(`scores` null when invalid): `scores` is `{grade, score, rubrics: [{name,
+weight, score, judged, insufficient, labels}], coverage: {with_skills,
+sessions, ratio}, used_skills: [{name, sessions}], unused_skills}`. An unreadable file exits 1, a wrong
+command line 2.
+
+`report render` checks first: an invalid report prints its problems, exits
+2 and writes nothing. A valid one becomes one self-contained HTML file,
+written atomically (synced, then moved into place), owner-only:
+`--out FILE`, which replaces an existing file but is refused (exit 2) when
+it is the report being rendered; else
+`${XDG_CACHE_HOME:-~/.cache}/agentfeedback/reports/checkup-<UTC
+yyyymmddThhmmssZ>.html` (directory `0700`), never replacing a page: an
+existing name gets `-2`, `-3`, ... before `.html`. It prints the path
+written. `--open` then starts the platform's opener (`xdg-open`, `open`,
+or `rundll32 url.dll,FileProtocolHandler` on Windows) on the absolute path
+without waiting; a failure to open is a warning, not an error. The page
+shows the grade, the rubrics with their label counts, the scope as counts,
+harnesses and `since`, coverage and the used and unused skills (computed
+from `sessions`), the findings and the suggestions with their diffs (a
+finding or suggestion shows how many sessions back it, not their refs).
+The binary adds no path, session ref or project name of its own; the
+findings, suggestion surfaces, changes and diffs appear as the agent wrote
+them, scrubbed of the formats of `submit --scrub` and escaped. Its share
+button draws a 1200x675 card carrying only the grade, the rubric bars, the
+three findings and `agentfeedback.dev` on a canvas in the browser and saves
+it as a PNG; the page loads and sends nothing
+([security.md](security.md#the-client-on-a-machine)).
+
 ## MCP tools
 
 `agentfeedback mcp` (stdio) serves three more tools over the same database

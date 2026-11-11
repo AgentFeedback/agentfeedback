@@ -1,0 +1,228 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentfeedback.dev/schemas/checkup-report.v1.json",
+  "title": "AgentFeedback checkup report",
+  "description": "The report an agent writes after judging a sample of sessions, read by `agentfeedback report check` and `report render`. The agent records labels and reasons; the binary computes the grade. It describes a local file, not the HTTP API, and is never sent.",
+  "type": "object",
+  "properties": {
+    "version": {"const": 1},
+    "generated_at": {"type": "string", "format": "date-time", "description": "When the report was written (RFC 3339)."},
+    "scope": {
+      "type": "object",
+      "properties": {
+        "projects": {"type": "array", "items": {"$ref": "#/$defs/text"}, "description": "The project directories the sessions were drawn from."},
+        "harnesses": {"type": "array", "items": {"$ref": "#/$defs/text"}, "description": "The harnesses the sessions came from."},
+        "since": {"type": "string", "description": "The start of the window, as given to sessions list --since; empty for none."},
+        "sessions_scanned": {"type": "integer", "minimum": 0, "description": "Sessions listed in the window."},
+        "sessions_sampled": {"type": "integer", "minimum": 0, "description": "Sessions read and judged."}
+      },
+      "required": ["projects", "harnesses", "since", "sessions_scanned", "sessions_sampled"],
+      "additionalProperties": false
+    },
+    "skills": {
+      "type": "object",
+      "properties": {
+        "found": {
+          "type": "array",
+          "description": "The installed skills, as sessions skills lists them.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {"$ref": "#/$defs/text"},
+              "harness": {"$ref": "#/$defs/text"},
+              "scope": {"enum": ["project", "global"]}
+            },
+            "required": ["name", "harness", "scope"],
+            "additionalProperties": false
+          }
+        },
+        "used": {
+          "type": "array",
+          "description": "Per skill, the number of sampled sessions whose skills_used names it.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {"$ref": "#/$defs/text"},
+              "sessions": {"type": "integer", "minimum": 0}
+            },
+            "required": ["name", "sessions"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["found", "used"],
+      "additionalProperties": false
+    },
+    "sessions": {
+      "type": "array",
+      "description": "One entry per sampled session.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "ref": {"$ref": "#/$defs/text", "description": "The session as <harness>:<id>, as sessions list prints it."},
+          "rules_source": {"enum": ["session-log", "current-files"], "description": "session-log: the rules were read from what the session loaded; current-files: from the instruction files as they are now."},
+          "skills_used": {"type": "array", "items": {"$ref": "#/$defs/text"}, "description": "The names in the session's skills_used."},
+          "labels": {
+            "type": "object",
+            "properties": {
+              "efficiency": {"$ref": "#/$defs/efficiency"},
+              "code_quality": {"$ref": "#/$defs/code_quality"},
+              "procedure_compliance": {"$ref": "#/$defs/procedure_compliance"},
+              "verbosity": {"$ref": "#/$defs/verbosity"}
+            },
+            "required": ["efficiency", "code_quality", "procedure_compliance", "verbosity"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["ref", "rules_source", "skills_used", "labels"],
+        "additionalProperties": false
+      }
+    },
+    "top_findings": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "properties": {
+          "text": {"$ref": "#/$defs/text", "description": "One sentence a reader acts on."},
+          "refs": {"type": "array", "items": {"$ref": "#/$defs/text"}, "description": "The sessions that show it."}
+        },
+        "required": ["text", "refs"],
+        "additionalProperties": false
+      }
+    },
+    "suggestions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "surface": {"$ref": "#/$defs/text", "description": "What to change: an instruction file, a skill, a hook or a setting."},
+          "change": {"$ref": "#/$defs/text", "description": "The change, in one or two sentences."},
+          "evidence": {"type": "array", "items": {"$ref": "#/$defs/text"}, "description": "The sessions that support it."},
+          "filed_uid": {"type": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", "description": "The uid of the submission filed for it."},
+          "diff": {"type": "string", "description": "The proposed edit as a unified diff; shown, never applied."}
+        },
+        "required": ["surface", "change", "evidence"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["version", "generated_at", "scope", "skills", "sessions", "top_findings", "suggestions"],
+  "additionalProperties": false,
+  "$defs": {
+    "text": {"type": "string", "minLength": 1, "pattern": "\\S"},
+    "efficiency": {
+      "type": "object",
+      "properties": {
+        "label": {"enum": ["efficient", "minor_detours", "major_detours", "unproductive", "insufficient_evidence"]},
+        "reason": {"$ref": "#/$defs/text"}
+      },
+      "required": ["label", "reason"],
+      "additionalProperties": false
+    },
+    "code_quality": {
+      "type": "object",
+      "properties": {
+        "label": {"enum": ["sound", "minor_issues", "unsound", "insufficient_evidence"]},
+        "reason": {"$ref": "#/$defs/text"}
+      },
+      "required": ["label", "reason"],
+      "additionalProperties": false
+    },
+    "procedure_compliance": {
+      "type": "object",
+      "properties": {
+        "label": {"enum": ["followed", "minor_lapse", "breached", "insufficient_evidence"]},
+        "reason": {"$ref": "#/$defs/text"}
+      },
+      "required": ["label", "reason"],
+      "additionalProperties": false
+    },
+    "verbosity": {
+      "type": "object",
+      "properties": {
+        "label": {"enum": ["proportionate", "uneven", "disproportionate", "insufficient_evidence"]},
+        "reason": {"$ref": "#/$defs/text"}
+      },
+      "required": ["label", "reason"],
+      "additionalProperties": false
+    }
+  },
+  "examples": [
+    {
+      "version": 1,
+      "generated_at": "2026-11-10T09:30:00Z",
+      "scope": {
+        "projects": ["/work/shop"],
+        "harnesses": ["claude-code", "codex"],
+        "since": "14d",
+        "sessions_scanned": 23,
+        "sessions_sampled": 3
+      },
+      "skills": {
+        "found": [
+          {"name": "release-notes", "harness": "claude-code", "scope": "project"},
+          {"name": "db-migrate", "harness": "codex", "scope": "project"},
+          {"name": "agentfeedback", "harness": "claude-code", "scope": "global"}
+        ],
+        "used": [
+          {"name": "agentfeedback", "sessions": 1}
+        ]
+      },
+      "sessions": [
+        {
+          "ref": "claude-code:7f3c2a90-1b4d-4e8a-9c21-5d6e7f8a9b0c",
+          "rules_source": "session-log",
+          "skills_used": ["agentfeedback"],
+          "labels": {
+            "efficiency": {"label": "minor_detours", "reason": "Ran the full test suite three times before reading the failing test's output."},
+            "code_quality": {"label": "sound", "reason": "The fix is covered by a new test and matches the module's error handling."},
+            "procedure_compliance": {"label": "minor_lapse", "reason": "Committed before running the linter the instructions require."},
+            "verbosity": {"label": "proportionate", "reason": "Short progress notes and a final summary that matches the change."}
+          }
+        },
+        {
+          "ref": "codex:019a2b3c-4d5e-6f70-8192-a3b4c5d6e7f8",
+          "rules_source": "current-files",
+          "skills_used": [],
+          "labels": {
+            "efficiency": {"label": "major_detours", "reason": "Rewrote the migration twice after skipping the db-migrate skill that documents the column order."},
+            "code_quality": {"label": "minor_issues", "reason": "The migration has no down step."},
+            "procedure_compliance": {"label": "breached", "reason": "Edited a generated file the instructions say to regenerate."},
+            "verbosity": {"label": "uneven", "reason": "Long narration of each command, then a one-line final answer."}
+          }
+        },
+        {
+          "ref": "claude-code:2b8e4f10-6a7c-4d3e-b5f9-0c1d2e3f4a5b",
+          "rules_source": "session-log",
+          "skills_used": [],
+          "labels": {
+            "efficiency": {"label": "efficient", "reason": "Answered a question from two file reads."},
+            "code_quality": {"label": "insufficient_evidence", "reason": "No code was written."},
+            "procedure_compliance": {"label": "followed", "reason": "Read the instruction file before answering, as required."},
+            "verbosity": {"label": "proportionate", "reason": "A direct answer with the file and line."}
+          }
+        }
+      ],
+      "top_findings": [
+        {"text": "Database migrations are written without the db-migrate skill, and the column order is then fixed by trial and error.", "refs": ["codex:019a2b3c-4d5e-6f70-8192-a3b4c5d6e7f8"]},
+        {"text": "Generated files are edited by hand instead of regenerated.", "refs": ["codex:019a2b3c-4d5e-6f70-8192-a3b4c5d6e7f8"]},
+        {"text": "The linter runs after the commit, not before it.", "refs": ["claude-code:7f3c2a90-1b4d-4e8a-9c21-5d6e7f8a9b0c"]}
+      ],
+      "suggestions": [
+        {
+          "surface": "AGENTS.md",
+          "change": "Name the db-migrate skill in the database section so a migration starts from it.",
+          "evidence": ["codex:019a2b3c-4d5e-6f70-8192-a3b4c5d6e7f8"],
+          "diff": "--- a/AGENTS.md\n+++ b/AGENTS.md\n@@ -12,3 +12,4 @@\n ## Database\n \n Migrations live in db/migrations.\n+Start every migration from the db-migrate skill: it states the column order.\n"
+        },
+        {
+          "surface": "AGENTS.md",
+          "change": "Move the linter step before the commit step in the checklist.",
+          "evidence": ["claude-code:7f3c2a90-1b4d-4e8a-9c21-5d6e7f8a9b0c"],
+          "filed_uid": "0b6f3c1e-8d2a-4f7b-9e1c-2a3b4c5d6e7f"
+        }
+      ]
+    }
+  ]
+}

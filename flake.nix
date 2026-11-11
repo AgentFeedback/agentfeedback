@@ -16,7 +16,7 @@
             # Updated to the release version before tagging; untagged development is explicit.
             version = "4.4.0";
             src = self;
-            vendorHash = "sha256-EVgoHoT7zeFcXhHm4F48qx8UFdj0eBVsEf1HdIWEFNA=";
+            vendorHash = "sha256-iKv1a+vSDg8J7KAZYCf2DWckimTz+0j2NrAZT2q6I6M=";
             subPackages = [ "cmd/agentfeedback" ];
             ldflags = [ "-s" "-w" "-X main.version=${version}" "-X main.commit=${self.rev or self.dirtyRev or "unknown"}" ];
             meta = {

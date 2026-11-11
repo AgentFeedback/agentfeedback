@@ -347,6 +347,11 @@ func localCLIProblems(cov *coverageFile, tools *mcpLocal) []string {
 			add("sessions %s: missing from [local]", sub)
 		}
 	}
+	for _, sub := range reportSubcommands {
+		if _, ok := byCommand["report "+sub]; !ok {
+			add("report %s: missing from [local]", sub)
+		}
+	}
 	for tool, lt := range tools.Local {
 		if lt == nil {
 			continue

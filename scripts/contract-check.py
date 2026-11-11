@@ -54,8 +54,8 @@ from referencing.jsonschema import DRAFT202012
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_FILES = sorted(str(p.relative_to(ROOT)) for p in (ROOT / "schemas").rglob("*.json"))
-# Describes repository data, not the API: exempt from the openapi.yaml reference check.
-REPOSITORY_DATA_SCHEMAS = {"schemas/integrations.v1.json"}
+# Describe repository or local data, not the API: exempt from the openapi.yaml reference check.
+REPOSITORY_DATA_SCHEMAS = {"schemas/checkup-report.v1.json", "schemas/integrations.v1.json"}
 OPENAPI = ROOT / "docs" / "openapi.yaml"
 OPENAPI_URI = "file:///docs/openapi.yaml"
 

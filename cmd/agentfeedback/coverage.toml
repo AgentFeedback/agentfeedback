@@ -207,7 +207,7 @@ reason = "scraped by monitoring, not a client read"
 # (the session logs, the data-directory database and the harness
 # configuration), one entry per subcommand. coverage_test.go runs each with -h and fails on a listed flag
 # or argument it lacks and on a flag it has that is not listed; every
-# sessions subcommand needs an entry, and every [local] tool of
+# sessions and report subcommand needs an entry, and every [local] tool of
 # internal/mcp/coverage.toml must map to a command, flag and argument here.
 #   [local.<name>]   command = "<command> <subcommand>"
 #                    flags = ["--flag", ...]   every flag of the subcommand
@@ -247,6 +247,16 @@ args = ["<harness:id>..."]
 command = "sessions skills"
 flags = ["--project", "--global", "--json"]
 args = []
+
+[local.report_check]
+command = "report check"
+flags = ["--json"]
+args = ["<report.json>"]
+
+[local.report_render]
+command = "report render"
+flags = ["--out", "--open"]
+args = ["<report.json>"]
 
 [local.install]
 command = "install"

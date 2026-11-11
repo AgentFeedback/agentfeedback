@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="{{.CSP}}">
+<title>Agent checkup: {{.Grade}} - agentfeedback</title>
+<style>{{.CSS}}</style>
+</head>
+<body>
+<main>
+<header class="grade">
+<div class="letter">{{.Grade}}</div>
+<div>
+<h1>Agent checkup</h1>
+<div>{{if .Score}}score {{.Score}}{{else}}no rubric has a judged session{{end}}</div>
+<div class="muted">generated {{.GeneratedAt}}</div>
+</div>
+</header>
+
+<h2>Scope</h2>
+<p>{{.Scope.Sampled}} of {{.Scope.Scanned}} sessions sampled from {{.Scope.Projects}} project(s){{if .Scope.Harnesses}}, harnesses {{range $i, $h := .Scope.Harnesses}}{{if $i}}, {{end}}{{$h}}{{end}}{{end}}{{if .Scope.Since}}, since {{.Scope.Since}}{{end}}.
+Rules read from the session log in {{.RulesFromLog}} session(s), from the current files in {{.RulesFromFiles}}.</p>
+
+<h2>Rubrics</h2>
+<table>
+<thead><tr><th>Rubric</th><th>Score</th><th>Weight</th><th>Labels</th></tr></thead>
+<tbody>
+{{range .Rubrics}}<tr>
+<td>{{.Title}}</td>
+<td>{{if .Score}}<meter min="0" max="1" value="{{.Value}}">{{.Score}}</meter> {{.Score}}{{else}}n/a{{end}}</td>
+<td>{{.Weight}}</td>
+<td><ul class="labels">{{range .Labels}}<li>{{.Label}}: {{.Count}}</li>{{end}}</ul></td>
+</tr>
+{{end}}</tbody>
+</table>
+<p class="muted">Each rubric is the mean label score of the sessions it could judge; insufficient_evidence is left out, and a rubric without a judged session drops out with the other weights rescaled.</p>
+
+<h2>Skills</h2>
+<p>{{.Coverage}}</p>
+{{if .UsedSkills}}<p>Used: {{range $i, $s := .UsedSkills}}{{if $i}}, {{end}}{{$s.Name}} ({{$s.Sessions}}){{end}}</p>{{end}}
+{{if .UnusedSkills}}<p>Installed and not used in the sample: {{range $i, $s := .UnusedSkills}}{{if $i}}, {{end}}{{$s}}{{end}}</p>{{end}}
+
+<h2>Top findings</h2>
+{{if .Findings}}<ol>
+{{range .Findings}}<li>{{.Text}} <span class="muted">({{.Sessions}} session(s))</span></li>
+{{end}}</ol>{{else}}<p>None.</p>{{end}}
+
+<h2>Suggestions</h2>
+{{if .Suggestions}}{{range .Suggestions}}<section>
+<h3>{{.Surface}}</h3>
+<p>{{.Change}} <span class="muted">({{.Evidence}} session(s){{if .FiledUID}}; filed as {{.FiledUID}}{{end}})</span></p>
+{{if .Diff}}<details><summary>proposed diff</summary><pre>{{.Diff}}</pre></details>{{end}}
+</section>
+{{end}}{{else}}<p>None.</p>{{end}}
+
+<p><button type="button" id="share" hidden>Save share card (PNG)</button></p>
+<footer>Made with AgentFeedback, agentfeedback.dev. This page was written on this machine and makes no network request.</footer>
+</main>
+<script type="application/json" id="card-data">{{.Card}}</script>
+<script>{{.JS}}</script>
+</body>
+</html>

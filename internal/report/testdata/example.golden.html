@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src &#39;none&#39;; style-src &#39;sha256-6lrJoeDteEU0qjXsQ7vz9kM7KSXyWa/Z0BWlyQG6HC4=&#39;; script-src &#39;sha256-Dd7XE1Xn4vUBD0apNVH9akSqn0ENKCBGf6pxm67xQ3k=&#39;; base-uri &#39;none&#39;; form-action &#39;none&#39;">
+<title>Agent checkup: D - agentfeedback</title>
+<style>/* Minimal styles; system fonts only. */
+body { font-family: system-ui, sans-serif; margin: 0; color: #1d1d1f; background: #fff; }
+main { max-width: 52em; margin: 0 auto; padding: 1.5em 1em; }
+h1 { font-size: 1.3em; margin: 0 0 .2em; }
+h2 { font-size: 1.1em; margin-top: 1.6em; }
+.grade { display: flex; gap: 1.5em; align-items: center; }
+.grade .letter { font-size: 4em; font-weight: 700; line-height: 1; }
+.muted { color: #555; }
+table { border-collapse: collapse; margin-bottom: 1em; }
+th, td { border: 1px solid #d5d9de; padding: .25em .5em; text-align: left; vertical-align: top; }
+thead th { background: #f5f6f8; }
+meter { width: 10em; }
+ul.labels { list-style: none; margin: 0; padding: 0; font-size: .9em; }
+pre { background: #f5f6f8; padding: .5em; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
+button { font: inherit; padding: .4em 1em; }
+footer { margin-top: 2em; color: #555; font-size: .9em; }
+</style>
+</head>
+<body>
+<main>
+<header class="grade">
+<div class="letter">D</div>
+<div>
+<h1>Agent checkup</h1>
+<div>score 0.6792</div>
+<div class="muted">generated 2026-11-10T09:30:00Z</div>
+</div>
+</header>
+
+<h2>Scope</h2>
+<p>3 of 23 sessions sampled from 1 project(s), harnesses claude-code, codex, since 14d.
+Rules read from the session log in 2 session(s), from the current files in 1.</p>
+
+<h2>Rubrics</h2>
+<table>
+<thead><tr><th>Rubric</th><th>Score</th><th>Weight</th><th>Labels</th></tr></thead>
+<tbody>
+<tr>
+<td>Efficiency</td>
+<td><meter min="0" max="1" value="0.6667">0.6667</meter> 0.6667</td>
+<td>30.0%</td>
+<td><ul class="labels"><li>efficient: 1</li><li>minor_detours: 1</li><li>major_detours: 1</li><li>unproductive: 0</li><li>insufficient_evidence: 0</li></ul></td>
+</tr>
+<tr>
+<td>Code quality</td>
+<td><meter min="0" max="1" value="0.75">0.7500</meter> 0.7500</td>
+<td>25.0%</td>
+<td><ul class="labels"><li>sound: 1</li><li>minor_issues: 1</li><li>unsound: 0</li><li>insufficient_evidence: 1</li></ul></td>
+</tr>
+<tr>
+<td>Procedure compliance</td>
+<td><meter min="0" max="1" value="0.5">0.5000</meter> 0.5000</td>
+<td>25.0%</td>
+<td><ul class="labels"><li>followed: 1</li><li>minor_lapse: 1</li><li>breached: 1</li><li>insufficient_evidence: 0</li></ul></td>
+</tr>
+<tr>
+<td>Verbosity</td>
+<td><meter min="0" max="1" value="0.8333">0.8333</meter> 0.8333</td>
+<td>20.0%</td>
+<td><ul class="labels"><li>proportionate: 2</li><li>uneven: 1</li><li>disproportionate: 0</li><li>insufficient_evidence: 0</li></ul></td>
+</tr>
+</tbody>
+</table>
+<p class="muted">Each rubric is the mean label score of the sessions it could judge; insufficient_evidence is left out, and a rubric without a judged session drops out with the other weights rescaled.</p>
+
+<h2>Skills</h2>
+<p>1 of 3 sampled session(s) used an installed skill. Coverage is shown, not graded.</p>
+<p>Used: agentfeedback (1)</p>
+<p>Installed and not used in the sample: db-migrate, release-notes</p>
+
+<h2>Top findings</h2>
+<ol>
+<li>Database migrations are written without the db-migrate skill, and the column order is then fixed by trial and error. <span class="muted">(1 session(s))</span></li>
+<li>Generated files are edited by hand instead of regenerated. <span class="muted">(1 session(s))</span></li>
+<li>The linter runs after the commit, not before it. <span class="muted">(1 session(s))</span></li>
+</ol>
+
+<h2>Suggestions</h2>
+<section>
+<h3>AGENTS.md</h3>
+<p>Name the db-migrate skill in the database section so a migration starts from it. <span class="muted">(1 session(s))</span></p>
+<details><summary>proposed diff</summary><pre>--- a/AGENTS.md
+&#43;&#43;&#43; b/AGENTS.md
+@@ -12,3 &#43;12,4 @@
+ ## Database
+ 
+ Migrations live in db/migrations.
+&#43;Start every migration from the db-migrate skill: it states the column order.
+</pre></details>
+</section>
+<section>
+<h3>AGENTS.md</h3>
+<p>Move the linter step before the commit step in the checklist. <span class="muted">(1 session(s); filed as 0b6f3c1e-8d2a-4f7b-9e1c-2a3b4c5d6e7f)</span></p>
+
+</section>
+
+
+<p><button type="button" id="share" hidden>Save share card (PNG)</button></p>
+<footer>Made with AgentFeedback, agentfeedback.dev. This page was written on this machine and makes no network request.</footer>
+</main>
+<script type="application/json" id="card-data">{"grade":"D","score":"0.6792","rubrics":[{"title":"Efficiency","score":0.6667},{"title":"Code quality","score":0.75},{"title":"Procedure compliance","score":0.5},{"title":"Verbosity","score":0.8333}],"findings":["Database migrations are written without the db-migrate skill, and the column order is then fixed by trial and error.","Generated files are edited by hand instead of regenerated.","The linter runs after the commit, not before it."]}</script>
+<script>/* Draws the share card from the page's embedded data and saves it as a PNG.
+   Everything happens in the browser: no request leaves the page. */
+"use strict";
+(function () {
+  var W = 1200, H = 675;
+  var FONT = "system-ui, sans-serif";
+
+  function wrap(ctx, text, width, maxLines) {
+    var words = text.split(/\s+/), lines = [], line = "";
+    for (var i = 0; i < words.length; i++) {
+      var word = words[i];
+      // Cut on code points, never inside a surrogate pair.
+      var chars = Array.from(word);
+      while (ctx.measureText(word).width > width && chars.length > 1) {
+        var cut = chars.length - 1;
+        while (cut > 1 && ctx.measureText(chars.slice(0, cut).join("")).width > width) cut--;
+        if (line) { lines.push(line); line = ""; }
+        lines.push(chars.slice(0, cut).join(""));
+        chars = chars.slice(cut);
+        word = chars.join("");
+      }
+      var next = line ? line + " " + word : word;
+      if (line && ctx.measureText(next).width > width) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = next;
+      }
+    }
+    if (line) lines.push(line);
+    if (lines.length > maxLines) {
+      lines = lines.slice(0, maxLines);
+      var last = Array.from(lines[maxLines - 1]);
+      while (last.length && ctx.measureText(last.join("") + "…").width > width) last.pop();
+      lines[maxLines - 1] = last.join("") + "…";
+    }
+    return lines;
+  }
+
+  function draw(ctx, data) {
+    ctx.fillStyle = "#14171c";
+    ctx.fillRect(0, 0, W, H);
+    ctx.textBaseline = "top";
+
+    ctx.fillStyle = "#f5f6f8";
+    ctx.font = "600 34px " + FONT;
+    ctx.fillText("Agent checkup", 60, 50);
+    ctx.font = "700 150px " + FONT;
+    ctx.fillText(data.grade, 60, 100);
+    ctx.fillStyle = "#aab2bd";
+    ctx.font = "28px " + FONT;
+    ctx.fillText(data.score === null ? "no judged sessions" : "score " + data.score, 60, 270);
+
+    var y = 330;
+    for (var i = 0; i < data.rubrics.length; i++) {
+      var r = data.rubrics[i];
+      ctx.fillStyle = "#aab2bd";
+      ctx.font = "24px " + FONT;
+      ctx.fillText(r.title + (r.score === null ? "  n/a" : ""), 60, y);
+      ctx.fillStyle = "#2a2f37";
+      ctx.fillRect(60, y + 34, 420, 18);
+      if (r.score !== null) {
+        ctx.fillStyle = "#4caf7d";
+        ctx.fillRect(60, y + 34, 420 * r.score, 18);
+      }
+      y += 64;
+    }
+
+    ctx.fillStyle = "#f5f6f8";
+    ctx.font = "600 28px " + FONT;
+    ctx.fillText("Top findings", 560, 50);
+    ctx.font = "26px " + FONT;
+    var fy = 100;
+    for (var j = 0; j < data.findings.length; j++) {
+      var lines = wrap(ctx, (j + 1) + ". " + data.findings[j], 580, 4);
+      for (var k = 0; k < lines.length; k++) {
+        ctx.fillText(lines[k], 560, fy);
+        fy += 34;
+      }
+      fy += 22;
+    }
+
+    ctx.fillStyle = "#aab2bd";
+    ctx.font = "24px " + FONT;
+    ctx.textAlign = "right";
+    ctx.fillText("agentfeedback.dev", W - 60, H - 60);
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    var button = document.getElementById("share");
+    var source = document.getElementById("card-data");
+    if (!button || !source) return;
+    var data = JSON.parse(source.textContent);
+    button.hidden = false;
+    button.addEventListener("click", function () {
+      var canvas = document.createElement("canvas");
+      canvas.width = W;
+      canvas.height = H;
+      draw(canvas.getContext("2d"), data);
+      canvas.toBlob(function (blob) {
+        if (!blob) return;
+        var blobURL = URL.createObjectURL(blob);
+        var a = document.createElement("a");
+        a.href = blobURL;
+        a.download = "agentfeedback-checkup.png";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(function () { URL.revokeObjectURL(blobURL); }, 1000);
+      }, "image/png");
+    });
+  });
+})();
+</script>
+</body>
+</html>

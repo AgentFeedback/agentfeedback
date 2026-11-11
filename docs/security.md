@@ -88,7 +88,9 @@ starts it, or as a bounded upload child of one of those commands:
   shell history. Commands it runs: `git` (read-only, for the context),
   harness CLIs during `install` (such as `claude mcp add`),
   `agentfeedback version --json` of the binary each hook names (`doctor`),
-  and `agentfeedback sessions push --due --json` for the automatic sweep.
+  `agentfeedback sessions push --due --json` for the automatic sweep, and
+  the platform's opener (`xdg-open`, `open`, `rundll32`) on the written page
+  for `report render --open`.
 
 Server onboarding accepts exactly one of an existing key on stdin, email
 device login, agent self-enrolment, or an enrolment token on stdin. Only
@@ -147,13 +149,13 @@ under the home directory, on every operating system):
 | Location | Access | What |
 |---|---|---|
 | `${XDG_DATA_HOME:-~/.local/share}/agentfeedback/` | owned, `0700`, files `0600` | the database (reports in local mode; session watermarks and policy cache in both modes; remote `init`, `doctor` and `sessions status` create it for policy discovery; when switching to a server, existing reports leave the machine only through `migrate` or init's copy after a yes), `spool/`, `rejected/`, `inbox/` ([operate.md](operate.md#data-directory)) |
-| `${XDG_CACHE_HOME:-~/.cache}/agentfeedback/` | owned, `0700`, files `0600` | `log/client.jsonl`, the hooks' per-session counters (`sessions/`, deleted after 7 days) and last-run records (`hooks/`), `filed/` markers, `digest/` output; `push.lock`, `push.last-started` and `push.last-run.json` coordinate and summarize automatic session sweeps without transcript content |
+| `${XDG_CACHE_HOME:-~/.cache}/agentfeedback/` | owned, `0700`, files `0600` | `reports/` (`report render` pages), `log/client.jsonl`, the hooks' per-session counters (`sessions/`, deleted after 7 days) and last-run records (`hooks/`), `filed/` markers, `digest/` output; `push.lock`, `push.last-started` and `push.last-run.json` coordinate and summarize automatic session sweeps without transcript content |
 | `${XDG_CONFIG_HOME:-~/.config}/agentfeedback/` | owned, `0700`, files `0600` | `config.toml`, the install manifest `install.json`, and `server/` (`api-key`, `serve.env`) from `serve --init` |
 | the working tree's `.git` metadata and `.agentfeedback.toml` | read | the project context and the repository's narrowing rules |
 | harness session stores | read, never written | below |
 | harness skill, hook, MCP and global instruction files | written by `install` and `uninstall` only | below |
 | a repository's `AGENTS.md` or `CLAUDE.md` | written by `install --project` only | below |
-| paths named on the command line | as the command says | `backup <dest.db>`, `import <file>`, `digest --out`, `submit review <run_dir>` (reads it, writes its `.submitted` marker), `server install` (one service file) |
+| paths named on the command line | as the command says | `backup <dest.db>`, `import <file>`, `digest --out`, `submit review <run_dir>` (reads it, writes its `.submitted` marker), `report check`/`report render <report.json>` (read), `report render --out` (one page), `server install` (one service file) |
 
 Owner-only modes are not set or checked on Windows. `agentfeedback doctor`
 reports a data-directory path other users can reach, with the `chmod` to
@@ -172,6 +174,23 @@ metadata and what you file are stored in the data-directory database;
 transcripts are sent only by `sessions push` (manual or automatic), never spooled.
 A digest reaches the provider of the model that reads it
 ([sessions.md](sessions.md#provider-boundary)).
+
+**Checkup report.** `agentfeedback report check` and `report render` read
+one report file (or stdin) and upload and store nothing; `check` writes
+nothing. `render` writes one HTML page, `0600`, to `--out` or
+`${XDG_CACHE_HOME:-~/.cache}/agentfeedback/reports/`, and only for a valid
+report. The binary adds no path, session ref or project name of its own
+to the page; the findings, suggestion surfaces, changes and diffs appear as
+the agent wrote them, scrubbed of known secret formats (those of
+`submit --scrub`) and escaped, so they carry whatever the agent put in
+them. The share card carries only the grade, the rubric bars, the three
+findings and `agentfeedback.dev`. An existing file is replaced only when
+named by `--out`, never the input report; a default name that exists gets
+a `-2`, `-3`, ... suffix. The page's
+styles and script are inline and its Content-Security-Policy is
+`default-src 'none'` with only those two admitted by hash, so it makes no
+network request; the share card's PNG is drawn and saved in the browser
+([sessions.md](sessions.md#checkup-report)).
 
 **What `install` writes.** The files of the harness table in
 [operate.md](operate.md#wire-the-harnesses), and in CLI mode one section in each

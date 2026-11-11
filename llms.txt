@@ -21,3 +21,4 @@ Asked to install this? Read AGENT-INSTALL.md (client) or AGENT-INSTALL-STACK.md 
 - [schemas/envelope.v1.json](https://raw.githubusercontent.com/AgentFeedback/agentfeedback/main/schemas/envelope.v1.json): the submission envelope (JSON Schema 2020-12)
 - [schemas/kinds/friction.v1.json](https://raw.githubusercontent.com/AgentFeedback/agentfeedback/main/schemas/kinds/friction.v1.json): kind `friction`, what slowed an agent down
 - [schemas/kinds/review.v1.json](https://raw.githubusercontent.com/AgentFeedback/agentfeedback/main/schemas/kinds/review.v1.json): kind `review`, one completed multi-reviewer run
+- [schemas/checkup-report.v1.json](https://raw.githubusercontent.com/AgentFeedback/agentfeedback/main/schemas/checkup-report.v1.json): the checkup report `agentfeedback report check` and `report render` read; a local file, never sent

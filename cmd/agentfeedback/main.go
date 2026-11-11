@@ -6,7 +6,8 @@
 // digest), ingest and migrate are client commands; hook is what the
 // harnesses' hooks run; sessions lists, digests and marks the harness
 // session logs on this machine; mcp serves the MCP tools over stdio, on
-// the local database or relayed from a server; ui serves a read-only page over the
+// the local database or relayed from a server; report checks a checkup report
+// and renders it as one HTML file; ui serves a read-only page over the
 // queue on loopback; install and uninstall wire the
 // client into the coding-agent harnesses. A bare invocation prints help.
 package main
@@ -74,6 +75,7 @@ var commands = []command{
 	{"uninstall", uninstallSynopsis + ": remove exactly what install added, restoring untouched files from their backups", runUninstall},
 	{"sessions", sessionsSynopsis + ": list, digest and mark local coding-agent logs; push scrubbed sessions only to a configured server whose organisation enables capture (independent local digest and push watermarks)", runSessions},
 	{"mcp", mcpSynopsis + ": serve the MCP tools over stdio until stdin closes: over the local database, or relayed from the configured server with this machine's session tools; stdout carries only the protocol", runMcp},
+	{"report", reportSynopsis + ": check a checkup report an agent wrote and print the grade the binary computes (check), or write it as one self-contained HTML page with a share card drawn in the browser (render); nothing is sent or stored", runReport},
 	{"ui", uiSynopsis + ": serve a read-only web page over the queue on loopback until Ctrl-C", runUI},
 	{"help", "print this help", nil},
 }
