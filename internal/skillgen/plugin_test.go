@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"image"
+	_ "image/png"
 	"os"
 	"slices"
 	"strings"
@@ -38,9 +40,15 @@ func TestAgentPlugin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"plugin.json", ".claude-plugin/plugin.json", "skills/agentfeedback/SKILL.md", "skills/agentfeedback/scripts/install.sh"}
+	want := []string{"plugin.json", ".claude-plugin/plugin.json", ".claude-plugin/icon.png", "skills/agentfeedback/SKILL.md", "skills/agentfeedback/scripts/install.sh"}
 	if got := paths(files); !slices.Equal(got, want) {
 		t.Fatalf("paths %v, want %v", got, want)
+	}
+	// The listing icon must be what Claude Code's validator accepts: a
+	// square PNG of 512 to 2048 px under 2 MB.
+	icon := file(t, files, ".claude-plugin/icon.png").Data
+	if cfg, format, err := image.DecodeConfig(bytes.NewReader(icon)); err != nil || format != "png" || cfg.Width != cfg.Height || cfg.Width < 512 || cfg.Width > 2048 || len(icon) >= 2<<20 {
+		t.Errorf("icon.png: %dx%d %s, %d bytes, %v", cfg.Width, cfg.Height, format, len(icon), err)
 	}
 	if got := file(t, files, "skills/agentfeedback/SKILL.md").Data; string(got) != render(t, FormSkillMD, "") {
 		t.Error("SKILL.md differs from the skill-md form")
@@ -131,7 +139,7 @@ func TestMarketplace(t *testing.T) {
 	}
 	want := []string{
 		".claude-plugin/marketplace.json", ".agents/plugins/marketplace.json",
-		"plugins/agentfeedback/plugin.json", "plugins/agentfeedback/.claude-plugin/plugin.json",
+		"plugins/agentfeedback/plugin.json", "plugins/agentfeedback/.claude-plugin/plugin.json", "plugins/agentfeedback/.claude-plugin/icon.png",
 		"plugins/agentfeedback/skills/agentfeedback/SKILL.md", "plugins/agentfeedback/skills/agentfeedback/scripts/install.sh",
 	}
 	if got := paths(files); !slices.Equal(got, want) {

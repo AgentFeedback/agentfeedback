@@ -134,10 +134,19 @@ func AgentPlugin(server string) ([]File, error) {
 		return nil, err
 	}
 
+	// Claude Code's plugin validator looks for the listing icon at
+	// .claude-plugin/icon.png (a square PNG, 512 to 2048 px); the portal
+	// keeps the first one submitted, so replace source/icon.png before a
+	// plugin is first submitted, not after.
+	icon, err := fs.ReadFile(sourceFS, "source/icon.png")
+	if err != nil {
+		return nil, err
+	}
 	files := []File{{Path: "plugin.json", Data: encodeJSON(manifest)}}
 	manifest.Schema = ""
 	files = append(files,
 		File{Path: ".claude-plugin/plugin.json", Data: encodeJSON(manifest)},
+		File{Path: ".claude-plugin/icon.png", Data: icon},
 		File{Path: "skills/" + m.Name + "/SKILL.md", Data: skill},
 		File{Path: "skills/" + m.Name + "/scripts/install.sh", Data: agentfeedback.InstallScript, Mode: 0o755},
 	)
