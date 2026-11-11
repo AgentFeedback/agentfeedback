@@ -160,6 +160,7 @@ ci:
     python3 tests/playbooks/test_playbooks.py
     python3 scripts/playbooks.py check
     shellcheck -x scripts/*.sh tests/live/*.sh
+    python3 -m unittest discover -s tests/packaging
     just docs-check
     if [ "$(snapshot)" != "$before" ]; then
         echo "just ci: a gate changed the tree" >&2

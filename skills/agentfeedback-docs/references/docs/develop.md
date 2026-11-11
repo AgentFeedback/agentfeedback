@@ -67,7 +67,7 @@ and pushes the image.
 ## Commands
 
 ```bash
-just ci             # the merge gate, on the host: build, lint, unit tests, renders, docs; there is no hosted CI
+just ci             # local merge gate: build, lint, unit tests, renders, docs; hosted Actions only publishes packages and smoke-checks them
 just ci-full        # the release gate: ci-host inside the toolchain container, live-harness, then nix-check; just release runs it
 just box <recipe|command> [args]  # run a recipe or a command inside the toolchain container: just box test, just box go test ./pkg/client; just box -- <command> for a command named like a recipe
 just live-harness   # the real Claude Code CLI against this tree's binary in a network-less container (tests/live/claude-code.sh)
@@ -284,8 +284,9 @@ check does not verify Darwin execution.
 host, stopping at the first failure. `just ci-full` is the release gate: all
 of `just ci`, then items 12 to 16 (the `ci-host` recipe, items 1 to 15, inside
 the toolchain container, then item 16 in a network-less container). Run a
-single step with `just box <recipe|command>`. There is no hosted CI: `just
-ci` green on the tree that is merged is the merge gate, `just ci-full` green
+single step with `just box <recipe|command>`. The hosted package-publishing
+workflow and its registry smoke checks are the only exception to local CI:
+`just ci` green on the tree that is merged is the merge gate, `just ci-full` green
 on the tagged commit is the release gate, and the image is built and
 published by the release step ([releases.md](releases.md)).
 
@@ -315,6 +316,7 @@ published by the release step ([releases.md](releases.md)).
    tests/playbooks/test_playbooks.py` and `python3 scripts/playbooks.py
    check`.
 9. `shellcheck -x scripts/*.sh tests/live/*.sh`.
+   Packaging behavior: `python3 -m unittest discover -s tests/packaging`.
 10. `just docs-check`: every relative link and `#anchor` in every Markdown
     file resolves, rendered copies included, and the `README.md` and
     `AGENTS.md` route tables name every document

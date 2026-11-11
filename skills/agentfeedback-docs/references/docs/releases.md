@@ -26,8 +26,8 @@ emulation: `docker run --privileged --rm tonistiigi/binfmt --install all`;
 `docker buildx ls` lists the platforms) and allowed to run a privileged
 container (the playbook gate runs systemd in one), `curl`, and an
 authenticated GitHub CLI (`gh`) with write access to the repository and its
-tags. There is no hosted CI: every
-check runs on the releasing machine.
+tags. Merge and release gates run locally. The sole hosted workflow is
+package publication and its registry smoke checks after a release is published.
 
 The release preflight rejects older GoReleaser versions, prereleases and
 unknown major versions. Supported versions still have to pass `goreleaser
@@ -71,6 +71,45 @@ playbooks rely on the names:
 `agentfeedback version` prints. The exact build line is in
 [operate.md](operate.md#build-from-source); `.goreleaser.yaml` holds the same
 flags.
+
+### npm publishing
+
+`.github/workflows/publish.yml` runs on `release: published`, after the
+maintainer's local release step. It downloads that release's six archives,
+verifies their `SHA256SUMS` entries and packages the binaries without rebuilding
+Go. It is not a merge or release gate. The `npm` job publishes with OIDC and
+provenance, with no stored registry token.
+
+`npm install -g @agentfeedback/cli` installs `agentfeedback`;
+`npx @agentfeedback/cli@X.Y.Z version` runs a pinned version. The launcher
+depends on exact-version optional packages `@agentfeedback/cli-<os>-<arch>`:
+`os` is `linux`, `darwin` or `win32`; `arch` is `x64` or `arm64`.
+Each platform package embeds its binary. Installation never downloads a
+binary through a lifecycle script. Unsupported platforms fail with the
+supported platform list; missing optional dependencies require reinstalling
+with optional dependencies enabled.
+
+Stable versions publish under `latest`; `X.Y.Z-rc.N` publishes under `next`
+without changing `latest`. The `npm-smoke` job runs the exact published
+version through npx on Ubuntu, macOS and Windows and checks its version output.
+Link that workflow run when verifying a newly enabled channel.
+
+Before the first release, configure each of the seven packages on npm:
+Settings → Trusted Publisher → GitHub Actions, owner `AgentFeedback`,
+repository `agentfeedback`, workflow filename `publish.yml`, environment
+blank, and allow direct `npm publish`. Require two-factor authentication
+and disallow traditional tokens. New publisher configurations must complete
+their first publication within two days; recreate expired configurations.
+New platform packages require a maintainer-approved first publication before
+their package settings are available. Never add an npm token to repository
+secrets. See [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/).
+
+If publication fails partway through, rerun the failed publishing job. It
+compares an already-published version's tarball checksum with the generated
+package and skips only identical versions, stopping on a mismatch. Published
+versions are immutable; a package defect requires a new release. Rerun a
+failed smoke job after checking registry availability; smoke checks do not
+roll back an existing release or move dist-tags.
 
 ### Cutting a release
 
