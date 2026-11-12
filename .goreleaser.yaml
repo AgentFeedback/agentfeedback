@@ -60,6 +60,24 @@ checksum:
   extra_files:
     - glob: ./skills/agentfeedback/scripts/install.sh
 
+# The stable tap carries the same archives as GitHub Releases, not a rebuild.
+# Snapshots never publish; release candidates must leave the stable cask alone.
+homebrew_casks:
+  - name: agentfeedback
+    ids: [agentfeedback]
+    binaries: [agentfeedback]
+    homepage: https://github.com/AgentFeedback/agentfeedback
+    description: Local-first feedback inbox for AI coding agents
+    skip_upload: auto
+    repository:
+      owner: AgentFeedback
+      name: homebrew-tap
+    caveats: |
+      Run agentfeedback init to configure your coding-agent harnesses.
+      This binary is not signed or notarized by Apple. macOS security checks
+      remain enabled; this cask does not remove quarantine attributes.
+      Uninstalling the cask preserves your configuration and feedback data.
+
 # The container image: the linux binaries above copied into the runtime stage
 # of the repository's Dockerfile (BINARY_FROM=prebuilt). dockers_v2 builds and
 # pushes in the publish phase only, before the GitHub release is created; a

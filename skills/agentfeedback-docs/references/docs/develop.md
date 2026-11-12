@@ -316,7 +316,8 @@ published by the release step ([releases.md](releases.md)).
    tests/playbooks/test_playbooks.py` and `python3 scripts/playbooks.py
    check`.
 9. `shellcheck -x scripts/*.sh tests/live/*.sh`.
-   Packaging behavior: `python3 -m unittest discover -s tests/packaging`.
+   Packaging behavior: `python3 -m unittest discover -s tests/packaging`,
+   including Homebrew release URL/checksum and platform-selector validation.
 10. `just docs-check`: every relative link and `#anchor` in every Markdown
     file resolves, rendered copies included, and the `README.md` and
     `AGENTS.md` route tables name every document

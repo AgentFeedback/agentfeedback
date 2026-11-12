@@ -150,6 +150,10 @@ fi
 # can write before anything becomes public.
 [ "$(gh api "repos/$repo" --jq .permissions.push)" = true ] ||
     die "gh is authenticated as $(gh api user --jq .login), which cannot push to $repo"
+if [ "$prerelease" = false ]; then
+    [ "$(gh api repos/AgentFeedback/homebrew-tap --jq .permissions.push)" = true ] ||
+        die "gh cannot push to AgentFeedback/homebrew-tap; stable releases publish the Homebrew cask"
+fi
 
 # The pinned toolchain is go.mod's toolchain line, whatever go is on PATH.
 # Name the tag explicitly so GoReleaser never selects another tag on HEAD.
@@ -167,6 +171,8 @@ if [ "$check" = true ]; then
     smoke_version=$version-snapshot
     goreleaser release --snapshot --clean
     check_sums dist/release "$version-snapshot"
+    python3 scripts/check-homebrew.py --cask dist/release/homebrew/Casks/agentfeedback.rb \
+        --sums dist/release/SHA256SUMS --tag "$tag" --version "$version-snapshot"
     image_smoke "$version-snapshot"
     remove_smoke
     echo "release: ready to publish $tag at $sha"
@@ -195,6 +201,11 @@ git tag -a "$tag" "$sha" -m "$tag: $title"
 tag_created=true
 goreleaser release --clean --skip=publish --release-notes "$notes"
 check_sums dist/release "$version"
+python3 scripts/check-homebrew.py --cask dist/release/homebrew/Casks/agentfeedback.rb \
+    --sums dist/release/SHA256SUMS --tag "$tag"
+if [ "$prerelease" = false ]; then
+    cp dist/release/homebrew/Casks/agentfeedback.rb "$work/agentfeedback.local.rb"
+fi
 cp dist/release/SHA256SUMS "$work/SHA256SUMS.local"
 # Both install playbooks, run in a clean container against the local build:
 # a playbook that fails on these assets stops the release before the tag is
@@ -207,6 +218,16 @@ smoke_version=$version-snapshot
 goreleaser release --snapshot --clean
 image_smoke "$version-snapshot"
 remove_smoke
+
+# Re-read the live tap after the long build gates, before publishing anything.
+# Release runs must remain serialized: the shared dist tree is not concurrent-safe.
+if [ "$prerelease" = false ]; then
+    gh api repos/AgentFeedback/homebrew-tap/contents/Casks/agentfeedback.rb \
+        -H 'Accept: application/vnd.github.raw+json' > "$work/agentfeedback.previous.rb" ||
+        die "cannot read the stable Homebrew cask before publishing"
+    python3 scripts/check-homebrew.py --cask "$work/agentfeedback.local.rb" \
+        --sums "$work/SHA256SUMS.local" --tag "$tag" --previous-cask "$work/agentfeedback.previous.rb"
+fi
 
 git push --force-with-lease="refs/tags/$tag:" origin "refs/tags/$tag"
 tag_pushed=true
@@ -232,6 +253,15 @@ cmp -s "$work/SHA256SUMS.local" "$work/download/SHA256SUMS" ||
     die "the published SHA256SUMS differs from the local build's"
 cmp -s "$install_sh" "$work/download/install.sh" || die "the published install.sh differs from $install_sh"
 check_sums "$work/download" "$version"
+if [ "$prerelease" = false ]; then
+    gh api repos/AgentFeedback/homebrew-tap/contents/Casks/agentfeedback.rb \
+        -H 'Accept: application/vnd.github.raw+json' > "$work/agentfeedback.rb" ||
+        die "cannot read the published Homebrew cask; follow docs/releases.md#homebrew-publishing"
+    cmp -s dist/release/homebrew/Casks/agentfeedback.rb "$work/agentfeedback.rb" ||
+        die "published Homebrew cask differs from the generated cask"
+    python3 scripts/check-homebrew.py --cask "$work/agentfeedback.rb" \
+        --sums "$work/download/SHA256SUMS" --tag "$tag"
+fi
 
 # Verify the image as a puller sees it: GoReleaser pushed it before creating
 # the release, tagged with the version and the commit, plus latest for a
