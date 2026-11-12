@@ -98,6 +98,8 @@ def generate_npm(tag, archives, output):
         "version": version,
         "license": "MIT",
         "repository": {"type": "git", "url": "https://github.com/AgentFeedback/agentfeedback.git"},
+        "homepage": "https://agentfeedback.dev",
+        "bugs": {"url": "https://github.com/AgentFeedback/agentfeedback/issues"},
     }
 
     def package(directory, manifest):
@@ -113,19 +115,25 @@ def generate_npm(tag, archives, output):
         name = f"@agentfeedback/{suffix}"
         dependencies[name] = version
         binary = "agentfeedback.exe" if os_name == "windows" else "agentfeedback"
-        destination = package(suffix, {"name": name, "os": [npm_os], "cpu": [npm_arch], "files": [binary]})
+        destination = package(suffix, {
+            "name": name,
+            "description": f"Native AgentFeedback binary for {npm_os} {npm_arch}. Install @agentfeedback/cli for the command-line interface.",
+            "os": [npm_os], "cpu": [npm_arch], "files": [binary],
+        })
         target = destination / binary
         target.write_bytes(binaries[(os_name, arch)])
         target.chmod(0o755)
     destination = package("cli", {
         "name": "@agentfeedback/cli",
+        "description": "An inbox for AI coding-agent feedback. Capture friction, triage reports and fix the causes—locally, self-hosted or with AgentFeedback Cloud.",
+        "keywords": ["agentfeedback", "ai", "coding-agents", "cli", "developer-tools", "feedback", "local-first", "mcp"],
         "bin": {"agentfeedback": "launcher.cjs"},
         "os": ["linux", "darwin", "win32"],
         "cpu": ["x64", "arm64"],
         "optionalDependencies": dependencies,
         "files": ["launcher.cjs", "check-platform.cjs"],
     })
-    for name in ("launcher.cjs", "check-platform.cjs"):
+    for name in ("launcher.cjs", "check-platform.cjs", "README.md"):
         (destination / name).write_bytes((templates / name).read_bytes())
     (destination / "launcher.cjs").chmod(0o755)
 

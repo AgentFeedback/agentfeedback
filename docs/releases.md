@@ -89,6 +89,12 @@ binary through a lifecycle script. Unsupported platforms fail with the
 supported platform list; missing optional dependencies require reinstalling
 with optional dependencies enabled.
 
+The npm listing's README lives in `scripts/npm/README.md`; the package generator
+copies it into `@agentfeedback/cli`. Its description, discovery keywords, homepage
+and issue link are defined in `scripts/package-release.py`. Keep links absolute
+so they work on npm as well as GitHub. Listing changes ship with a new release;
+do not republish an existing version to change its presentation.
+
 Stable versions publish under `latest`; `X.Y.Z-rc.N` publishes under `next`
 without changing `latest`. The `npm-smoke` job runs the exact published
 version through npx on Ubuntu, macOS and Windows and checks its version output.
@@ -113,6 +119,11 @@ content changes stop publication. Published
 versions are immutable; a package defect requires a new release. Rerun a
 failed smoke job after checking registry availability; smoke checks do not
 roll back an existing release or move dist-tags.
+
+The registry can accept a publish and still report that the package is being
+processed. A successful publish job is not proof of immediate availability:
+verify the new versions are visible before rerunning smoke jobs that fail with
+`ETARGET` or `E404`. Do not republish just to work around that processing delay.
 
 ### PyPI publishing
 
@@ -311,6 +322,22 @@ that version. Rewrite relative document links as absolute URLs under
 version; corrections to release prose need no new tag. For prose-only repairs,
 use `gh release edit <tag> --repo AgentFeedback/agentfeedback --title '<tag> — <title>' --notes-file /path/to/notes.md`;
 leave tags, assets, pre-release status and the latest release unchanged.
+
+## v4.6.2 — npm package presentation
+
+Compatible with 4.x clients and servers; the HTTP API stays `1.0`.
+No server configuration or database migration is required.
+
+- **npm landing page:** a dedicated README explains local setup, supported
+  platforms and installation, with direct links to AgentFeedback Cloud,
+  self-hosting, documentation and support.
+- **Package discovery:** descriptive summaries, search keywords, the
+  `agentfeedback.dev` homepage and issue links make the CLI easier to find
+  and identify. Platform packages point users to `@agentfeedback/cli`.
+- **Release guidance:** distinguish accepted npm publication from registry
+  availability before retrying smoke checks.
+- **Release tooling:** built with **GoReleaser 2.20.1**; use that exact version to
+  reproduce the release archives.
 
 ## v4.6.1 — npm publication recovery
 

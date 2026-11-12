@@ -83,7 +83,7 @@ AgentFeedback. A package of that name anywhere else, including the unrelated
 
 | Channel | Name | Status |
 |---|---|---|
-| GitHub Releases | [`v4.6.1`](https://github.com/AgentFeedback/agentfeedback/releases/tag/v4.6.1), assets in [`docs/releases.md`](docs/releases.md#assets) | from release 4.0.0 |
+| GitHub Releases | [`v4.6.2`](https://github.com/AgentFeedback/agentfeedback/releases/tag/v4.6.2), assets in [`docs/releases.md`](docs/releases.md#assets) | from release 4.0.0 |
 | Container image | `ghcr.io/agentfeedback/agentfeedback`, see [`docs/operate.md`](docs/operate.md#deploy-to-a-host) | from release 4.0.0 |
 | Go module | `github.com/agentfeedback/agentfeedback/v4`, built with `go install` ([`docs/operate.md`](docs/operate.md#build-from-source)) | from release 4.0.0 |
 | Homebrew | tap `agentfeedback/tap` (repository `AgentFeedback/homebrew-tap`) | planned |
