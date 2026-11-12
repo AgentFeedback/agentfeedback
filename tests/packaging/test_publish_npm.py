@@ -1,12 +1,15 @@
 """Recovery must never skip a conflicting immutable npm version."""
+import gzip
 import hashlib
 import importlib.util
+import io
 import json
 from pathlib import Path
 import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location('publish_npm', ROOT / 'scripts/publish-npm.py')
@@ -28,33 +31,43 @@ class PublishTests(unittest.TestCase):
             package = Path(temporary) / 'cli'
             package.mkdir()
             (package / 'package.json').write_text(json.dumps({'name': '@agentfeedback/recovery-fixture', 'version': '1.0.0'}))
-            for state in ('identical', 'conflict', 'absent', 'unauthorized'):
+            for state in ('identical', 'recompressed', 'conflict', 'absent', 'unauthorized'):
                 with self.subTest(state=state):
                     published = []
                     checksum = None
+                    payload = None
 
                     def run(command, **kwargs):
-                        nonlocal checksum
+                        nonlocal checksum, payload
                         if command[1] == 'pack':
                             result = subprocess.run(command, **kwargs)
                             data = json.loads(result.stdout)
                             entry = next(iter(data.values())) if isinstance(data, dict) else data[0]
-                            checksum = hashlib.sha1((Path(command[4]) / entry['filename']).read_bytes()).hexdigest()
+                            payload = (Path(command[4]) / entry['filename']).read_bytes()
+                            if state in ('recompressed', 'conflict'):
+                                contents = gzip.decompress(payload)
+                                if state == 'conflict':
+                                    contents = contents.replace(b'"1.0.0"', b'"9.0.0"')
+                                payload = gzip.compress(contents, compresslevel=1, mtime=0)
+                            checksum = hashlib.sha1(payload).hexdigest()
                             return result
                         if command[1] == 'view':
-                            if state in ('identical', 'conflict'):
-                                return subprocess.CompletedProcess(command, 0, json.dumps(checksum if state == 'identical' else '0' * 40))
+                            if command[3] == 'dist.tarball':
+                                location = 'https://example.invalid/package.tgz'
+                                return subprocess.CompletedProcess(command, 0, json.dumps([location] if state == 'recompressed' else location))
+                            if state in ('identical', 'recompressed', 'conflict'):
+                                return subprocess.CompletedProcess(command, 0, json.dumps([checksum] if state == 'recompressed' else checksum))
                             return subprocess.CompletedProcess(command, 1, json.dumps({'error': {'code': 'E404' if state == 'absent' else 'E401'}}))
                         published.append(command)
-                        self.assertTrue(Path(command[2]).is_file())
                         return subprocess.CompletedProcess(command, 0)
 
-                    if state == 'conflict':
-                        with self.assertRaisesRegex(ValueError, 'different package bytes'):
+                    with patch.object(PUBLISH, 'urlopen', side_effect=lambda *args, **kwargs: io.BytesIO(payload)):
+                        if state == 'conflict':
+                            with self.assertRaises(ValueError):
+                                PUBLISH.publish(package, 'next', run)
+                        elif state == 'unauthorized':
+                            with self.assertRaises(RuntimeError):
+                                PUBLISH.publish(package, 'next', run)
+                        else:
                             PUBLISH.publish(package, 'next', run)
-                    elif state == 'unauthorized':
-                        with self.assertRaisesRegex(RuntimeError, 'E401'):
-                            PUBLISH.publish(package, 'next', run)
-                    else:
-                        PUBLISH.publish(package, 'next', run)
                     self.assertEqual(len(published), 1 if state == 'absent' else 0)

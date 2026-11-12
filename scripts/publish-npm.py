@@ -1,18 +1,27 @@
 #!/usr/bin/env python3
 """Publish generated npm packages, verifying immutable versions on rerun."""
 import argparse
+import gzip
 import hashlib
 import json
 from pathlib import Path
 import re
 import subprocess
 import tempfile
+from urllib.request import urlopen
 
 
 def dist_tag(tag):
     if not re.fullmatch(r'v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.(0|[1-9][0-9]*))?', tag):
         raise ValueError('expected canonical release tag')
     return 'next' if '-rc.' in tag else 'latest'
+
+
+def metadata_value(output):
+    value = json.loads(output)
+    if isinstance(value, list):
+        value, = value
+    return value
 
 
 def publish(package, tag, run=subprocess.run):
@@ -26,8 +35,17 @@ def publish(package, tag, run=subprocess.run):
         spec = f"{manifest['name']}@{manifest['version']}"
         existing = run(['npm', 'view', spec, 'dist.shasum', '--json'], capture_output=True, text=True)
         if existing.returncode == 0:
-            if json.loads(existing.stdout) != checksum:
-                raise ValueError(f'{spec} already exists with different package bytes; never overwrite a published version')
+            published_checksum = metadata_value(existing.stdout)
+            if published_checksum != checksum:
+                location = run(['npm', 'view', spec, 'dist.tarball', '--json'], capture_output=True, text=True, check=True)
+                with urlopen(metadata_value(location.stdout), timeout=30) as response:
+                    published = response.read()
+                if hashlib.sha1(published).hexdigest() != published_checksum:
+                    raise ValueError(f'{spec}: downloaded tarball does not match registry checksum')
+                # Node builds use different zlib implementations; gzip bytes can differ
+                # even when every tar header and packaged byte is identical.
+                if gzip.decompress(published) != gzip.decompress(tarball.read_bytes()):
+                    raise ValueError(f'{spec} already exists with different package contents; never overwrite a published version')
             print(f'{spec}: identical published package, skipping')
             return
         error = json.loads(existing.stdout).get('error', {})

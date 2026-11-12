@@ -106,7 +106,10 @@ secrets. See [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/
 
 If publication fails partway through, rerun the failed publishing job. It
 compares an already-published version's tarball checksum with the generated
-package and skips only identical versions, stopping on a mismatch. Published
+package. If gzip bytes differ, it verifies the downloaded registry checksum and
+compares the complete decompressed tar archives: Node builds can use different
+zlib implementations. Only identical archive contents are skipped; actual
+content changes stop publication. Published
 versions are immutable; a package defect requires a new release. Rerun a
 failed smoke job after checking registry availability; smoke checks do not
 roll back an existing release or move dist-tags.
@@ -308,6 +311,20 @@ that version. Rewrite relative document links as absolute URLs under
 version; corrections to release prose need no new tag. For prose-only repairs,
 use `gh release edit <tag> --repo AgentFeedback/agentfeedback --title '<tag> — <title>' --notes-file /path/to/notes.md`;
 leave tags, assets, pre-release status and the latest release unchanged.
+
+## v4.6.1 — npm publication recovery
+
+Compatible with 4.x clients and servers; the HTTP API stays `1.0`.
+No server configuration or database migration is required.
+
+- **npm recovery:** accept identical decompressed package archives when Node's
+  zlib implementations produce different gzip bytes. Downloaded tarballs still
+  have to match the registry checksum; different archive contents are rejected
+  and published versions are never overwritten.
+- **npm compatibility:** handle scalar and singleton-array metadata responses
+  when checking published packages across npm versions.
+- **Release tooling:** built with **GoReleaser 2.20.1**; use that exact version to
+  reproduce the release archives.
 
 ## v4.6.0 — npm and PyPI binary distribution
 
