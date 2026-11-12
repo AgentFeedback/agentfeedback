@@ -9,7 +9,7 @@ ARG BINARY_FROM=source
 
 # Build on the BuildKit builder platform and cross-compile the static binary for
 # the target image platform. CGO stays off: the SQLite driver is pure Go.
-FROM --platform=$BUILDPLATFORM golang:1.27.3-bookworm AS source
+FROM --platform=$BUILDPLATFORM golang:1.27.4-bookworm AS source
 
 ARG TARGETOS
 ARG TARGETARCH

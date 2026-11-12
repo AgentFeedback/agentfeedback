@@ -2,7 +2,7 @@ module github.com/agentfeedback/agentfeedback/v4
 
 go 1.27.0
 
-toolchain go1.27.3
+toolchain go1.27.4
 
 require (
 	github.com/getkin/kin-openapi v0.152.0
