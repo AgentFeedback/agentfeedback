@@ -27,6 +27,9 @@ class HomebrewTests(unittest.TestCase):
 
     def test_release_and_snapshot_mappings(self):
         CHECK.check(self.cask, self.sums, 'v1.2.3', '1.2.3')
+        # GoReleaser's release (non-snapshot) build writes the tag this way.
+        CHECK.check(self.cask.replace('/download/v1.2.3/', '/download/v#{version}/'),
+                    self.sums, 'v1.2.3', '1.2.3')
         CHECK.check(self.cask.replace('version "1.2.3"', 'version "1.2.3-snapshot"'),
                     self.sums.replace('_1.2.3_', '_1.2.3-snapshot_'),
                     'v1.2.3', '1.2.3-snapshot')

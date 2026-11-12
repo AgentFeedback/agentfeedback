@@ -44,8 +44,11 @@ def check(cask, sums, tag, version):
             goarch = 'arm64' if arch == 'arm' else 'amd64'
             suffix = f'_{goos}_{goarch}.tar.gz'
             name = f'agentfeedback_{version}{suffix}'
-            expected_url = f'{REPOSITORY}/releases/download/{tag}/agentfeedback_#{{version}}{suffix}'
-            if url != expected_url or checksums.get(name) != digest:
+            # A release build templates the tag as v#{version}; a snapshot,
+            # whose version is not the tag's, keeps the literal tag.
+            tags = {tag} | ({'v#{version}'} if tag == f'v{version}' else set())
+            expected = {f'{REPOSITORY}/releases/download/{t}/agentfeedback_#{{version}}{suffix}' for t in tags}
+            if url not in expected or checksums.get(name) != digest:
                 raise ValueError(f'{os}/{arch}: URL or checksum differs from {name}')
     if re.findall(r'^  binary "([^"]+)"$', cask, re.M) != ['agentfeedback']:
         raise ValueError('expected agentfeedback binary installation')
