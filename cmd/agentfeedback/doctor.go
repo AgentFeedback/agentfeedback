@@ -70,7 +70,7 @@ type harnessBinary struct {
 	cli         bool
 }
 
-// pathCheck is the agentfeedback on PATH, symlinks resolved.
+// pathCheck is the agentfeedback on PATH, as found (a symlink is kept).
 type pathCheck struct {
 	Binary  string `json:"binary,omitempty"`
 	Version string `json:"version,omitempty"`

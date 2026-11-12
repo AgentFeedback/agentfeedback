@@ -18,6 +18,9 @@ import (
 // execute it with the command line as its arguments.
 const runMainEnv = "AGENTFEEDBACK_TEST_RUN_MAIN"
 
+// realPathBinary is pathBinary before TestMain stubs it.
+var realPathBinary = pathBinary
+
 // TestMain keeps the package's tests off the host: no test finds an
 // agentfeedback on PATH unless it stubs pathBinary itself.
 func TestMain(m *testing.M) {
@@ -255,5 +258,36 @@ func TestUnknownConfigKeys_Detect(t *testing.T) {
 	got := unknownConfigKeys([]byte("[detect]\nnudge = false\nsame_tool = 4\nsame_tools = 4\n"))
 	if !slices.Equal(got, []string{"detect.same_tools"}) {
 		t.Fatalf("%q", got)
+	}
+}
+
+// doctor and the install warning name the PATH entry as found, so a Homebrew
+// link reads as the same path install wires, and a link and its target count
+// as one binary in either direction.
+func TestPathBinary_KeepsLink(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "Caskroom", "4.6.2", "agentfeedback")
+	writeFile(t, target, "", 0o755)
+	link := filepath.Join(root, "bin", "agentfeedback")
+	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", filepath.Dir(link))
+	if got, ok := realPathBinary(); !ok || got != link {
+		t.Fatalf("pathBinary() = %q, %v; want %q", got, ok, link)
+	}
+	resolved, _ := filepath.EvalSymlinks(target)
+	for _, tc := range [][2]string{{link, resolved}, {resolved, link}} {
+		stubBinaries(t, nil, tc[0], true)
+		if w := pathWarnings(tc[1]); len(w) != 0 {
+			t.Errorf("PATH %s, wired %s: %v", tc[0], tc[1], w)
+		}
+	}
+	stubBinaries(t, nil, link, true)
+	if w := pathWarnings(filepath.Join(root, "other")); len(w) != 1 {
+		t.Errorf("a different binary is not reported: %v", w)
 	}
 }

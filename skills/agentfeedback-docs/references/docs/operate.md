@@ -835,7 +835,11 @@ are not wired on Windows; undo the steps by hand.
   and otherwise exits 0. `agentfeedback flush --hook`, which older installs
   wired, still works in remote mode; in local mode it does nothing, and the
   next command delivers the spool and the inbox. Hook commands hold the binary's
-  resolved absolute path, which may contain only letters, digits and
+  absolute path: the symlink it was started as, or an `agentfeedback` in any
+  `PATH` directory, when that symlink points at the running binary (a package manager's
+  stable link, such as Homebrew's `<prefix>/bin/agentfeedback`, which survives
+  `brew upgrade` where the versioned target it points at does not), otherwise
+  the resolved path. The path may contain only letters, digits and
   `/ . _ - + @ , =`, single-quoted when it holds anything outside ASCII
   letters, digits and `/ . _ - +`; rerun install after moving the binary.
 - **Nudge settings.** The `[detect]` table of `config.toml`: `nudge`
@@ -875,7 +879,7 @@ are not wired on Windows; undo the steps by hand.
 - **`--mcp`.** The MCP entry replaces the skill and the hook for that
   harness: the server's MCP instructions teach the agent, and nothing is
   spooled without the CLI. The entry is a stdio entry that runs the binary's
-  resolved absolute path: with the argument `mcp` for local
+  absolute path, chosen as for hook commands: with the argument `mcp` for local
   (`agentfeedback mcp`, the tools on the local database), and with
   `mcp --server <URL>` for a server, which relays the tools to that server
   and never falls back to the local database. The key comes from

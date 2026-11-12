@@ -46,18 +46,34 @@ var binaryVersion = func(path string) string {
 	return v.Version
 }
 
-// pathBinary is the agentfeedback a shell finds on PATH, symlinks resolved;
-// ok is false when there is none. A variable so tests can stand in for it.
+// pathBinary is the agentfeedback a shell finds on PATH, as found: a symlink
+// is kept, so doctor names the same path wiredExecutable wires (Homebrew's
+// <prefix>/bin link, not the Caskroom target). ok is false when there is
+// none or it does not resolve. A variable so tests can stand in for it.
 var pathBinary = func() (string, bool) {
 	p, err := exec.LookPath("agentfeedback")
 	if err != nil {
 		return "", false
 	}
-	if p, err = filepath.EvalSymlinks(p); err != nil {
+	if _, err = filepath.EvalSymlinks(p); err != nil {
 		return "", false
 	}
 
-	return p, true
+	return filepath.Clean(p), true
+}
+
+// sameBinary reports whether paths a and b lead to the same file once
+// symlinks are resolved; an unresolvable path is compared as written.
+func sameBinary(a, b string) bool {
+	resolve := func(p string) string {
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			return r
+		}
+
+		return filepath.Clean(p)
+	}
+
+	return resolve(a) == resolve(b)
 }
 
 // pathWarnings compares the agentfeedback on PATH with bin, the binary the
@@ -68,7 +84,9 @@ func pathWarnings(bin string) []string {
 	if !ok {
 		return []string{"no agentfeedback on PATH; the skill runs agentfeedback from PATH, so add " + filepath.Dir(bin) + " to PATH"}
 	}
-	if filepath.Clean(p) == filepath.Clean(bin) {
+	// Either may be a symlink to the other's target (wiredExecutable keeps
+	// package-manager links).
+	if sameBinary(p, bin) {
 		return nil
 	}
 

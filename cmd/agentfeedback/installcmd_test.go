@@ -2441,3 +2441,85 @@ func TestInstall_SymlinkedManifestStillWritten(t *testing.T) {
 		t.Fatalf("%+v", r)
 	}
 }
+
+// A Homebrew cask links <prefix>/bin/agentfeedback to a versioned Caskroom
+// directory that the next brew upgrade deletes; install must wire the link,
+// never the versioned target (on Linux os.Executable reports the target).
+func TestInstall_WiresPackageManagerSymlink(t *testing.T) {
+	e := newInstallEnv(t)
+	cask := filepath.Join(filepath.Dir(e.bin), "Caskroom", "agentfeedback", "4.6.2", "agentfeedback")
+	putFile(t, cask, "#!/bin/sh\n", 0o755)
+	if err := os.Remove(e.exe); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(cask, e.exe); err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := filepath.EvalSymlinks(cask)
+	if err != nil {
+		t.Fatal(err)
+	}
+	orig := executable
+	executable = func() (string, error) { return resolved, nil }
+	t.Cleanup(func() { executable = orig })
+	stubBinaries(t, nil, resolved, true)
+
+	r, _ := installRun(t, "install", "pi")
+	if r.code != 0 {
+		t.Fatalf("%+v", r)
+	}
+	if strings.Contains(r.stderr, "is not the one being wired") {
+		t.Errorf("the PATH link to the running binary is reported as a second binary:\n%s", r.stderr)
+	}
+	ext, _ := os.ReadFile(filepath.Join(e.home, ".pi", "agent", "extensions", "agentfeedback.ts"))
+	if !strings.Contains(string(ext), string(mustJSONString(e.exe))) || strings.Contains(string(ext), "Caskroom") {
+		t.Fatalf("pi extension does not run the PATH link %s:\n%s", e.exe, ext)
+	}
+}
+
+func TestWiredExecutable(t *testing.T) {
+	isolateCLI(t)
+	root := t.TempDir()
+	target := filepath.Join(root, "Caskroom", "4.6.2", "agentfeedback")
+	other := filepath.Join(root, "other", "agentfeedback")
+	putFile(t, target, "", 0o755)
+	putFile(t, other, "", 0o755)
+	resolved, _ := filepath.EvalSymlinks(target)
+	link := func(dir, to string) string {
+		p := filepath.Join(root, dir, "agentfeedback")
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(to, p); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	started := link("started", target)
+	onPath := link("onpath", target)
+	elsewhere := link("elsewhere", other)
+	stale := filepath.Join(root, "stale", "agentfeedback")
+	putFile(t, stale, "", 0o755)
+	spaced := link("My Bin", target)
+	for _, tc := range []struct {
+		name, exe, path, want string
+	}{
+		{"stale copy earlier on PATH", resolved, filepath.Dir(stale) + string(os.PathListSeparator) + filepath.Dir(onPath), onPath},
+		{"unsafe link passed over", resolved, filepath.Dir(spaced), resolved},
+		{"started as a link to itself", started, "", started},
+		{"started resolved, PATH link to itself", resolved, filepath.Dir(onPath), onPath},
+		{"PATH link to another binary", resolved, filepath.Dir(elsewhere), resolved},
+		{"no link anywhere", resolved, "", resolved},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("PATH", tc.path)
+			orig := executable
+			executable = func() (string, error) { return tc.exe, nil }
+			t.Cleanup(func() { executable = orig })
+			got, err := binaryPath()
+			if err != nil || got != tc.want {
+				t.Fatalf("wiredExecutable() = %q, %v; want %q", got, err, tc.want)
+			}
+		})
+	}
+}

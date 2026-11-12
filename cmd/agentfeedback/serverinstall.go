@@ -280,18 +280,59 @@ func xdgBase(getenv func(string) string, env, fallback string) (string, error) {
 	return filepath.Dir(dir), nil
 }
 
-// binaryPath is the running binary with symlinks resolved, so the unit keeps
-// working when a symlink that pointed at it is moved.
+// binaryPath is wiredExecutable restricted to the characters a unit, a hook
+// command and a backup command can hold unquoted. A link that fails the check
+// is passed over for the resolved path rather than refusing the install.
 func binaryPath() (string, error) {
+	exe, err := wiredExecutable(func(p string) bool { return checkSafePath("", p) == nil })
+	if err != nil {
+		return "", err
+	}
+
+	return exe, checkSafePath("the agentfeedback binary path", exe)
+}
+
+// wiredExecutable is the path hooks, MCP entries and service units run: the
+// running binary with symlinks resolved, unless the path it was started as or
+// an agentfeedback in a PATH directory is a symlink to that same binary that
+// accept takes, in which case that link is kept. Package managers link a
+// stable name to a versioned directory and delete the old directory on
+// upgrade (Homebrew: <prefix>/bin to Caskroom/agentfeedback/<version>/), so
+// the resolved path would break every wired entry at the next upgrade. Every
+// PATH directory is tried, not only the first hit: on Linux os.Executable is
+// already resolved, and a stale copy earlier on PATH must not hide the link.
+// Resolving otherwise keeps an entry working when an unrelated symlink that
+// pointed at the binary is moved.
+func wiredExecutable(accept func(string) bool) (string, error) {
 	exe, err := executable()
 	if err != nil {
 		return "", errServerBinary(err)
 	}
-	if exe, err = filepath.EvalSymlinks(exe); err != nil {
+	resolved, err := filepath.EvalSymlinks(exe)
+	if err != nil {
 		return "", errServerBinary(err)
 	}
+	name := "agentfeedback"
+	if goos == "windows" {
+		name += ".exe"
+	}
+	candidates := []string{exe}
+	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+		candidates = append(candidates, filepath.Join(dir, name))
+	}
+	for _, c := range candidates {
+		if !filepath.IsAbs(c) || (accept != nil && !accept(c)) {
+			continue
+		}
+		if fi, err := os.Lstat(c); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+			continue
+		}
+		if r, err := filepath.EvalSymlinks(c); err == nil && r == resolved {
+			return filepath.Clean(c), nil
+		}
+	}
 
-	return exe, checkSafePath("the agentfeedback binary path", exe)
+	return resolved, nil
 }
 
 // readServeEnv parses the three KEY=VALUE lines serve --init writes and the

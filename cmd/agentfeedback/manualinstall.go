@@ -68,7 +68,9 @@ func manualSteps(command string, pos []string, serverFlag string, stderr io.Writ
 	}
 	names = dedupe(names)
 	srv, _, srvErr := installServerNoPrompt(os.Getenv, env, serverFlag)
-	bin, binErr := resolvedExecutable()
+	// wiredExecutable, not binaryPath: a Windows path has a drive letter and
+	// backslashes, and the entry quotes it as a JSON or TOML string.
+	bin, binErr := wiredExecutable(nil)
 	var out []manualStep
 	stdio := false
 	for _, n := range names {
@@ -128,21 +130,6 @@ func manualSteps(command string, pos []string, serverFlag string, stderr io.Writ
 	}
 
 	return out, warnings
-}
-
-// resolvedExecutable is the running binary with symlinks resolved; unlike
-// binaryPath it accepts any path, since a Windows path has a drive letter
-// and backslashes and the entry quotes it as a JSON or TOML string.
-func resolvedExecutable() (string, error) {
-	exe, err := executable()
-	if err == nil {
-		exe, err = filepath.EvalSymlinks(exe)
-	}
-	if err != nil {
-		return "", errServerBinary(err)
-	}
-
-	return exe, nil
 }
 
 // psQuote is s as a PowerShell literal string: single-quoted, with each
