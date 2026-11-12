@@ -383,6 +383,27 @@ version; corrections to release prose need no new tag. For prose-only repairs,
 use `gh release edit <tag> --repo AgentFeedback/agentfeedback --title '<tag> — <title>' --notes-file /path/to/notes.md`;
 leave tags, assets, pre-release status and the latest release unchanged.
 
+## v4.6.3 — Homebrew upgrades keep hooks working
+
+Compatible with 4.x clients and servers; the HTTP API stays `1.0`.
+No server configuration or database migration is required.
+
+- **Homebrew installs survive `brew upgrade`:** `install`, `init` and
+  `server install` used to wire hooks, plugins, MCP entries and service
+  units to the resolved binary path, which under the cask is the versioned
+  `Caskroom/agentfeedback/<version>/agentfeedback` that the next upgrade
+  deletes. They now keep a symlink to the running binary, the path it was
+  started as or an `agentfeedback` in any `PATH` directory, such as
+  `<prefix>/bin/agentfeedback`. `doctor` names that same link.
+- **Upgrading from the 4.6.2 cask:** run `agentfeedback init` (or
+  `agentfeedback install`) once after `brew upgrade`. Entries 4.6.2 wired
+  point at the deleted version directory and fail silently until rewired;
+  `agentfeedback doctor` reports them as missing.
+- **CLI:** a leading `--version` is accepted and the flag hint is corrected.
+- **Distribution:** the stable Homebrew cask is published from the release.
+- **Toolchain:** built with Go 1.27.4 and **GoReleaser 2.20.1**; use that
+  exact version to reproduce the release archives.
+
 ## v4.6.2 — npm package presentation
 
 Compatible with 4.x clients and servers; the HTTP API stays `1.0`.
