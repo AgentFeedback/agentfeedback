@@ -135,6 +135,11 @@ check does not verify Darwin execution.
 
 ## Rules that are not visible in the code
 
+- **CLI routing.** Flags follow the command, except `-h`/`--help`, bare
+  `--json` (JSON help), and `--version` (an alias for `version`).
+  `--version --json` is identical to `version --json`; other trailing
+  arguments use the version command's normal parser and usage errors.
+  `-v`, `-V` and `-version` are not aliases.
 - **An API change is a six-artifact change**, in one commit: `internal/`
   code, the contract files, `scripts/e2e.sh`, the CLI in
   `cmd/agentfeedback/` (with `coverage.toml`), the skill (its source in

@@ -74,6 +74,9 @@ func TestRun_HelpAndRouting(t *testing.T) {
 			!strings.Contains(r.stdout, "[collect] deny_paths") || !strings.Contains(r.stdout, ".agentfeedback.toml may only narrow") {
 			t.Fatalf("%v: code %d, stdout %q", args, r.code, r.stdout)
 		}
+		if !strings.Contains(r.stdout, "print the client version (also --version)") {
+			t.Fatalf("version alias missing from help: %+v", r)
+		}
 	}
 	for _, args := range [][]string{{"--json"}, {"help", "--json"}} {
 		r := runCLI(t, "", args...)
@@ -82,6 +85,18 @@ func TestRun_HelpAndRouting(t *testing.T) {
 		}
 		if r.code != 0 || json.Unmarshal([]byte(r.stdout), &help) != nil || len(help.Commands) != len(commands) {
 			t.Fatalf("%v: code %d, stdout %q", args, r.code, r.stdout)
+		}
+		foundVersion := false
+		for _, cmd := range help.Commands {
+			if cmd.Name == "version" {
+				foundVersion = true
+				if !strings.Contains(cmd.Summary, "(also --version)") {
+					t.Fatalf("version alias missing from JSON help: %+v", cmd)
+				}
+			}
+		}
+		if !foundVersion {
+			t.Fatal("version missing from JSON help")
 		}
 	}
 
@@ -763,6 +778,20 @@ func TestVersionCommand(t *testing.T) {
 	if r.code != 0 || json.Unmarshal([]byte(r.stdout), &v) != nil || v.Version != "v4.0.0" || v.Commit != "deadbeef" || v.Go == "" {
 		t.Fatalf("%+v", r)
 	}
+	for _, suffix := range [][]string{nil, {"--json"}, {"extra"}, {"--bogus"}} {
+		want := runCLI(t, "", append([]string{"version"}, suffix...)...)
+		got := runCLI(t, "", append([]string{"--version"}, suffix...)...)
+		if got != want {
+			t.Fatalf("alias with %v: got %+v, want %+v", suffix, got, want)
+		}
+		if len(suffix) == 0 || suffix[0] == "--json" {
+			if got.code != 0 || got.stderr != "" {
+				t.Fatalf("alias with %v: %+v", suffix, got)
+			}
+		} else if got.code != 2 || got.stdout != "" || strings.Count(got.stderr, "\n") != 1 || !strings.Contains(got.stderr, "; ") {
+			t.Fatalf("alias usage error with %v: %+v", suffix, got)
+		}
+	}
 }
 
 func TestCompareVersions(t *testing.T) {
@@ -949,9 +978,12 @@ func TestDoctor_LogTailWindow(t *testing.T) {
 
 func TestRun_LeadingFlagAndServeArgs(t *testing.T) {
 	isolate(t)
-	for _, args := range [][]string{{"--json", "doctor"}, {"-x"}, {"--url", "http://x"}} {
+	for _, args := range [][]string{{"--json", "doctor"}, {"-x"}, {"--url", "http://x"}, {"-v"}, {"-V"}, {"-version"}} {
 		r := runCLI(t, "", args...)
-		if r.code != 2 || !strings.Contains(r.stderr, "run agentfeedback <command> --json") {
+		if r.code != 2 || r.stdout != "" || strings.Count(r.stderr, "\n") != 1 ||
+			!strings.Contains(r.stderr, args[0]+" comes before the command") ||
+			!strings.Contains(r.stderr, "run agentfeedback <command> [flags]") ||
+			strings.Contains(r.stderr, "<command> --json") {
 			t.Fatalf("%v: %+v", args, r)
 		}
 	}

@@ -64,7 +64,7 @@ var commands = []command{
 	{"export", "export [--after-id N] [--kind K] [--since T] [--limit N]: stream an export (format 2) and verify its trailer", runExport},
 	{"migrate", "migrate --to cloud|URL --to-key-from-stdin [--kind K] [--include-kind K]... [--since T] [--limit N] [--dry-run]: copy the records to another server through its import route", runMigrate},
 	{"digest", "digest [--out DIR] [--kind K] [--include-kind K]: pull the open queue into a triage directory", runDigest},
-	{"version", "print the client version", runVersion},
+	{"version", "print the client version (also --version)", runVersion},
 	{"schema", "schema [<kind> [<version>]]: list the schemas or print one", runSchema},
 	{"skill", "skill render <form> [--server URL]: print the submission guidance in one form | skill render docs --out DIR: write the agentfeedback-docs skill | skill render agent-plugin|marketplace --out DIR: write the plugin bundle or a marketplace root | skill reminder: print the one-line reminder older installs run at a session start (install now wires prime)", runSkill},
 	{"init", initSynopsis + ": set up this machine in one pass: local reporting unless a server is named (config.toml is written only then), wire the detected harnesses and the triage skill as install does, run the doctor --e2e check, and print the next steps", runInit},
@@ -136,6 +136,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		printHelp(stdout)
 
 		return 0
+	case "--version":
+		name = "version"
 	}
 
 	if strings.HasPrefix(name, "-") {

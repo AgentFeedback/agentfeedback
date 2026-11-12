@@ -66,7 +66,7 @@ func errFlags(command string, err error) error {
 }
 
 func errLeadingFlag(arg string) error {
-	return usageErr(fmt.Sprintf("%s comes before the command", arg), "run agentfeedback <command> --json, with the command first")
+	return usageErr(fmt.Sprintf("%s comes before the command", arg), "run agentfeedback <command> [flags], with the command first")
 }
 
 func errArgs(command, synopsis string) error {
