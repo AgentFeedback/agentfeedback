@@ -229,6 +229,19 @@ check does not verify Darwin execution.
 - **Skill directories are copied as-is into harnesses.** No tests or tooling inside
   `skills/*/`; tests live in `tests/skill/`. Script comments state rules, not
   history: no dates, incident numbers or machine names.
+- **The source-build context is bounded by `.dockerignore`.** The `source`
+  stage of the `Dockerfile` (`just docker-build`, the local Compose stack)
+  runs `COPY ./ ./`, so everything the context admits reaches the builder and
+  its cache. Local build output, worktrees, agent-harness settings, planning
+  directories, env files at any depth, deployment settings and databases stay
+  out; the runtime stage copies only the binary. Files the build embeds with
+  `go:embed` sit under otherwise excluded trees (`docs/`, `skills/`) and are
+  re-included one by one, so a new or moved embed needs its own exception.
+  Release images use the `prebuilt` path with GoReleaser's own context. After
+  a change to an embed, the `Dockerfile` or `.dockerignore`, run `just
+  docker-build` and then `docker run --rm agentfeedback version`; the build
+  fails when an embed pattern matches nothing in the context. No gate does this
+  automatically.
 - **Clustering changes are measured.** Changing `cluster.py`'s instructions,
   criteria, threshold or batching means rerunning `scripts/eval-cluster.py`
   and updating the calibration section of

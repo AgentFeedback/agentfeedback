@@ -18,6 +18,16 @@ skills/
 tests/
 .env
 **/.env
+.env.*
+**/.env.*
+# Local build output, worktrees and private planning/harness files: none
+# of it is source the build needs.
+dist/
+local/
+/agentfeedback
+.worktrees/
+.kitchen/
+.claude/
 *.db
 *.db-wal
 *.db-shm
