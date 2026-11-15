@@ -3,7 +3,7 @@ name: deliver-ticket
 # Folded block scalar, NOT a plain scalar: the text contains ": " and "#".
 description: >-
   Deliver one AgentFeedback OSS ticket, or a batch of them, end-to-end in one
-  run: read the ticket (kaneo), move it to In Progress, plan and
+  run: read the ticket (plane), move it to In Progress, plan and
   interview (once per run), implement, run the project's fast quality gates,
   run the multi-model review and address findings, land (PR or direct),
   deploy once at the end when asked, verify the deployment, and mark the
@@ -19,7 +19,7 @@ license: MIT
 metadata:
   author: "foae"
   template: adopt-deliver-ticket
-  template_version: "1.7.0"
+  template_version: "1.9.0"
   adopted: "2026-09-27"
 ---
 
@@ -189,14 +189,14 @@ hardcoded here; the table shows where they go.
 | Deploy (Phase 11, or before merge/push when `deploy.merge_deploys`) | `declined` skips deploy and watch without asking again (the ticket then does not reach done); with `merge_deploys` it ends the run before the merge/push instead. `deferred` (`deploy.on_request` with no request) skips them too, and the ticket does reach done. `approved` proceeds. `pending` (an unanswered question or a "pause before deploy" checkpoint) stops and asks once. A yes **is** the human authorisation this gate exists to obtain, for this run only; it never changes the sidecar. In a batch run the deploy happens once, after the last ticket lands | sidecar `deploy.auto`, `deploy.on_request`; a refusal overrides both |
 | Pre-deploy gates (Phase 11, or Phase 10 step 4 with `merge_deploys`) | A failing command in `deploy.gates` blocks the deploy. One fix-forward round is allowed when the cause is in this run's landed changes and the fix is small; otherwise the run ends with the change landed and the deploy not done, and the report says why | none |
 | Batch reconciliation (batch runs) | Only when the next ticket cannot proceed past a ticket this run blocked, and no self-unblocking option (a mock or stub, delivering the independent part, a recorded assumption) is attainable | none |
-| Review without a panel (Phase 8) | Stops when `multi-llm-review` is absent and either `review.allow_harness_fallback` is false or the harness has no reviewer subagent; asks whether to proceed on the harness's single review, wait, or skip | sidecar `review.allow_harness_fallback` |
+| Review without a panel (Phase 8) | Stops when `adv-review` is absent and either `review.allow_harness_fallback` is false or the harness has no reviewer subagent; asks whether to proceed on the harness's single review, wait, or skip | sidecar `review.allow_harness_fallback` |
 | Post-watch failure (Phase 12) | Never; the recovery procedure runs autonomously and reports. `policy.fix_forward` false skips the fix-forward round and rolls back at once | sidecar `policy.fix_forward` |
 
 ## Parallel map
 
 | Phase | Runs in the background meanwhile |
 |---|---|
-| 0 Intake | Workspace creation and dependency install (Phase 1); the review roster precheck when `multi-llm-review` is installed (`~/.agents/skills/multi-llm-review/SKILL.md` exists): `python3 ~/.agents/skills/_lib/review roster --panel <review.default_panel> --caller-model <your model>` is offline and prints the seats that would run, the gateway state and any `REVIEW_SKIP_SLOT` skip, so a thin roster is known before Phase 3 settles the panel rather than 15 minutes after it. If Phase 3 or an invocation override picks a panel other than `review.default_panel`, re-run the precheck for that panel. The live health check itself happens at launch in Phase 8 |
+| 0 Intake | Workspace creation and dependency install (Phase 1); the review roster precheck when `adv-review` is installed (`~/.agents/skills/adv-review/SKILL.md` exists): `python3 ~/.agents/skills/_lib/review roster --panel <review.default_panel> --caller-model <your model>` is offline and prints the seats that would run and any `REVIEW_SKIP_SLOT` skip, so a thin roster is known before Phase 3 settles the panel rather than 15 minutes after it. If Phase 3 or an invocation override picks a panel other than `review.default_panel`, re-run the precheck for that panel |
 | 7 Review-ready | Phase 8 review panel and, only when a PR and its checks exist, the CI / PR-bot wait run **concurrently against the same pinned SHA** |
 | 11 Deploy | Delivery summary drafted while the rollout progresses |
 | 12 Watch | Delivery summary finalised; worktree cleanup prepared but not executed |
@@ -403,7 +403,7 @@ Per sidecar (`workspace`):
    do not ask; state in the plan that `review.default_panel` runs and how
    many seats are live (the Phase 0 roster precheck). If one matches, ask,
    naming the trigger. Either way the question offers the panels the
-   installed `multi-llm-review` skill (`~/.agents/skills/multi-llm-review/SKILL.md`
+   installed `adv-review` skill (`~/.agents/skills/adv-review/SKILL.md`
    exists) defines (`fast`, `default`, `pro`,
    `ultra` as of template 1.1), recommendation first, based on blast radius
    and reversibility, not diff size: `fast` for a simple, contained change,
@@ -520,12 +520,12 @@ synthesised.** Reviewers read the tree at their own execution time, so any
 edit mid-run makes their findings drift.
 
 Review is never skipped entirely. When the recorded panel is "skip the
-panel", do not run `multi-llm-review`: run the harness fallback of step 2
+panel", do not run `adv-review`: run the harness fallback of step 2
 (one independent reviewer subagent, or your own careful re-read where the
 harness has none) and say so in the wrap-up.
 
-1. If `multi-llm-review` is installed
-   (`~/.agents/skills/multi-llm-review/SKILL.md` exists): run it with the
+1. If `adv-review` is installed
+   (`~/.agents/skills/adv-review/SKILL.md` exists): run it with the
    panel recorded in Phase 3, passed explicitly (`REVIEW_PANEL=<panel>` before the command or
    `--panel <panel>` after it) so that skill never asks again. Follow its
    SKILL.md exactly for the launch recipe of your harness, the review root
@@ -883,10 +883,14 @@ across template upgrades by the `adopt-deliver-ticket` skill.
 - **Ticket-less mode is for small changes only**: a typo, a docs fix, a
   dependency bump, a small self-contained bug fix. Anything that touches the
   API contract, schemas, storage, a skill's command contract, or a v4
-  roadmap package needs an `AFDEV` ticket; if the free-text task turns out
+  roadmap package needs an `AFOSS` ticket; if the free-text task turns out
   to be one of those, stop and ask for a ticket to be filed.
-- **Unrefined ideas live in Kaneo's Backlog** (status `planned`). They are
-  never delivered; ask the owner to refine one and move it to `to-do` first.
+- **Unrefined ideas live in Plane's `Backlog` state.** They are never
+  delivered; ask the owner to refine one and move it to `Todo` first.
+  Phase 0 enforces this through `tracker.states.ready`.
+- **Pre-switch keys are dead.** Kaneo keys (`AFDEV-<n>`) do not carry over:
+  a ticket recreated in Plane gets a new `AFOSS-<n>` number. An `AFDEV` key in commits or private
+  notes never resolves; ask for the matching `AFOSS` key instead of guessing.
 - **Deploy means release, then deploy.** The fleet host only runs published
   images, so Phase 11 cuts the release (`just release`, which runs the heavy
   gates in `just ci-full`) and then runs `scripts/deploy.sh <version>`. It
@@ -904,4 +908,3 @@ across template upgrades by the `adopt-deliver-ticket` skill.
 - **Skill discovery.** Canonical skills and the sidecar live under
   `.agents/skills/`; tracked relative links under `.claude/skills/` expose
   the same files to Claude Code without a machine-local installation.
-
