@@ -383,6 +383,18 @@ version; corrections to release prose need no new tag. For prose-only repairs,
 use `gh release edit <tag> --repo AgentFeedback/agentfeedback --title '<tag> — <title>' --notes-file /path/to/notes.md`;
 leave tags, assets, pre-release status and the latest release unchanged.
 
+## v4.6.4 — Dependency refresh
+
+Updates Go dependencies, including the Go networking, system, terminal and
+text packages, Prometheus common code and the SQLite runtime dependencies.
+The source-build Docker context excludes local and private artifacts, and
+release verification accepts GoReleaser's templated Homebrew cask tag.
+
+No API, configuration or database changes. Upgrade by replacing the binary
+or image; no migration or additional steps are required.
+
+Built with GoReleaser 2.20.2.
+
 ## v4.6.3 — Homebrew upgrades keep hooks working
 
 Compatible with 4.x clients and servers; the HTTP API stays `1.0`.
