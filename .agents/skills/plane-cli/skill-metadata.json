@@ -1,0 +1,7 @@
+{
+  "cli_version": "1.0.3",
+  "skill_version": "1.0.3",
+  "snapshot": false,
+  "source_commit": "7e8ae115fd358bf26ef905113f36261c48901695",
+  "supported_cli_range": "=1.0.3"
+}

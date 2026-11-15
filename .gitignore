@@ -57,7 +57,7 @@ vendor/
 !/.claude/skills/
 /.claude/skills/*
 !/.claude/skills/deliver-ticket
-!/.claude/skills/kaneo-cli
+!/.claude/skills/plane-cli
 
 # Local worktrees and skill adoption snapshots
 /.worktrees/

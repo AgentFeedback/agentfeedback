@@ -69,7 +69,7 @@ workspace:
   remote: origin               # git@github.com:AgentFeedback/agentfeedback.git (PUBLIC)
   base_ref: origin/main
   worktree_dir: null           # in-place mode
-  branch_pattern: "<type>/<ticket>-<slug>"   # e.g. feat/AFDEV-12-envelope-schema; ticketless: <type>/<slug>. Types as in commit subjects: feat, fix, docs, refactor, test, chore
+  branch_pattern: "<type>/<ticket>-<slug>"   # e.g. feat/AFOSS-12-envelope-schema; ticketless: <type>/<slug>. Types as in commit subjects: feat, fix, docs, refactor, test, chore
   setup:
     - "go mod download"        # just ci runs on the host, so the host's module cache is the one that matters
 
@@ -101,7 +101,7 @@ pr:
   state: skipped               # no PR or hosted CI; review locally, squash to main and push
   forge: gh
   base: main
-  title_pattern: "<type>(<scope>): <summary> (<ticket>)"   # the squash commit subject, e.g. "feat(schema): envelope and kind schemas (AFDEV-3)"; ticketless drops the suffix
+  title_pattern: "<type>(<scope>): <summary> (<ticket>)"   # the squash commit subject, e.g. "feat(schema): envelope and kind schemas (AFOSS-3)"; ticketless drops the suffix
   merge_strategy: squash
   delete_branch: true          # delete the local branch after the squash merge
   required_approvals: 0        # single maintainer; main is unprotected
