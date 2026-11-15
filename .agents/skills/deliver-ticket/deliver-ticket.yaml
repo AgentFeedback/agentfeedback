@@ -4,7 +4,7 @@
 # substituted. A null value with state != adopted is expected, not an error.
 #
 # Strict YAML: quote any value containing ": " or " #".
-template_version: "1.9.0"
+template_version: "1.10.0"
 adopted_on: "2026-09-27"
 
 project:
@@ -21,6 +21,8 @@ project:
     - "infra/agentfeedback/.env"
     - ".private/"              # deploy.env (DEPLOY_REMOTE, DEPLOY_IMAGE) and uncommitted release notes
     - "~/.config/gh/hosts.yml"
+  decision_records: []         # portable adoption: tracked docs and tickets are the specification;
+                               # private planning notes are not a prerequisite
 
 tracker:
   # `skipped` + kind `none` is the ticket-less default and is self-consistent.
@@ -30,6 +32,11 @@ tracker:
   state: adopted
   kind: plane                  # self-hosted Plane on the LAN (workspace plainsight); the URL lives only in the plane-cli connection
   cli: plane-cli               # 1.0.3 at the switch; the installed plane-cli skill supports exactly one CLI version
+  project:                     # pinned board identity for delivery and triage
+    workspace: plainsight
+    id: c6bb8b8d-2ead-4349-808f-07c323221346
+    key: AFOSS
+    name: "AgentFeedback OSS"
   ticketless: true             # ONLY for small changes that need no bureaucracy; see project notes for the boundary
   repo_backed: false           # Plane is a service; state changes are API calls, not commits
   id_pattern: "^AFOSS-[0-9]+$" # project key, NOT the API id: resolve_id turns it into one
@@ -50,6 +57,7 @@ tracker:
     comment: "jq -Rs '{comment_html: (rtrimstr(\"\\n\") | split(\"\\n\\n\") | map(select(. != \"\") | \"<p>\" + (@html | split(\"\\n\") | join(\"<br>\")) + \"</p>\") | join(\"\"))}' <FILE> | plane-cli work-item-comment create --workspace plainsight --project c6bb8b8d-2ead-4349-808f-07c323221346 --work-item <ID> --body-file -"
     create: "sid=$(plane-cli state list --workspace plainsight --scope project --project c6bb8b8d-2ead-4349-808f-07c323221346 --name '<STATE>' | jq -er '[.data.data[].id] | if length == 1 then .[0] else error(\"state <STATE>: \\(length) matches\") end') && jq -Rs --arg sid \"$sid\" '(split(\"\\n\")) as $l | {name: $l[0], state_id: $sid, description_html: ($l[1:] | join(\"\\n\") | ltrimstr(\"\\n\") | rtrimstr(\"\\n\") | split(\"\\n\\n\") | map(select(. != \"\") | \"<p>\" + (@html | split(\"\\n\") | join(\"<br>\")) + \"</p>\") | join(\"\"))}' <FILE> | plane-cli work-item create --workspace plainsight --project c6bb8b8d-2ead-4349-808f-07c323221346 --body-file -"   # first line of <FILE> is the title, the rest the description
     auth_probe: "plane-cli project list --workspace plainsight --fields id,identifier,name"   # project metadata only; exits 3 without a valid key. NEVER an auth subcommand
+    list_open: "plane-cli work-item list --workspace plainsight --scope project --project c6bb8b8d-2ead-4349-808f-07c323221346 --state-group-in backlog,unstarted,started --expand state,labels --all | jq -c 'if .meta.pagination.complete != true then error(\"incomplete board read\") else .data[].data[] | {key: (\"AFOSS-\" + (.sequence_id|tostring)), id, name, state: .state.name, group: .state.group, priority, labels: [.labels[]?.name], updated_at} end'" # all pages, closed states excluded
   notes:
     - "The project is fixed: Plane workspace plainsight, project AgentFeedback OSS (identifier AFOSS) = c6bb8b8d-2ead-4349-808f-07c323221346, on the estate's self-hosted Plane (connection `agent`, URL and API version in the plane-cli connection, never here). A sibling project's keys are refused by id_pattern on purpose"
     - "States: Backlog (backlog), Todo (unstarted), In Progress (started), In Review (started, created at the switch), Done (completed), Cancelled (cancelled). There is no blocked state; never create a state without asking"

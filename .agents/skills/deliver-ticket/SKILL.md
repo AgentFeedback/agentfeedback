@@ -19,7 +19,7 @@ license: MIT
 metadata:
   author: "foae"
   template: adopt-deliver-ticket
-  template_version: "1.9.0"
+  template_version: "1.10.0"
   adopted: "2026-09-27"
 ---
 
@@ -369,7 +369,9 @@ Per sidecar (`workspace`):
 ## Phase 2: Pre-work and draft plan
 
 1. Read the code the ticket touches until you can name files, approach and
-   trade-offs. Probe running systems only through read-only commands; a
+   trade-offs. Read the entries of `project.decision_records` that bear on
+   it: a recorded decision binds the plan like the ticket does, and a plan
+   that would contradict one is a Phase 3 question, never a silent override. Probe running systems only through read-only commands; a
    recorded deploy refusal (`declined`) forbids even read-only production
    probes.
 2. Draft the plan: scope, files, approach, tests, docs, risks, what is out of
