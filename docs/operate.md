@@ -1251,9 +1251,17 @@ uploads. `--due` applies the configured quiet interval, batch and budget;
 named references bypass only the quiet interval. `sessions list` and
 `sessions status` show upload progress independently of digest/mark progress.
 `doctor` and `sessions status` also expose the last automatic push record.
-The OSS server has no upload routes; its unsupported policy prevents the
-automatic sweep. See [Automatic sweep](sessions.md#automatic-sweep) for
-triggers and bounds.
+Native omp and pi capture, including pi's local reader, is described in
+[Session logs](sessions.md#harnesses); support is fixture-tested, not a claim
+of live harness verification. Their ordered capture revisions persist in the
+data-directory database independently of digest progress.
+The nonblocking automatic sweep coalesces triggers and delays rechecks until
+quiet sessions and deferred batches have been handled; parents do not wait.
+Each pass retains the configured batch and upload budget and rechecks the
+existing consent and repository restrictions. It installs no new hook,
+resident daemon or scheduler. The OSS server has no upload routes; its
+unsupported policy prevents the automatic sweep.
+See [Automatic sweep](sessions.md#automatic-sweep) for triggers and bounds.
 
 ### MCP and discovery
 

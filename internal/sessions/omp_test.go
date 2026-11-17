@@ -479,13 +479,13 @@ func TestOMPRevisionWatermark(t *testing.T) {
 	}
 }
 
-func TestOMPEndToEndAndCaptureRefused(t *testing.T) {
+func TestOMPEndToEndAndCapture(t *testing.T) {
 	w := newWorld(t)
 	env := w.env()
 	path := ompPut(t, (ompReader{}).location(env), "project/file.jsonl", ompHead(t, "e2e", defaultCwd)+ompHuman(t, "stable-prompt", "please fix this"))
 	ref := Ref(HarnessOMP, "e2e")
 	capture, err := CaptureCandidates(w.ctx, w.db, env, []string{ref})
-	if err != nil || len(capture) != 1 || capture[0].State != StateUnsupportedFormat || w.opens[path] != 0 {
+	if err != nil || len(capture) != 1 || capture[0].State != StateNew || capture[0].Reader != "omp-jsonl" || w.opens[path] == 0 {
 		t.Fatalf("capture=%+v err=%v opens=%d", capture, err, w.opens[path])
 	}
 	out, err := Digest(w.ctx, w.db, env, DigestRequest{Refs: []string{ref}})

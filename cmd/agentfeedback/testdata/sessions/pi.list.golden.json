@@ -1,0 +1,55 @@
+{
+  "stores": [
+    {
+      "harness": "pi",
+      "location": "<HOME>/.pi/agent/sessions",
+      "state": "present"
+    }
+  ],
+  "sessions": [
+    {
+      "ref": "pi:basic",
+      "harness": "pi",
+      "session_id": "basic",
+      "path": "<HOME>/.pi/agent/sessions/project/basic.jsonl",
+      "project": "<CWD>",
+      "cwds": [
+        "<CWD>"
+      ],
+      "start": "2026-10-01T00:00:00Z",
+      "end": "2026-10-01T00:00:02Z",
+      "counts": {
+        "entries": 3,
+        "prompts": 1,
+        "tool_calls": 1,
+        "tool_errors": 1,
+        "interrupts": 0,
+        "denials": 0,
+        "unparsed": 0
+      },
+      "state": "new"
+    },
+    {
+      "ref": "pi:skill",
+      "harness": "pi",
+      "session_id": "skill",
+      "path": "<HOME>/.pi/agent/sessions/project/skill.jsonl",
+      "project": "<CWD>",
+      "cwds": [
+        "<CWD>"
+      ],
+      "start": "2026-10-01T00:00:00Z",
+      "end": "2026-10-01T00:00:02Z",
+      "counts": {
+        "entries": 3,
+        "prompts": 1,
+        "tool_calls": 1,
+        "tool_errors": 1,
+        "interrupts": 0,
+        "denials": 0,
+        "unparsed": 0
+      },
+      "state": "new"
+    }
+  ]
+}

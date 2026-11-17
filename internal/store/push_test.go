@@ -49,6 +49,55 @@ func TestSessionPushScopeIsolationAndForwardMigration(t *testing.T) {
 	}
 }
 
+func TestSessionPushReservedRevisionMigrationPreservesData(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "push.db")
+	db, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := SessionPush{
+		PushScope: PushScope{Server: "https://one.example", OrgID: "org-one", CredentialFingerprint: "credential-hash", ConsentSince: 1},
+		Harness:   "pi", SessionID: "native-session", Revision: "native-revision", Head: "head-hash",
+		SourceSize: 123, ContentSHA256: "content-hash", EnvelopeBytes: 456, MaxSessionBytes: 1000,
+		ObservedAt: 20, SubmissionUID: "submission", Status: "pushed",
+	}
+	if err := db.Write(ctx, func(q Querier) error {
+		if err := SetSessionPush(ctx, q, row); err != nil {
+			return err
+		}
+		_, err := q.ExecContext(ctx, "UPDATE schema_version SET version = 7")
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err = Open(ctx, path)
+	if err != nil {
+		t.Fatalf("reopen version-7 database: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+	if err := db.Read(ctx, func(q Querier) error {
+		rows, err := ListSessionPushes(ctx, q, row.PushScope)
+		if err != nil {
+			return err
+		}
+		if len(rows) != 1 || rows[0] != row {
+			t.Fatalf("push after migration: %+v, want %+v", rows, row)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	row.Revision, row.Status, row.Reason = "reserved-revision", "reserved", "in_flight"
+	if err := db.Write(ctx, func(q Querier) error { return SetSessionPush(ctx, q, row) }); err != nil {
+		t.Fatalf("persist reserved status: %v", err)
+	}
+}
+
 func TestSuspendCapturePolicyRequiresExactActiveGeneration(t *testing.T) {
 	for _, change := range []string{"none", "generation", "credential", "org", "consent"} {
 		t.Run(change, func(t *testing.T) {

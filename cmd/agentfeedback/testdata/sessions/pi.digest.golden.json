@@ -1,0 +1,96 @@
+{
+  "notice": "This digest is shown to the model that reads it and so reaches that model's provider; agentfeedback itself stores and sends none of it.",
+  "detector_version": "1",
+  "sessions": [
+    {
+      "ref": "pi:basic",
+      "harness": "pi",
+      "session_id": "basic",
+      "project": "<CWD>",
+      "cwd": "<CWD>",
+      "start": "2026-10-01T00:00:00.000Z",
+      "end": "2026-10-01T00:00:02.000Z",
+      "from_offset": 0,
+      "truncated": false,
+      "counts": {
+        "entries": 3,
+        "prompts": 1,
+        "tool_calls": 1,
+        "tool_errors": 1,
+        "interrupts": 0,
+        "denials": 0,
+        "unparsed": 0
+      },
+      "events": [
+        {
+          "span": "prompt",
+          "ref": "pi:basic#prompt",
+          "at": "2026-10-01T00:00:00.000Z",
+          "type": "prompt",
+          "summary": "Inspect the fixture"
+        },
+        {
+          "span": "call",
+          "ref": "pi:basic#call",
+          "at": "2026-10-01T00:00:01.000Z",
+          "type": "tool_call",
+          "tool": "bash",
+          "args_digest": "fcbcf165908d",
+          "status": "error",
+          "error_class": "tool_error",
+          "excerpt": "Command exited with code 1"
+        }
+      ],
+      "retries": [],
+      "denials": [],
+      "flagged": [],
+      "skills_used": []
+    },
+    {
+      "ref": "pi:skill",
+      "harness": "pi",
+      "session_id": "skill",
+      "project": "<CWD>",
+      "cwd": "<CWD>",
+      "start": "2026-10-01T00:00:00.000Z",
+      "end": "2026-10-01T00:00:02.000Z",
+      "from_offset": 0,
+      "truncated": false,
+      "counts": {
+        "entries": 3,
+        "prompts": 1,
+        "tool_calls": 1,
+        "tool_errors": 1,
+        "interrupts": 0,
+        "denials": 0,
+        "unparsed": 0
+      },
+      "events": [
+        {
+          "span": "prompt",
+          "ref": "pi:skill#prompt",
+          "at": "2026-10-01T00:00:00.000Z",
+          "type": "prompt",
+          "summary": "Use golden-review to inspect the fixture"
+        },
+        {
+          "span": "call",
+          "ref": "pi:skill#call",
+          "at": "2026-10-01T00:00:01.000Z",
+          "type": "tool_call",
+          "tool": "bash",
+          "args_digest": "fcbcf165908d",
+          "status": "error",
+          "error_class": "tool_error",
+          "excerpt": "Command exited with code 1"
+        }
+      ],
+      "retries": [],
+      "denials": [],
+      "flagged": [],
+      "skills_used": []
+    }
+  ],
+  "errors": [],
+  "deferred": []
+}

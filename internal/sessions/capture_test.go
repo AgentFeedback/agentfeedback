@@ -801,3 +801,25 @@ func TestCaptureReadersDiscardRecordContent(t *testing.T) {
 		})
 	}
 }
+
+func TestCapturePiAndOMPCompleteNativeBytes(t *testing.T) {
+	for _, harness := range []string{"pi", "omp"} {
+		t.Run(harness, func(t *testing.T) {
+			w := newWorld(t)
+			root := t.TempDir()
+			raw := piFixture()
+			path := filepath.Join(root, "native.jsonl")
+			if err := os.WriteFile(path, []byte(raw+`{"unfinished"`), 0600); err != nil {
+				t.Fatal(err)
+			}
+			env := w.env()
+			env.PiSessionsDir, env.OMPSessionsDir = root, root
+			c := captureOne(t, w, env, harness+":pi-native")
+			b, meta := readCapture(t, env, c)
+			sum := sha256.Sum256([]byte(raw))
+			if string(b) != raw || c.Size != int64(len(raw)) || c.Head != hex.EncodeToString(sum[:]) || meta.Format != harness+"-jsonl" {
+				t.Fatalf("native capture: format=%s bytes=%d size=%d", meta.Format, len(b), c.Size)
+			}
+		})
+	}
+}

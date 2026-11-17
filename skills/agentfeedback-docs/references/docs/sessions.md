@@ -48,11 +48,17 @@ agentfeedback sessions push codex:<session-id> --since 2026-01-01T00:00:00Z --dr
 ```
 
 Push supports Claude Code (`claude-code-jsonl`), Codex (`codex-rollout`),
-OpenCode V1 and 2 (`opencode-virtual-log`) and Cursor
-(`cursor-agent-transcript`, storage only). It sends the whole complete-line
-revision, not the digest or only new entries. The revision is the decimal
-source byte count. An unfinished last line is excluded; changes during
-capture defer the upload.
+omp (`omp-jsonl`), pi (`pi-jsonl`), OpenCode V1 and 2
+(`opencode-virtual-log`) and Cursor (`cursor-agent-transcript`, storage only).
+It sends the whole complete-line revision, not the digest or only new entries.
+For omp and pi, a persisted, increasing decimal revision is reserved per
+session and destination/consent scope. The complete-line fingerprint and byte
+count identify an unchanged revision; appends, same-size rewrites and
+truncations reserve a newer number, rather than reusing a byte count.
+Retries reuse the reservation across process restarts. Dry runs calculate
+but do not persist a new reservation. Other formats use the decimal source
+byte count. An unfinished last line is excluded; changes during capture
+defer the upload.
 
 The configured server must enable processing. Collection rules and every
 recorded repository's `[sessions] push = false` veto apply before export.
@@ -80,7 +86,7 @@ counts, and at most 2 KiB of scrubbed preview; they discover policy but send
 no transcript. A named session that cannot be pushed makes the command exit
 1. A 429 suspends the run and policy until retry is allowed; network and
 server failures leave it for a later invocation. A begin conflict is
-`replay_mismatch` and is not retried at that source size.
+`replay_mismatch` and is not retried for that revision.
 
 `sessions_pushed` stores only upload metadata and outcomes, scoped to the
 destination, organisation, credential and consent period, separately from
@@ -90,15 +96,16 @@ change identity when repository facts or file timestamps change. Current
 collection rules and repository vetoes still apply before each request.
 Pending metadata is removed on completion, terminal rejection, a new
 revision or a changed consent scope. Transcript text and previews are never
-persisted to the database, cache, log or spool. `too_large` is not retried unless the source
-shrinks or rotates, or the server's cap grows. `sessions list` shows the
-pushed revision; `sessions status` shows pushed, pending and skipped counts
+persisted to the database, cache, log or spool. `too_large` is not retried for
+an unchanged fingerprint unless the source shrinks or the server's cap grows;
+a changed fingerprint can be retried.
+`sessions list` shows the pushed revision; `sessions status` shows pushed, pending and skipped counts
 and the last push time for the current scope.
 
 ### Automatic sweep
 
 In remote mode, existing turn-end hooks and eligible CLI invocations can
-launch a detached, short-lived `agentfeedback sessions push --due --json`.
+launch a detached `agentfeedback sessions push --due --json` worker.
 The trigger reads only cached policy matching the destination and credential;
 it makes no network request. Previously enabled consent can retry after a
 transient policy error or an elapsed `Retry-After`. A changed credential,
@@ -112,15 +119,25 @@ not. Existing turn-end `hook` handling triggers after its bounded flush.
 No new hook registrations, resident daemon or scheduler are installed.
 
 A nonblocking `push.lock`, inherited by the child, allows at most one sweep
-at a time. `push.last-started` throttles launches by `sessions.quiet`.
-An abandoned run can be retried after `sessions.push_budget` plus one minute
-once the operating system has released its lock; an old timestamp never
-permits bypassing a still-running child's lock. Malformed, zero or future
-start timestamps are repaired only after acquiring the lock. The parent
-launches its own running executable, not a PATH lookup, and does not wait
-for uploads; the whole hook trigger shares the hook's deadline.
-Each child applies the quiet-session selection,
-`sessions.push_batch` and `sessions.push_budget` described above and exits.
+at a time. Triggers write an owner-only `push.pending` signal; repeated
+triggers coalesce while that worker owns the lock. `push.last-started`
+delays a new worker's first pass until the launch quiet interval has elapsed,
+rather than dropping the trigger. Malformed or future start timestamps do
+not impose a delay. No timestamp permits bypassing a still-running child's
+lock; after a crash, a later eligible trigger can launch a replacement.
+The parent launches its own running executable, not a PATH lookup, and
+does not wait for the delay or uploads; the whole hook trigger shares the
+hook's deadline.
+
+Each pass refreshes policy and applies the quiet-session selection,
+`sessions.push_batch` and `sessions.push_budget` described above. If a pass
+defers work (including a session that is not quiet or a batch/budget limit),
+the detached worker waits `sessions.quiet` and rechecks without needing
+another CLI invocation. A suspension waits until its retry deadline.
+It exits when no deferred work or coalesced trigger remains, or a pass fails.
+This is delayed, bounded-per-pass work, not a resident daemon; a busy source
+can keep the worker waiting across passes. Consent and repository restrictions
+are rechecked, not widened by a pending trigger.
 The cache's owner-only `push.last-run.json` records start and finish times,
 pushed, replayed, skipped, deferred and error counts, and any suspension
 deadline. `doctor` prints it as `last push`; both `doctor --json` and
@@ -135,7 +152,8 @@ text, credentials or session identifiers.
 | `codex` | `codex-rollout` | `<codex home>/sessions/YYYY/MM/DD/rollout-*.jsonl` and `<codex home>/archived_sessions/rollout-*.jsonl` (`$CODEX_HOME`, else `~/.codex`) | the `session_meta` first line, read alone, before; `turn_context`, after |
 | `copilot` | `copilot-events` | `<copilot home>/session-state/<session id>/events.jsonl` (`$COPILOT_HOME`, else `~/.copilot`) | `workspace.yaml` beside the log, before; `session.start` and `session.context_changed`, after |
 | `gemini-cli` | `gemini-cli-jsonl` | `<gemini dir>/tmp/<project>/chats/session-*.jsonl` (`$GEMINI_CLI_HOME/.gemini`, else `~/.gemini`) | `<project>/.project_root`, before; the metadata line's `directories`, which the log records only for sub-agents and `/dir add`, after |
-| `omp` | `omp-jsonl` | `<agent dir>/sessions/<project>/*.jsonl` (`$PI_CODING_AGENT_DIR`, else Linux `$XDG_DATA_HOME/omp`, else `~/.omp/agent`) | the bounded session header's `cwd` and `additionalDirectories`, read alone before the body |
+| `omp` | `omp-jsonl` | `<agent dir>/sessions/<project>/*.jsonl` (hook-recorded root, else Linux `$XDG_DATA_HOME/omp`, else `~/.omp/agent`) | the bounded session header's `cwd` and `additionalDirectories`, read alone before the body |
+| `pi` | `pi-jsonl` | `<agent dir>/sessions/<project>/*.jsonl` (hook-recorded root, else `~/.pi/agent`) | the bounded version-3 session header's `cwd`, read alone before the body |
 | `opencode-v1` | `opencode-sqlite` | `$OPENCODE_DB` (a relative one under `<data home>/opencode`), else `opencode.db` and `opencode-*.db` in `<data home>/opencode` (`$XDG_DATA_HOME`, else `~/.local/share`) | the session row's `directory`, before; each assistant message's `path.cwd`, after |
 | `opencode-v2` | `opencode-v2-sqlite` | the same databases, read only when they have a `session_v2` table | the session row's `directory`, before |
 
@@ -197,10 +215,10 @@ the [upstream source at `f2ee6ba9`](https://github.com/can1357/oh-my-pi/tree/f2e
 verification uses synthetic fixtures, not private transcripts.
 
 The default store is `~/.omp/agent/sessions`; on Linux, an absolute
-`XDG_DATA_HOME` selects `$XDG_DATA_HOME/omp/sessions`. An absolute
-`PI_CODING_AGENT_DIR` takes precedence. For an alternate omp profile or custom
-configuration root, set it to the directory containing `sessions`; profile
-and configuration-root variables are not interpreted by this reader.
+`XDG_DATA_HOME` selects `$XDG_DATA_HOME/omp/sessions`. Each native hook records
+its own absolute `PI_CODING_AGENT_DIR` session root for later discovery.
+The shared variable alone does not assign a custom directory to both harnesses.
+Without a hook record, only the harness's conventional agent directory is accepted.
 Discovery does not follow custom-session breadcrumbs or descend into child
 transcript directories. Subagent journals are not independent sessions in
 the local inventory.
@@ -231,10 +249,36 @@ the local inventory.
   nonregular sources are refused. Digests retain the shared bounds and
   scrubbing, and local status/marking use the shared session database.
 
-This reader is local only: it does not enable `sessions push` or automatic
-hosted capture. Session attribution is not proof of which instructions were
-historically installed; a study requiring that provenance must establish it
-separately.
+Native `omp-jsonl` capture is available through `sessions push` and the
+automatic sweep under the same consent and collection rules as other
+supported formats. Session attribution is not proof of which instructions
+were historically installed; a study requiring that provenance must
+establish it separately.
+
+### Pi
+
+`pi:<header id>` identifies pi independently of omp and its model/provider.
+The `pi-jsonl` reader discovers version-3 journals under
+`~/.pi/agent/sessions/<project>/*.jsonl` by default. Its hook records its own
+absolute `PI_CODING_AGENT_DIR`, or `PI_CODING_AGENT_SESSION_DIR` when supplied;
+omp's hook record never overrides pi's root.
+Identity and collection gating come from the bounded session header.
+Symlinks and nonregular sources are refused, and header metadata is
+revalidated before the body is read. Parent-session paths are not followed.
+Support is covered by synthetic native-schema fixtures, not a live pi session.
+
+- User-role messages count as prompts; pi does not require omp's attribution
+  field. Thinking blocks, custom records and compaction records are not prompts.
+- Retained branches are read, not only the active context. Entry ids are
+  spans; entries without ids use byte offsets. Rewrites invalidate digest
+  progress through the complete-line fingerprint.
+- Assistant `toolCall` blocks pair with `toolResult` messages by call id and
+  ancestry. Sibling-branch results count separately; duplicate results on one
+  branch and missing or duplicate call ids are refused. `isError` marks a
+  tool error; an assistant's `stopReason: "aborted"` marks interruption.
+  omp-specific result-detail flags are not interpreted as pi interruptions.
+- Native `pi-jsonl` capture uses the same persisted ordered revisions,
+  scrubbing, repository vetoes and server consent checks described in [Push](#push).
 
 ### Codex
 

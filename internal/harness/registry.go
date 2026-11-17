@@ -610,7 +610,7 @@ var registry = []Adapter{
 			Deliver: "tool_result",
 		},
 		MCP:      MCP{File: homePath(".pi", "agent", "mcp.json"), Path: []string{"mcpServers"}, EnvRef: "${AGENT_FEEDBACK_API_KEY}"},
-		Sessions: Sessions{Locations: []string{"~/.pi/agent/sessions"}, Reader: "none", NoReader: "no reader yet", Verified: documented()},
+		Sessions: Sessions{Locations: []string{"$PI_CODING_AGENT_DIR/sessions", "~/.pi/agent/sessions"}, Reader: "pi-jsonl", Verified: documented()},
 		Caveats:  []string{"the MCP entry needs pi 0.99.0 or later"},
 		Verified: documented(),
 		hook: func(p *plan, o Options) ([]Item, []string) {

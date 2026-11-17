@@ -23,7 +23,7 @@ type pendingManifest struct {
 }
 
 func (r *pushRun) manifestKey(c sessions.CaptureCandidate) store.SessionManifest {
-	return store.SessionManifest{PushScope: policyScope(r.policy), Harness: c.Harness, SessionID: c.SessionID, Revision: formatRevision(c.Size)}
+	return store.SessionManifest{PushScope: policyScope(r.policy), Harness: c.Harness, SessionID: c.SessionID, Revision: captureRevision(c)}
 }
 
 func (r *pushRun) pending(c sessions.CaptureCandidate) (pendingManifest, int, bool, error) {

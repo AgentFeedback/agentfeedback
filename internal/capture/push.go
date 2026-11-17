@@ -61,14 +61,12 @@ func refused(c sessions.CaptureCandidate) bool {
 }
 
 func outcome(c sessions.CaptureCandidate, status, reason string) PushResult {
-	return PushResult{Ref: terminalText(c.Ref), Revision: formatRevision(c.Size), Status: status, Reason: reason}
+	return PushResult{Ref: terminalText(c.Ref), Revision: captureRevision(c), Status: status, Reason: reason}
 }
 
 func suppressed(c sessions.CaptureCandidate, rows []store.SessionPush, cap int) (string, string) {
-	// Replay mismatch suppression follows source size even for same-size
-	// rewrites. Rotation/head changes only reopen too_large/success outcomes.
 	for _, r := range rows {
-		if r.Harness == c.Harness && r.SessionID == c.SessionID && r.Status == "replay_mismatch" && r.Revision == formatRevision(c.Size) {
+		if r.Harness == c.Harness && r.SessionID == c.SessionID && r.Status == "replay_mismatch" && r.Revision == captureRevision(c) {
 			return "error", "replay_mismatch"
 		}
 	}
@@ -80,7 +78,7 @@ func suppressed(c sessions.CaptureCandidate, rows []store.SessionPush, cap int) 
 		if r.Status == "too_large" && c.Head == r.Head && c.Size >= r.SourceSize && int64(cap) <= r.MaxSessionBytes {
 			return "skipped", "too_large"
 		}
-		if (r.Status == "pushed" || r.Status == "replayed") && r.Revision == formatRevision(c.Size) && r.Head == c.Head {
+		if (r.Status == "pushed" || r.Status == "replayed") && r.Revision == captureRevision(c) && r.Head == c.Head {
 			return "replayed", "already_pushed"
 		}
 		// Only the latest outcome of a session controls size/rotation suppression.
@@ -98,6 +96,7 @@ type pushRun struct {
 	clock       func() time.Time
 	deadline    time.Time
 	checkSource func() error
+	rows        []store.SessionPush
 }
 
 func (r *pushRun) stopped() bool { return r.ctx.Err() != nil || !r.clock().Before(r.deadline) }
@@ -123,7 +122,7 @@ func (r *pushRun) authorized() bool {
 func (r *pushRun) record(c sessions.CaptureCandidate, result PushResult, hash string) error {
 	row := store.SessionPush{
 		PushScope: policyScope(r.policy), Harness: c.Harness, SessionID: c.SessionID,
-		Revision: formatRevision(c.Size), Head: c.Head, SourceSize: c.Size, ContentSHA256: hash,
+		Revision: captureRevision(c), Head: c.Head, SourceSize: c.Size, ContentSHA256: hash,
 		EnvelopeBytes: result.Bytes, MaxSessionBytes: int64(r.policy.MaxSessionBytes), ObservedAt: r.clock().UnixMicro(),
 		SubmissionUID: result.SubmissionUID, Status: result.Status, Reason: result.Reason,
 	}
@@ -134,12 +133,23 @@ func (r *pushRun) record(c sessions.CaptureCandidate, result PushResult, hash st
 		at := row.ObservedAt
 		row.PushedAt = &at
 	}
-	return r.db.Write(r.ctx, func(q store.Querier) error {
+	err := r.db.Write(r.ctx, func(q store.Querier) error {
 		if err := store.SetSessionPush(r.ctx, q, row); err != nil {
 			return err
 		}
 		return store.DeleteSessionManifest(r.ctx, q, r.manifestKey(c))
 	})
+	if err != nil {
+		return err
+	}
+	for i, previous := range r.rows {
+		if previous.Harness == row.Harness && previous.SessionID == row.SessionID && previous.Revision == row.Revision {
+			r.rows[i] = row
+			return nil
+		}
+	}
+	r.rows = append(r.rows, row)
+	return nil
 }
 
 // Push refreshes effective consent before enumerating or opening any session.
@@ -232,6 +242,7 @@ func Push(ctx context.Context, db *store.DB, c *client.Client, env sessions.Env,
 	}); err != nil {
 		return nil, errors.New("sessions: push state unavailable")
 	}
+	run.rows = rows
 	if len(opts.Refs) == 0 {
 		sort.SliceStable(candidates, func(i, j int) bool {
 			if candidates[i].End.Equal(candidates[j].End) {
@@ -278,12 +289,21 @@ func Push(ctx context.Context, db *store.DB, c *client.Client, env sessions.Env,
 			out = append(out, outcome(candidate, "deferred", "not_quiet"))
 			continue
 		}
-		if status, reason := suppressed(candidate, rows, p.MaxSessionBytes); status != "" {
+		if err := resolveRevision(&candidate, run.rows); err != nil {
+			return out, errors.New("sessions: could not resolve capture revision")
+		}
+		if status, reason := suppressed(candidate, run.rows, p.MaxSessionBytes); status != "" {
 			out = append(out, outcome(candidate, status, reason))
 			continue
 		}
 		if len(opts.Refs) == 0 && selected >= limit {
-			break
+			out = append(out, outcome(candidate, "deferred", "batch_limit"))
+			continue
+		}
+		if candidate.Harness == "omp" || candidate.Harness == "pi" {
+			if err := run.reserveRevision(candidate); err != nil {
+				return out, errors.New("sessions: could not reserve capture revision")
+			}
 		}
 		selected++
 		result, stop, err := run.pushOne(env, candidate)

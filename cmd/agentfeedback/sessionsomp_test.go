@@ -38,6 +38,13 @@ func ompWorld(t *testing.T) string {
 	sessionsWorld(t)
 	root := filepath.Join(t.TempDir(), "sessions")
 	t.Setenv("PI_CODING_AGENT_DIR", filepath.Dir(root))
+	cache, err := cacheDir(os.Getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeLastRun(cache, "omp", "agent_end", nowFunc()); err != nil {
+		t.Fatal(err)
+	}
 	cwd := filepath.Join(t.TempDir(), "omp-proj")
 	if err := os.Mkdir(cwd, 0o755); err != nil {
 		t.Fatal(err)
@@ -152,9 +159,49 @@ func TestOMPStoreXDGAndExplicitDirectory(t *testing.T) {
 	explicit := t.TempDir()
 	t.Setenv("PI_CODING_AGENT_DIR", explicit)
 	putOMPStore(t, filepath.Join(explicit, "sessions"), "explicit-fixture", cwd)
+	cache, err := cacheDir(os.Getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeLastRun(cache, "omp", "agent_end", nowFunc()); err != nil {
+		t.Fatal(err)
+	}
 	r = runCLI(t, "", "sessions", "list", "--harness", "omp", "--json")
 	decodeJSON(t, r.stdout, &listing)
 	if r.code != 0 || len(listing.Sessions) != 1 || listing.Sessions[0].Ref != "omp:explicit-fixture" {
 		t.Fatalf("explicit directory did not override XDG: %+v", r)
+	}
+}
+
+func TestNativeHookDirectoryOwnership(t *testing.T) {
+	sessionsWorld(t)
+	cache, err := cacheDir(os.Getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cwd := t.TempDir()
+	ompDir := t.TempDir()
+	putOMPStore(t, filepath.Join(ompDir, "sessions"), "omp-owned", cwd)
+	piHome := t.TempDir()
+	putPiGolden(t, piHome, cwd, "pi-owned", "Inspect fixture")
+	piDir := filepath.Join(piHome, ".pi", "agent")
+	for _, harness := range []string{"omp", "pi"} {
+		root := ompDir
+		if harness == "pi" {
+			root = piDir
+		}
+		t.Setenv("PI_CODING_AGENT_DIR", root)
+		if err := writeLastRun(cache, harness, "agent_end", nowFunc()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PI_CODING_AGENT_DIR", "")
+	for _, harness := range []string{"omp", "pi"} {
+		r := runCLI(t, "", "sessions", "list", "--harness", harness, "--json")
+		var listing sessions.Listing
+		decodeJSON(t, r.stdout, &listing)
+		if r.code != 0 || len(listing.Sessions) != 1 || listing.Sessions[0].Ref != harness+":"+harness+"-owned" {
+			t.Fatalf("hook-owned %s discovery: %+v", harness, r)
+		}
 	}
 }

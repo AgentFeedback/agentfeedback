@@ -45,8 +45,9 @@ func (e exitStatus) Unwrap() error { return errReported }
 
 // lastRun is the file a hook writes on every run, for doctor.
 type lastRun struct {
-	TS    string `json:"ts"`
-	Event string `json:"event"`
+	TS          string `json:"ts"`
+	Event       string `json:"event"`
+	SessionsDir string `json:"sessions_dir,omitempty"`
 }
 
 // hookLastRunPath is <cache>/hooks/<harness>.json.
@@ -283,7 +284,16 @@ func writeLastRun(cache, name, event string, now time.Time) error {
 	if len(event) > 64 {
 		event = event[:64]
 	}
-	data, err := json.Marshal(lastRun{TS: now.UTC().Format(time.RFC3339), Event: event})
+	record := lastRun{TS: now.UTC().Format(time.RFC3339), Event: event}
+	if name == "omp" || name == "pi" {
+		if root := os.Getenv("PI_CODING_AGENT_DIR"); filepath.IsAbs(root) {
+			record.SessionsDir = filepath.Join(root, "sessions")
+		}
+		if root := os.Getenv("PI_CODING_AGENT_SESSION_DIR"); name == "pi" && filepath.IsAbs(root) {
+			record.SessionsDir = filepath.Clean(root)
+		}
+	}
+	data, err := json.Marshal(record)
 	if err != nil {
 		return err
 	}

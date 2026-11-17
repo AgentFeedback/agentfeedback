@@ -182,7 +182,7 @@ func TestSweepDefaultsToRunningExecutable(t *testing.T) {
 	f.finish()
 }
 
-func TestSweepInheritedLockAndQuietThrottle(t *testing.T) {
+func TestSweepInheritedLockCoalescesConcurrentTriggers(t *testing.T) {
 	f := newSweepFixture(t)
 	var wg sync.WaitGroup
 	errs := make(chan error, 16)
@@ -202,32 +202,6 @@ func TestSweepInheritedLockAndQuietThrottle(t *testing.T) {
 		t.Fatal("child did not remain detached and running")
 	}
 	f.finish()
-	// A completed run stays quiet even after budget+one-minute has elapsed.
-	f.now = f.now.Add(2 * time.Minute)
-	if err := Sweep(f.cache, f.data, f.opts); err != nil {
-		t.Fatal(err)
-	}
-	marker, err := readSweepFile(filepath.Join(f.cache, "push.last-started"))
-	var started sweepStart
-	if err != nil || json.Unmarshal(marker, &started) != nil || !started.Started.Equal(f.now.Add(-2*time.Minute)) {
-		t.Fatalf("completed quiet run started a new child: %s, %v", marker, err)
-	}
-	data, err := os.ReadFile(filepath.Join(f.root, "launches"))
-	if err != nil || len(strings.Fields(string(data))) != 1 {
-		t.Fatalf("launches after contention and quiet hit = %q, %v", data, err)
-	}
-	// Once quiet expires a new real child can acquire the unchanged lock file.
-	f.now = f.now.Add(5 * time.Minute)
-	second := t.TempDir()
-	f.opts.Env = f.childEnv(second)
-	if err := Sweep(f.cache, f.data, f.opts); err != nil {
-		t.Fatal(err)
-	}
-	waitSweep(t, second, func() bool { return sweepExists(filepath.Join(second, "ready")) })
-	if err := os.WriteFile(filepath.Join(second, "release"), nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	waitSweep(t, second, func() bool { return sweepExists(filepath.Join(second, "finished")) })
 }
 
 func TestSweepStaleRecoveryNeverStealsLiveLock(t *testing.T) {

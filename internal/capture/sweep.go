@@ -50,6 +50,8 @@ type sweepControl struct {
 	Cache   string    `json:"cache"`
 	DataDir string    `json:"data_dir"`
 	Started time.Time `json:"started"`
+	Pending string    `json:"pending"`
+	ReadyAt time.Time `json:"ready_at"`
 }
 
 type sweepStart struct {
@@ -73,15 +75,19 @@ func Sweep(cache, dataDir string, opts SweepOptions) error {
 	if quiet <= 0 {
 		quiet = defaultQuiet
 	}
-	budget := opts.Config.PushBudget
-	if budget <= 0 {
-		budget = 90 * time.Second
-	}
 	cache, dataDir, err := sweepDirectories(cache, dataDir)
 	if err != nil {
 		return err
 	}
 	if err := ensureSweepDir(cache); err != nil {
+		return err
+	}
+	var signal [32]byte
+	if _, err := rand.Read(signal[:]); err != nil {
+		return err
+	}
+	pending := hex.EncodeToString(signal[:])
+	if err := atomicSweepWrite(filepath.Join(cache, "push.pending"), []byte(pending)); err != nil {
 		return err
 	}
 	lock, locked, err := openSweepLock(filepath.Join(cache, "push.lock"))
@@ -96,24 +102,12 @@ func Sweep(cache, dataDir string, opts SweepOptions) error {
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
+	readyAt := now
 	if len(previous) > 0 {
 		var last sweepStart
-		// Invalid or future starts are abandoned once kernel ownership is ours.
-		// The marker never authorizes bypassing a live uploading child's lock.
-		if err := json.Unmarshal(previous, &last); err == nil && !last.Started.IsZero() && !last.Started.After(now) {
-			age := now.Sub(last.Started)
-			if age < quiet {
-				if age < budget+time.Minute {
-					return nil
-				}
-				completed, err := ReadLastRun(cache)
-				if err != nil {
-					return err
-				}
-				if completed.Started.Equal(last.Started) && !completed.Finished.IsZero() {
-					return nil
-				}
-				// An abandoned start bypasses a longer quiet period.
+		if json.Unmarshal(previous, &last) == nil && !last.Started.After(now) {
+			if next := last.Started.Add(quiet); next.After(readyAt) {
+				readyAt = next
 			}
 		}
 	}
@@ -121,7 +115,7 @@ func Sweep(cache, dataDir string, opts SweepOptions) error {
 	if _, err := rand.Read(token[:]); err != nil {
 		return err
 	}
-	control := sweepControl{Token: hex.EncodeToString(token[:]), Cache: cache, DataDir: dataDir, Started: now}
+	control := sweepControl{Token: hex.EncodeToString(token[:]), Cache: cache, DataDir: dataDir, Started: now, Pending: pending, ReadyAt: readyAt}
 	metadata, err := json.Marshal(control)
 	if err != nil {
 		return err
@@ -196,6 +190,8 @@ type SweepRun struct {
 	cache   string
 	started time.Time
 	mu      sync.Mutex
+	pending string
+	readyAt time.Time
 }
 
 // AcceptSweep returns nil for an ordinary manual push. A control marker is not
@@ -251,10 +247,43 @@ func AcceptSweep(cache, dataDir string) (*SweepRun, error) {
 	if err := os.Unsetenv(sweepControlEnv); err != nil {
 		return fail(err)
 	}
-	return &SweepRun{lock: lock, cache: cache, started: control.Started}, nil
+	return &SweepRun{lock: lock, cache: cache, started: control.Started, pending: control.Pending, readyAt: control.ReadyAt}, nil
 }
 
 func (r *SweepRun) Started() time.Time { return r.started }
+
+func (r *SweepRun) Begin() error {
+	if delay := time.Until(r.readyAt); delay > 0 {
+		time.Sleep(delay)
+	}
+	pending, err := readSweepFile(filepath.Join(r.cache, "push.pending"))
+	if err != nil {
+		return err
+	}
+	r.pending = string(pending)
+	return nil
+}
+
+func (r *SweepRun) Continue(last LastRun, retryAt time.Time) (bool, error) {
+	if !retryAt.IsZero() {
+		r.readyAt = retryAt
+		return true, nil
+	}
+	if err := r.Finish(last); err != nil {
+		return false, err
+	}
+	pending, err := readSweepFile(filepath.Join(r.cache, "push.pending"))
+	if err != nil || string(pending) == r.pending {
+		return false, err
+	}
+	lock, locked, err := openSweepLock(filepath.Join(r.cache, "push.lock"))
+	if err != nil || !locked {
+		return false, err
+	}
+	r.lock = lock
+	r.readyAt = time.Time{}
+	return true, nil
+}
 
 // Finish persists a complete summary by owner-only atomic rename before
 // releasing ownership. A failed write still releases the lock and is returned

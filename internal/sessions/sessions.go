@@ -87,6 +87,8 @@ type Env struct {
 	GeminiDir string
 	// OMPSessionsDir is the absolute omp session root, else Home/.omp/agent/sessions.
 	OMPSessionsDir string
+	// PiSessionsDir is the absolute pi session root, else Home/.pi/agent/sessions.
+	PiSessionsDir string
 	// DataHome is an absolute $XDG_DATA_HOME, else Home/.local/share.
 	DataHome string
 	// OpenCodeDB is $OPENCODE_DB as set, "" when unset.
@@ -176,7 +178,7 @@ var errUnsupported = errors.New("unsupported session store format")
 
 // readerOrder is the listing order of the readers, by harness; a harness
 // whose reader is not registered is skipped.
-var readerOrder = []string{"claude-code", "codex", "copilot", "cursor", "gemini-cli", "omp", "opencode-v1", "opencode-v2"}
+var readerOrder = []string{"claude-code", "codex", "copilot", "cursor", "gemini-cli", "omp", "pi", "opencode-v1", "opencode-v2"}
 
 // registered are the readers register added, by harness.
 var registered = map[string]reader{}

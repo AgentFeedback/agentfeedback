@@ -52,15 +52,6 @@ func TestCaptureSweepHookAndStartup(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("repeated hook: %+v", r)
 	}
-	// A normal CLI startup in the same quiet interval must not launch again.
-	r = runCLI(t, "", "list", "--json")
-	if r.code != 0 {
-		t.Fatalf("sessions list: %+v", r)
-	}
-	b, err := os.ReadFile(calls)
-	if err != nil || string(b) != "sessions push --due --json\n" {
-		t.Fatalf("quiet interval launched another child: %q, %v", b, err)
-	}
 }
 
 func TestCaptureLastRunVisible(t *testing.T) {

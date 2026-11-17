@@ -484,7 +484,7 @@ func TestSessionsEnvOf(t *testing.T) {
 	got := sessionsEnvOf(func(k string) string { return set[k] }, home, fileConfig{})
 	if got.Home != home || got.ClaudeConfigDir != abs("claude") || got.CodexHome != abs("codex") || got.CopilotHome != abs("copilot") ||
 		got.GeminiDir != filepath.Join(abs("gemini"), ".gemini") || got.DataHome != abs("data") || got.OpenCodeDB != "rel/opencode.db" ||
-		got.OMPSessionsDir != filepath.Join(abs("omp"), "sessions") {
+		got.OMPSessionsDir == filepath.Join(abs("omp"), "sessions") || got.PiSessionsDir != filepath.Join(home, ".pi", "agent", "sessions") {
 		t.Fatalf("absolute: %+v", got)
 	}
 	if d := got.SkillDirs; len(d) == 0 || d[0].Harness != "claude-code" || len(d[0].Home) != 1 || d[0].Home[0] != filepath.Join(abs("claude"), "skills") {

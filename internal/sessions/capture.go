@@ -25,6 +25,7 @@ type CaptureCandidate struct {
 	State, Reason, Cwd, Head        string
 	Cwds                            []string
 	Size                            int64
+	Revision                        string
 	Mtime, Start, End               time.Time
 	Model                           string
 	Counts                          Counts
@@ -61,7 +62,7 @@ type ocCapturer interface {
 
 func captureSupported(r reader) bool {
 	switch r.(type) {
-	case claudeReader, codexReader, cursorReader, opencodeReader, opencodeV2Reader:
+	case claudeReader, codexReader, cursorReader, ompReader, piReader, opencodeReader, opencodeV2Reader:
 		return true
 	default:
 		return false
@@ -235,7 +236,7 @@ func captureEvaluate(env Env, r reader, c candidate, known []string) CaptureCand
 		tr, err = r.load(env, c)
 	}
 	after, stampErr := captureStampOf(r, c)
-	if stampErr != nil || !before.equal(after) || errors.Is(err, errCodexChanged) || errors.Is(err, ErrCaptureChanged) {
+	if stampErr != nil || !before.equal(after) || errors.Is(err, errCodexChanged) || errors.Is(err, errOMPChanged) || errors.Is(err, ErrCaptureChanged) {
 		return refuse(StateChanged, "capture_changed")
 	}
 	if errors.Is(err, errUnsupported) {
@@ -342,6 +343,18 @@ func OpenCapture(ctx context.Context, env Env, c CaptureCandidate) (io.ReadClose
 	} else if cr, ok := c.source.r.(cursorReader); ok {
 		env.captureOnly = true
 		f, err := cr.open(env, c.source.c)
+		if err != nil {
+			return nil, CaptureMeta{}, err
+		}
+		raw = f
+	} else if pr, ok := c.source.r.(piReader); ok {
+		f, err := pr.open(env, c.source.c.path)
+		if err != nil {
+			return nil, CaptureMeta{}, err
+		}
+		raw = f
+	} else if or, ok := c.source.r.(ompReader); ok {
+		f, err := or.open(env, c.source.c.path)
 		if err != nil {
 			return nil, CaptureMeta{}, err
 		}

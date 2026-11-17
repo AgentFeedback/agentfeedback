@@ -557,6 +557,28 @@ def store_omp(work):
     copy_store(STORES.parent / "omp" / "project", work / "home/.omp/agent/sessions/project",
                {"{{SID}}": "c0ffee01", "{{CWD}}": golden_proj(work)})
 
+def store_pi(work):
+    cwd = golden_proj(work)
+    root = work / "home/.pi/agent/sessions/project"
+    root.mkdir(parents=True, exist_ok=True)
+    session = {
+        "type": "session", "version": 3, "id": "basic", "cwd": cwd,
+        "timestamp": "2026-10-09T00:00:00Z",
+    }
+    records = [
+        session,
+        {"type": "message", "id": "prompt", "parentId": None,
+         "message": {"role": "user", "content": "Inspect the fixture", "timestamp": 1791504000000}},
+        {"type": "message", "id": "call", "parentId": "prompt",
+         "message": {"role": "assistant", "content": [{"type": "toolCall", "id": "tool", "name": "bash",
+                    "arguments": {"command": "false"}}], "timestamp": 1791504001000}},
+        {"type": "message", "id": "result", "parentId": "call",
+         "message": {"role": "toolResult", "toolCallId": "tool", "toolName": "bash",
+                    "content": [{"type": "text", "text": "Command exited with code 1"}],
+                    "isError": True, "timestamp": 1791504002000}},
+    ]
+    (root / "basic.jsonl").write_text("".join(json.dumps(record) + "\n" for record in records))
+
 
 def store_opencode(work, fixture="opencode"):
     cwd = golden_proj(work)
@@ -573,18 +595,19 @@ def store_opencode(work, fixture="opencode"):
 
 
 SESSION_STORES = {"claude-code": store_claude, "codex": store_codex, "copilot": store_copilot,
-                  "gemini-cli": store_gemini, "omp": store_omp, "opencode-v1": store_opencode,
+                  "gemini-cli": store_gemini, "omp": store_omp, "pi": store_pi,
+                  "opencode-v1": store_opencode,
                   "opencode-v2": lambda work: store_opencode(work, "opencode-v2")}
 
 
-def session_env(work, url=None):
+def session_env(work, url=None, harness=None):
     """A client env reading the session stores under work/home; local mode without url."""
     env = client_env(work, url or "")
     if url is None:
         del env["AGENT_FEEDBACK_URL"], env["AGENT_FEEDBACK_API_KEY"]
     env["CLAUDE_CONFIG_DIR"] = str(work / "home/.claude")
     env["XDG_DATA_HOME"] = str(work / "home/.local/share")
-    env["PI_CODING_AGENT_DIR"] = str(work / "home/.omp/agent")
+    env["PI_CODING_AGENT_DIR"] = str(work / ("home/.pi/agent" if harness == "pi" else "home/.omp/agent"))
     return env
 
 
@@ -674,10 +697,10 @@ def run_session_start(name, text, harness, local=False):
     label = f"{name} session start ({harness}{', local mode' if local else ''})"
     try:
         if local:
-            env = session_env(work)
+            env = session_env(work, harness=harness)
         else:
             server = Server(work, "source", KEY)
-            env = session_env(work, server.url)
+            env = session_env(work, server.url, harness)
         SESSION_STORES[harness](work)
         before = {s["ref"]: s["state"] for s in json.loads(run([BIN, "sessions", "list", "--json"], env, work))["sessions"]}
         values = {"harness": harness, "since": SINCE, "limit": "1"}
@@ -792,7 +815,7 @@ def run_mcp_route(name, text, harness):
     label = f"{name} MCP-only route ({harness})"
     stderr = ""
     try:
-        env = session_env(work)
+        env = session_env(work, harness=harness)
         SESSION_STORES[harness](work)
         before = {s["ref"]: s["state"] for s in json.loads(run([BIN, "sessions", "list", "--json"], env, work))["sessions"]}
         values = {"since": SINCE, "summary": f"{harness} mcp route check"}
@@ -1126,7 +1149,7 @@ def run_checkup(name, text, harness, local=False, mcp_route=False):
     try:
         if not local:
             server = Server(work, "source", KEY)
-        env = session_env(work, server.url if server else None)
+        env = session_env(work, server.url if server else None, harness)
         checkout, git = checkup_fixture(work, env, harness)
         marker = fake_opener(env, work)
         before = session_state(env)

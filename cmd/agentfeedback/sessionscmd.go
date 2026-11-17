@@ -66,16 +66,36 @@ func sessionsEnvOf(getenv func(string) string, home string, file fileConfig) ses
 	}
 
 	ompSessions := filepath.Join(home, ".omp", "agent", "sessions")
-	if agentDir := getenv("PI_CODING_AGENT_DIR"); filepath.IsAbs(agentDir) {
-		ompSessions = filepath.Join(agentDir, "sessions")
-	} else if dataHome := getenv("XDG_DATA_HOME"); runtime.GOOS == "linux" && filepath.IsAbs(dataHome) {
+	if dataHome := getenv("XDG_DATA_HOME"); runtime.GOOS == "linux" && filepath.IsAbs(dataHome) {
 		ompSessions = filepath.Join(dataHome, "omp", "sessions")
+	}
+	piSessions := filepath.Join(home, ".pi", "agent", "sessions")
+	cache := filepath.Join(dir("XDG_CACHE_HOME", ".cache"), "agentfeedback")
+	for _, name := range []string{"omp", "pi"} {
+		root := ""
+		if agentDir := getenv("PI_CODING_AGENT_DIR"); filepath.IsAbs(agentDir) && filepath.Clean(agentDir) == filepath.Join(home, "."+name, "agent") {
+			root = filepath.Join(agentDir, "sessions")
+		}
+		if data, err := os.ReadFile(hookLastRunPath(cache, name)); err == nil {
+			var record lastRun
+			if json.Unmarshal(data, &record) == nil && filepath.IsAbs(record.SessionsDir) {
+				root = record.SessionsDir
+			}
+		}
+		if root != "" {
+			if name == "omp" {
+				ompSessions = root
+			} else {
+				piSessions = root
+			}
+		}
 	}
 	return sessions.Env{
 		Home: home, ClaudeConfigDir: dir("CLAUDE_CONFIG_DIR", ".claude"),
 		CodexHome: dir("CODEX_HOME", ".codex"), CopilotHome: dir("COPILOT_HOME", ".copilot"), GeminiDir: gemini,
 		DataHome: dir("XDG_DATA_HOME", ".local", "share"), OpenCodeDB: getenv("OPENCODE_DB"),
 		OMPSessionsDir: ompSessions,
+		PiSessionsDir:  piSessions,
 		CacheDir:       filepath.Join(dir("XDG_CACHE_HOME", ".cache"), "agentfeedback"),
 		SkillDirs:      harness.SkillLocations(harness.Env{Home: home, Getenv: getenv}),
 		Policy:         file.Collect, Now: nowFunc,

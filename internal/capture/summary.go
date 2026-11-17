@@ -99,6 +99,9 @@ func PushSummary(ctx context.Context, db *store.DB, env sessions.Env, p Policy) 
 		if refused(c) {
 			continue
 		}
+		if err := resolveRevision(&c, rows); err != nil {
+			return out, errors.New("sessions: could not resolve capture revision")
+		}
 		status, reason := suppressed(c, rows, p.MaxSessionBytes)
 		switch {
 		case status == "replayed":
