@@ -383,6 +383,27 @@ version; corrections to release prose need no new tag. For prose-only repairs,
 use `gh release edit <tag> --repo AgentFeedback/agentfeedback --title '<tag> — <title>' --notes-file /path/to/notes.md`;
 leave tags, assets, pre-release status and the latest release unchanged.
 
+## v4.7.0 — Native harness session capture
+
+Automatic session capture supports native omp and pi journals, Codex
+rollouts, and both OpenCode storage formats, alongside Claude Code.
+Discovery preserves session identity across overlapping sources, and the
+capture sweep retries pending delivery without requiring another harness
+lifecycle event. Revisions are reserved before upload so interrupted
+delivery can resume consistently.
+
+Existing capture consent, repository restrictions and cutoffs still apply.
+Upgrade the binary, then run `agentfeedback init --yes` to refresh installed
+harness integrations while keeping the configured destination. Restart
+running harnesses so they load their refreshed extensions. This does not
+enable capture or authorize historical backfill.
+
+The public HTTP API remains compatible with 4.x clients and servers.
+The local database migrates automatically on upgrade. Cloud transcript
+rendering and extraction require the corresponding hosted deployment.
+
+Built with GoReleaser 2.20.2.
+
 ## v4.6.4 — Dependency refresh
 
 Updates Go dependencies, including the Go networking, system, terminal and

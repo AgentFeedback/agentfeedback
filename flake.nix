@@ -14,7 +14,7 @@
           default = pkgs.buildGo127Module rec {
             pname = "agentfeedback";
             # Updated to the release version before tagging; untagged development is explicit.
-            version = "4.6.4";
+            version = "4.7.0";
             src = self;
             vendorHash = "sha256-Yl0GExFu8q1ji7jnwMx+0I4xonCYmgYGXDzG9C1rd+o=";
             subPackages = [ "cmd/agentfeedback" ];
