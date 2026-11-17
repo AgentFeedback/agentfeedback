@@ -128,6 +128,7 @@ check() {
 
   # Exercise the real detached child, including ownership handoff and completion.
   export SWEEP_URL="$URL" AGENT_FEEDBACK_URL="$URL"
+  agentfeedback config set sessions.quiet 10s >/dev/null
   python3 /opt/live/sweep.py
   out=$(cd /tmp && timeout 4 bash -c "$hook" <<<"$(jq -cn --arg s "$session" '{session_id: $s, cwd: "/tmp", hook_event_name: "Stop", stop_hook_active: false}')") ||
     fail "$mode: sweep blocked the installed Stop hook"
@@ -143,14 +144,30 @@ check() {
   local first
   first=$(cat "$started")
   # The OSS fixture has no capture API. Restore enabled consent without changing
-  # the run records so the repeat exercises quiet throttling, not unsupported.
+  # the run records so the repeat exercises delayed delivery, not unsupported.
   python3 /opt/live/sweep.py --keep-markers
   out=$(cd /tmp && timeout 4 bash -c "$hook" <<<"$(jq -cn --arg s "$session" '{session_id: $s, cwd: "/tmp", hook_event_name: "Stop", stop_hook_active: false}')") ||
     fail "$mode: repeated Stop hook failed"
   [ -z "$out" ] || fail "$mode: repeated Stop printed output"
-  [ "$(cat "$started")" = "$first" ] || fail "$mode: repeated Stop spawned a second child"
+  local second
+  second=$(cat "$started")
+  [ "$second" != "$first" ] || fail "$mode: repeated Stop did not schedule delayed delivery"
+  out=$(cd /tmp && timeout 4 bash -c "$hook" <<<"$(jq -cn --arg s "$session" '{session_id: $s, cwd: "/tmp", hook_event_name: "Stop", stop_hook_active: false}')") ||
+    fail "$mode: coalesced Stop hook failed"
+  [ -z "$out" ] || fail "$mode: coalesced Stop printed output"
+  [ "$(cat "$started")" = "$second" ] || fail "$mode: coalesced Stop spawned another child"
+  local second_started
+  second_started=$(jq -r .started <<<"$second")
+  jq -e --arg started "$second_started" '.started != $started' "$last" >/dev/null ||
+    fail "$mode: delayed sweep ignored the quiet interval"
+  for _ in $(seq 400); do
+    jq -e --arg started "$second_started" '.started == $started and .finished != null' "$last" >/dev/null && break
+    sleep 0.05
+  done
+  jq -e --arg started "$second_started" '.started == $started and .finished != null' "$last" >/dev/null ||
+    fail "$mode: delayed session push did not finish"
   unset AGENT_FEEDBACK_URL
-  pass "$mode: cached enabled policy launches one detached child without blocking Stop; repeat is throttled"
+  pass "$mode: cached enabled policy launches detached delivery; quiet triggers coalesce and finish"
   expect unchanged install claude-code --server "$URL"
   expect uninstalled uninstall claude-code
   [ ! -e "$dir/skills/agentfeedback" ] || fail "$mode: the skill is left in $dir/skills"
